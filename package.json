@@ -2,14 +2,23 @@
   "name": "ai-rp",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run"
   },
   "dependencies": {
+    "ejs": "3.1.10",
+    "jepub": "2.5.0",
+    "jszip": "3.10.1",
     "next": "16.4.0",
+    "openai": "^7.33.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
@@ -21,6 +30,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.4"
   }
 }

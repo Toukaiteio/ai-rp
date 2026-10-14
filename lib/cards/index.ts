@@ -1,0 +1,18 @@
+export * from "./types";
+export {
+  parseCharacterCard,
+  serializeCard,
+  cardFileName,
+  createEmptyCard,
+} from "./validate";
+export type { ParseResult } from "./validate";
+export { downloadCard, readCardFile } from "./io";
+export { PRESET_CARDS, DEFAULT_CARD_ID, findPresetCard } from "./presets";
+
+import type { CharacterCardData } from "./types";
+
+/** 卡上有没有可用内容。空卡不该被当成能玩的角色。 */
+export function isPlayableCard(data: CharacterCardData): boolean {
+  return data.first_mes.trim().length > 0;
+}
+

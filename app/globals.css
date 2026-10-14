@@ -1,26 +1,203 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   设计令牌（Design Tokens）
+   全站颜色、圆角、阴影、字体只在这里定义一次。
+   组件内不出现任何字面色值，一律引用令牌，换肤只改这一层。
+   底色基调：中性深灰 #161616，不使用蓝、金、紫等色相。
+   ========================================================================== */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+
+  /* 中性灰阶 —— 底色与文字的唯一来源 */
+  --background: #161616; /* 页面底色 */
+  --surface: #1c1c1c; /* 卡片、抽屉、浮层 */
+  --surface-2: #242424; /* 内嵌区、次级填充 */
+  --surface-3: #2c2c2c; /* 悬停填充、分隔块 */
+  --line: #303030; /* 常规描边 */
+  --line-strong: #4a4a4a; /* 悬停描边 */
+
+  --ink: #ededed; /* 主文字 */
+  --ink-2: #a3a3a3; /* 次级文字 */
+  --ink-3: #6e6e6e; /* 弱化文字、占位符 */
+
+  /* 强调色 —— 中性浅色。同一时刻只出现一处，靠亮度取胜，不靠色相 */
+  --accent: #ededed;
+  --accent-hover: #ffffff;
+  --accent-ink: #161616; /* 强调填充上的文字 */
+
+  /* 选中态 —— 描边加提亮文字，不引入色相 */
+  --selected: #2a2a2a;
+  --selected-line: #6e6e6e;
+  --selected-ink: #ffffff;
+
+  /* 语义色 —— 只给必须一眼看见的破坏性操作与正向状态 */
+  --danger: #e5484d;
+  --danger-hover: #f0575c;
+  --danger-ink: #ffffff;
+  --danger-soft: #2a1618;
+
+  --ok: #3fb950;
+  --ok-soft: #16251a;
+
+  /* 玩家气泡 —— 整屏最亮的一块，明确「这是我说的话」 */
+  --bubble: #ededed;
+  --bubble-ink: #161616;
+
+  /* 遮罩与图片上的压字 */
+  --veil: rgba(0, 0, 0, 0.55);
+  --overlay: rgba(0, 0, 0, 0.68);
+  --overlay-ink: #ffffff;
+
+  /* 字体 —— 界面用无衬线，正文用衬线，两套分工就是操作与阅读的边界 */
+  --font-ui: var(--font-geist-sans), "Noto Sans SC", "PingFang SC",
+    "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-prose: "Noto Serif SC", "Songti SC", "STSong", "SimSun", ui-serif,
+    Georgia, serif;
 }
 
+/* 令牌映射为 Tailwind 工具类：bg-surface / text-ink-2 / border-line … */
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+
+  --color-selected: var(--selected);
+  --color-selected-line: var(--selected-line);
+  --color-selected-ink: var(--selected-ink);
+
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-ink: var(--danger-ink);
+  --color-danger-soft: var(--danger-soft);
+
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+
+  --color-bubble: var(--bubble);
+  --color-bubble-ink: var(--bubble-ink);
+
+  --color-veil: var(--veil);
+  --color-overlay: var(--overlay);
+  --color-overlay-ink: var(--overlay-ink);
+
+  --font-sans: var(--font-ui);
+  --font-serif: var(--font-prose);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* 圆角与阴影 —— 全站只有这几档，杜绝随手取值 */
+@theme {
+  --radius-pill: 999px;
+  --radius-frame: 28px;
+  --radius-card: 24px;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+
+  --shadow-frame: 0 24px 60px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-raised: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--selected-line);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--surface-3);
+    color: var(--ink);
+  }
+
+  /* 滚动条也走令牌，避免浏览器默认的浅色轨道打断深色画面 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: var(--radius-pill);
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  /* 打字机光标 —— 唯一的动效强调，跟随强调色 */
+  .cursor-blink {
+    display: inline-block;
+    width: 8px;
+    height: 18px;
+    background: var(--accent);
+    border-radius: 4px;
+    vertical-align: -3px;
+    margin-left: 3px;
+    animation: token-blink 1s steps(1) infinite;
+  }
+
+  @keyframes token-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  .spin-ring {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 3px solid var(--line);
+    border-top-color: var(--accent);
+    animation: token-spin 0.9s linear infinite;
+  }
+
+  @keyframes token-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .cursor-blink,
+  .spin-ring {
+    animation: none;
+  }
 }

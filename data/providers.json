@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "defaultProviderId": "yosei-router",
+  "defaultInterfaceType": "chat-completions",
+  "providers": [
+    {
+      "id": "yosei-router",
+      "name": "Yosei-Router · 预设",
+      "baseURL": "https://router.dys.asia/v1",
+      "models": ["deepseek-v4-flash-200k", "gpt-5-mini", "claude-sonnet-4-5", "deepseek-chat"],
+      "keyUrl": "https://router.dys.asia/",
+      "docUrl": "https://router.dys.asia/"
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "baseURL": "https://api.openai.com/v1",
+      "models": ["gpt-5-mini", "gpt-5"],
+      "keyUrl": "https://platform.openai.com/api-keys",
+      "docUrl": "https://platform.openai.com/docs/api-reference/chat"
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "baseURL": "https://api.deepseek.com/v1",
+      "models": ["deepseek-chat", "deepseek-reasoner"],
+      "keyUrl": "https://platform.deepseek.com/api_keys",
+      "docUrl": "https://api-docs.deepseek.com/"
+    },
+    {
+      "id": "custom",
+      "name": "自定义",
+      "baseURL": "",
+      "models": [],
+      "keyUrl": "",
+      "docUrl": ""
+    }
+  ],
+  "interfaceTypes": [
+    {
+      "id": "chat-completions",
+      "name": "Chat Completions",
+      "enabled": true
+    },
+    {
+      "id": "anthropic-messages",
+      "name": "Anthropic Messages",
+      "enabled": false
+    },
+    {
+      "id": "openai-responses",
+      "name": "OpenAI Responses",
+      "enabled": false
+    }
+  ]
+}

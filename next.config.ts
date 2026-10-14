@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
+    resolveAlias: {
+      fs: { browser: "./lib/export/empty-fs.ts" },
+    },
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],
