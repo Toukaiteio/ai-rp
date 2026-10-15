@@ -118,7 +118,7 @@ export function Tag({
   return (
     <span
       className={cn(
-        "rounded-pill border border-line px-[10px] py-[2px] text-[11.5px] text-ink-2",
+        "whitespace-nowrap rounded-pill border border-line px-[9px] py-[1.5px] text-[11px] text-ink-2",
         className,
       )}
       {...rest}

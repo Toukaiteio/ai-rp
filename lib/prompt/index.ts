@@ -12,6 +12,7 @@ import {
   STYLE_PROMPTS,
 } from "./system";
 import { markCache, prefixFingerprint } from "./cache";
+import { formatJournal, formatToolTrace } from "@/lib/memory/journal";
 import { formatFacts, needsSummarize } from "./summarize";
 import {
   INJECTION_GROUPS,
@@ -144,6 +145,8 @@ export function assemble(input: AssembleInput): AssembleResult {
     turn = 0,
     summary,
     facts,
+    journal,
+    toolTrace,
     authorNote,
     style,
     userName = "你",
@@ -267,6 +270,13 @@ export function assemble(input: AssembleInput): AssembleResult {
   for (const text of contents(book.group.in_chat)) {
     post.push({ role: "system", content: apply(text) });
   }
+  const memoryNote = formatJournal(journal);
+  const traceNote = formatToolTrace(toolTrace ?? []);
+  post.push({
+    role: "system",
+    content: traceNote ? `${memoryNote}\n\n${traceNote}` : memoryNote,
+  });
+
   if (card.post_history_instructions?.trim()) {
     post.push({
       role: "system",

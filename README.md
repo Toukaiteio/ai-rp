@@ -2,7 +2,9 @@
 
 极简的 Serverless AI 角色扮演游戏。AI 扮演角色，顺带充当旁白。部署目标是 Vercel。
 
-当前进度：聊天链路已接真实提供商（OpenAI Chat Completions 协议，BYOK）。服务端组装器、三层记忆、世界书、增量摘要、加密保险库、场景 CG、EPUB 导出都已完成。生成 CG 的自动评分默认关闭。没有 EPUB 导入。
+当前进度：聊天链路已接真实提供商（OpenAI Chat Completions 协议，BYOK）。服务端组装器、三层记忆、世界书、增量摘要、本机加密、场景 CG、EPUB 导出都已完成。生成 CG 的自动评分默认关闭。没有 EPUB 导入。
+
+角色卡不预制在代码里：角色架里有一个默认收起的「在线角色卡」列表，展开时去卡源拉一页热门（服务端与本机各缓存 5 小时），点「加入」把卡下载到本机。界面明写这些内容来自网络、本项目不审核也不负责。公告写在 `data/announcements.json`，关掉后按 id 记在本机。
 
 ## 环境要求
 
@@ -21,7 +23,7 @@ pnpm dev
 ```bash
 pnpm build && pnpm start   # 生产模式
 pnpm lint
-pnpm test                              # 组装器、世界书、摘要、50 轮回归、保险库、回退
+pnpm test                              # 组装器、世界书、摘要、50 轮回归、加密、回退
 pnpm dlx tsx scripts/verify-cards.ts   # 角色卡与消息块协议
 ```
 
@@ -33,12 +35,16 @@ app/
   layout.tsx            根布局
   globals.css           设计令牌：颜色、圆角、阴影、字体只在这里定义
   api/chat/route.ts     POST /api/chat，SSE 流式转发
+  api/cards/route.ts    GET /api/cards，在线角色卡列表（5 小时缓存）
+  api/cards/card/route.ts  GET /api/cards/card，下载一张卡并拆出 JSON
   design/               UI 组件总览页
 components/
   ui/                   从原型提取的 UI 组件
   chat/AppShell.tsx     画面切换、当前角色、连接配置
   chat/ChatScreen.tsx   发原始上下文、解析 SSE、按块渲染
-  chat/ShelfScreen.tsx  角色架：选角、导入、导出
+  chat/ShelfScreen.tsx  角色架：选角、导入、在线卡
+  chat/OnlineCards.tsx  在线角色卡区块（默认收起）
+  chat/Announcements.tsx  公告条
   chat/SettingsScreen.tsx  连接设置
   chat/Avatar.tsx       占位头像
   icons.tsx             图标
@@ -46,12 +52,14 @@ lib/
   cards/                角色卡系统
     types.ts            V2 字段类型
     validate.ts         宽松解析外来 JSON、补齐字段、序列化
-    presets.ts          预设卡（静态 import，见下方说明）
+    png.ts              从 PNG 的 tEXt 块里拆出卡 JSON
+    online.ts           在线卡源归一化、地址构造
     io.ts               导出下载、读取导入文件
     index.ts
+  announcements.ts      公告内容与「已关闭」记录
   blocks.ts             块解析、还原纯文本、还原标记文本
   suggest.ts            建议输入的提示词与解析
-  vault/                加密保险库
+  vault/                本机加密
     crypto.ts           PBKDF2 + AES-GCM 原语
     index.ts            状态机、加密槽位、存档
     registry.ts         数据模块的登记，避免与存储层循环依赖
@@ -87,13 +95,13 @@ lib/
     epub.ts             调用 jepub 打包
   wire.ts               SSE 帧编解码
 data/
-  cards/                预设角色卡 JSON
+  announcements.json    公告内容
   providers.json        预设提供商配置
 scripts/
   verify-cards.ts       角色卡与消息块协议的验证脚本
 ```
 
-预设卡用静态 `import` 而不是运行时读目录：Vercel 的 serverless 函数只打包能被静态分析到的文件，`fs.readdir` 出来的文件不保证进部署产物。加一张卡 = 放一个 JSON 到 `data/cards/` + 在 `lib/cards/presets.ts` 里加一行 import。
+在线卡源在 `lib/cards/online.ts` 里换：实现一个归一化函数加两个地址构造函数就行，界面和路由不用动。下载地址只认白名单主机，`path` 形状不合规直接回 400，不接受调用方传任意 URL。
 
 
 ## /api/chat
@@ -162,10 +170,12 @@ data: [DONE]
 
 | 块 | 渲染 | 谁产出 |
 | --- | --- | --- |
-| `<narr>…</narr>` | 旁白。无头像、无名牌、无消息背景，字体字号行距颜色与角色对白**完全一致**，左边界也对齐在同一文字栏 | 模型 |
-| `<dlg who="角色名">…</dlg>` | 角色对白。圆形头像 + 姓名 | 模型 |
+| `<narr>…</narr>` | 旁白。无头像、无名牌、无消息背景，暗一档（`--ink-2`）、小半号（15px）、行距收紧，左缘一条 1px 细线；细线画在留白里，正文起始位置与对白严格对齐 | 模型 |
+| `<dlg who="角色名">…</dlg>` | 角色对白。圆形头像 + 姓名，正文最亮（`--ink`，16.5px） | 模型 |
 | `<scene>…</scene>` | 场景事件。居中中性胶囊，无说话人 | 模型 |
 | `<player>…</player>` | 玩家。右侧亮色气泡 | 前端。玩家每轮输入由前端包上标记写进存储，模型被明确要求不要输出它 |
+
+同一轮里的块间距是 10px，轮与轮之间 26px。旁白和对白挨得一样远会读成三张互不相干的卡片，所以一轮之内的块收紧，轮次之间保持原来的呼吸感。
 
 三处实现细节：
 
@@ -177,13 +187,13 @@ data: [DONE]
 
 兼容 SillyTavern Character Card V2 字段名：`name` / `description` / `personality` / `scenario` / `first_mes` / `mes_example` / `system_prompt` / `post_history_instructions` / `alternate_greetings` / `character_book` / `tags` / `creator` / `character_version` / `extensions`。
 
-**只做 JSON，不做 PNG 内嵌卡，不做 CHARX。**
+**本地只收 JSON，但在线卡是 PNG。** 酒馆系的卡是「一张 PNG，`tEXt` 块里塞 base64 的 `chara` JSON」，`lib/cards/png.ts` 负责把它拆出来，之后走和本地 JSON 导入完全相同的解析链路。
 
-- 预设卡在 `data/cards/*.json`。
+- 代码里不放任何别人的卡。角色架底部有一个默认收起的「在线角色卡」，展开才去卡源拉一页热门，服务端与本机各缓存 5 小时；点「加入」下载到本机，之后怎么用都与卡源无关。界面明写内容来自网络、本项目不审核不托管不负责。
 - 角色架里可以导入 / 导出 JSON（导出的是角色卡本身，明文，方便分享）。整机备份走「连接设置 → 导出存档」，那个是加密的。
 - 导入接受完整的 V2 外壳，也接受只有字段的裸对象，只有 `name` 是硬要求。不认识的字段会原样存进 `extensions._unmapped`，导出时不丢。
 - 导出会把 14 个声明字段补齐（空的写成 `""` / `[]` / `{}`），字段形状稳定，来回一次不少东西。空世界书例外，那是刻意省略的。
-- 导入的卡存在浏览器 localStorage，删除也只删本地。
+- 导入的卡存在浏览器里，加密，删除也只删本地。
 
 **世界书**最小是 `keys` / `content` / `constant`。`constant: true` 每轮都注入；其余默认命中任意一个关键词（`logic: "and"` 才要求全中）。可选 `order`、`position`、`probability`、`scanDepth`、`cascade`，书一级还有 `recursiveScan`、`budgetCap`、`tokenCap`。**只有 `content` 进提示词，`keys` 本身永远不进。**
 
@@ -191,7 +201,17 @@ data: [DONE]
 
 **建议输入是现场生成的**，不写死在卡里。每次回复落地后（以及进页面时）发一个次要请求，让模型看着最近六轮对话生成 3 条玩家接下来可能输入的话。这个请求失败不影响对话，也不弹错误。角色各有各的语境，固定一套换个人就对不上。
 
-## 本机存储与加密保险库
+## 公告与 AI 生成提示
+
+公告内容在 `data/announcements.json`，静态 import，改公告就是改那个文件。字段是 `id` / `title` / `body` / `level` / `date`，坏条目在解析时跳过，不会让页面挂掉。
+
+界面上公告不是横幅，是一颗铃铛按钮：解锁门在右上角，角色架在页头，对话页在右下角「更多」抽屉里，有新公告时角上有个点。点开是一个居中的对话框，里面列全部公告，未读的那几条带一个「不再提示」。关掉后按 id 记在本机 localStorage，别处也不再出现。
+
+对话页输入框下方常驻一行「对话内容由 AI 生成，请自行负责、自行甄别」，关不掉也不随公告消失。
+
+**没有内容审查**：没有相应资源支持，服务端也不读聊天内容。政策只以公告的形式告知，不设拦截。在线角色卡的标签由卡源给出，我们只原样展示，不额外打分级；卡自带的那几个分级词不回显，卡照常列出、照常能玩。
+
+## 本机存储与加密
 
 所有落在本机的东西都是密文，密钥由用户设定，**不存在任何地方**——不进 localStorage、不进 IndexedDB、不进 Cookie、不打日志。
 
@@ -202,7 +222,7 @@ data: [DONE]
 | 数据 | 放哪 | 说明 |
 | --- | --- | --- |
 | 连接设置（含 API Key、Base URL、模型） | localStorage | 小但敏感，固定在这一层 |
-| 聊天记录、角色卡、摘要、关键事实 | IndexedDB，不支持则回退 localStorage | 大块数据，回退对上层透明，界面会说明当前用的是哪个 |
+| 聊天记录、角色卡、摘要、关键事实 | IndexedDB，不支持则回退 localStorage | 大块数据，回退对上层透明 |
 
 四个动作：设定密钥、锁定、解锁、清除本机数据。未解锁时聊天和设置**整个不挂载**，只显示解锁入口，所以明文 Key 和聊天内容在解锁前根本不在页面上。
 

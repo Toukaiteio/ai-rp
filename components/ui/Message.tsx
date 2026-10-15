@@ -1,7 +1,7 @@
 import type { ReactNode, Ref, UIEventHandler } from "react";
 import { cn } from "./cn";
 
-/* 旁白即正文：字体、字号、行距、颜色与角色对白完全一致，排在同一文字栏里 */
+/* 对白正文：整屏最常读的一段，墨色最亮、行距最松 */
 export function Prose({
   children,
   className,
@@ -22,12 +22,38 @@ export function Prose({
   );
 }
 
-/* 旁白：无头像、无名牌、无消息背景，只是缩进到与对白同一栏 */
+/* 旁白正文：比对白暗一档、小半号、行距收紧。
+   谁在说话、谁只交代场景，靠这三样就能分开，不用改字体。 */
+export function NarratorProse({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "font-serif text-[15px] leading-[1.8] text-ink-2",
+        "[&_p]:m-0 [&_p]:mb-2.5 [&_p:last-child]:mb-0",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* 旁白：无头像、无名牌、无消息背景，缩进到与对白同一栏。
+   左缘一条细线画在留白里（负外边距把那 14px 让出来），
+   所以旁白正文的起始位置和对白正文严格对齐，只有明暗和字号的差别。 */
 export function NarratorBlock({ children }: { children: ReactNode }) {
   return (
     <div className="flex gap-3">
       <div className="ml-12 min-w-0 flex-1">
-        <Prose>{children}</Prose>
+        <div className="-ml-[14px] border-l border-line pl-[13px]">
+          <NarratorProse>{children}</NarratorProse>
+        </div>
       </div>
     </div>
   );
@@ -81,13 +107,37 @@ export function PlayerBubble({ children }: { children: ReactNode }) {
   );
 }
 
+/* 手动分章：横线夹着章名，比场景胶囊更大、更亮，扫一眼就能分开。 */
+export function ChapterMark({
+  id,
+  index,
+  title,
+}: {
+  id: string;
+  index: string;
+  title: string;
+}) {
+  return (
+    <div id={id} className="flex scroll-mt-6 items-center gap-3 py-3">
+      <span className="h-px flex-1 bg-line-strong" />
+      <span className="max-w-[70%] shrink-0 text-center">
+        <span className="block text-[11px] tracking-[0.14em] text-ink-2">{index}</span>
+        <span className="mt-0.5 block font-serif text-[17px] leading-tight font-black text-ink">
+          {title}
+        </span>
+      </span>
+      <span className="h-px flex-1 bg-line-strong" />
+    </div>
+  );
+}
+
 /* 场景事件：居中胶囊，无说话人，用于场景切换、时间流逝与状态变化 */
 export function SceneEvent({ children }: { children: ReactNode }) {
   return (
     <div className="flex justify-center">
-      <span className="rounded-pill border border-line bg-surface-2 px-4 py-[5px] text-center text-[12.5px] text-ink-2">
+      <div className="w-fit max-w-[80%] rounded-pill border border-line bg-surface-2 px-4 py-[5px] text-center text-[12.5px] text-ink-2 [&_p]:m-0">
         {children}
-      </span>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions";
+import type { ChatMessage } from "@/lib/prompt/types";
 import type { ChatStreamEvent, ProviderAdapter } from "./types";
 
 export interface OpenAIAdapterOptions {
@@ -27,6 +28,18 @@ async function* toEvents(
     const text = choice?.delta?.content;
     if (text) {
       yield { type: "delta", text };
+    }
+    const toolCalls = choice?.delta?.tool_calls;
+    if (toolCalls) {
+      for (const call of toolCalls) {
+        yield {
+          type: "tool",
+          index: call.index,
+          id: call.id,
+          name: call.function?.name,
+          arguments: call.function?.arguments,
+        };
+      }
     }
     if (choice?.finish_reason) {
       sawFinish = true;
@@ -65,7 +78,7 @@ export function createOpenAIProvider(
       const stream = await client.chat.completions.create(
         {
           model: request.model,
-          messages: request.messages,
+          messages: attachImage(request.messages, request.image) as OpenAI.Chat.ChatCompletionCreateParams["messages"],
           stream: true,
           ...(request.temperature !== undefined
             ? { temperature: request.temperature }
@@ -73,6 +86,7 @@ export function createOpenAIProvider(
           ...(request.maxTokens !== undefined
             ? { max_tokens: request.maxTokens }
             : {}),
+          ...(request.tools?.length ? { tools: request.tools } : {}),
         },
         // signal 是中断链的末端：浏览器断开 → 路由 abort → 这里掐断上游连接
         { signal: request.signal },
@@ -81,6 +95,22 @@ export function createOpenAIProvider(
       return toEvents(stream);
     },
   };
+}
+
+function attachImage(messages: ChatMessage[], image: string | undefined): ChatMessage[] {
+  if (!image) return messages;
+  const index = messages.findLastIndex((message) => message.role === "user");
+  if (index < 0) return messages;
+  return messages.map((message, i) => {
+    if (i !== index || typeof message.content !== "string") return message;
+    return {
+      role: message.role,
+      content: [
+        { type: "text", text: message.content || " " },
+        { type: "image_url", image_url: { url: image } },
+      ],
+    } as unknown as ChatMessage;
+  });
 }
 
 function safeHost(baseURL: string): string {

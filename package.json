@@ -17,10 +17,14 @@
     "ejs": "3.1.10",
     "jepub": "2.5.0",
     "jszip": "3.10.1",
+    "lucide-react": "^1.57.0",
     "next": "16.4.0",
     "openai": "^7.33.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",

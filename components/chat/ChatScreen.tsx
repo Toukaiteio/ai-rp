@@ -7,7 +7,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type PointerEvent,
   type ReactNode,
+  type TouchEvent,
 } from "react";
 import {
   ActPill,
@@ -16,10 +18,13 @@ import {
   ChatColumn,
   ChatScroll,
   Composer,
+  Dialog,
+  ChapterMark,
   DialogueBlock,
-  MenuRow,
+  MarkdownText,
   MessageActions,
   NarratorBlock,
+  PillButton,
   PlayerBubble,
   SceneEvent,
   Sheet,
@@ -29,16 +34,19 @@ import {
   TypingCursor,
   Veil,
 } from "@/components/ui";
-import { IconDownload, IconImage } from "@/components/icons";
+import { IconImage } from "@/components/icons";
+import { cn } from "@/components/ui/cn";
 import { hashSeed } from "@/lib/seed";
-import { parseBlocks, type MessageBlock } from "@/lib/blocks";
+import { parseBlocks, stripBlocks, type MessageBlock } from "@/lib/blocks";
 import { buildSuggestionMessages, parseSuggestions } from "@/lib/suggest";
+import { applyChatTool, emptyJournal, normalizeJournal, type Journal, type ToolTrace } from "@/lib/memory/journal";
+import { adaptGreeting } from "@/lib/cards/builder-opening";
 import { openingGreetings } from "@/lib/cards/greetings";
 import type { CharacterCardData } from "@/lib/cards/types";
 import type { ChatMessage } from "@/lib/prompt/types";
 import type { KeyFacts, RollingSummary } from "@/lib/prompt/types";
-import { isConfigured, isImageConfigured, type ProviderConfig } from "@/lib/providers/settings";
-import { createId, createSession, getSessionStore, loadCardMemory, saveCardMemory } from "@/lib/storage";
+import { canSend, isConfigured, isImageConfigured, usesBrowserModel, type ProviderConfig } from "@/lib/providers/settings";
+import { createId, createSession, emptyCardMemory, getSessionStore, loadCardMemory, saveCardMemory } from "@/lib/storage";
 import type { ChatSession, StoredCg, StoredMessage } from "@/lib/storage";
 import {
   allowAutoCg,
@@ -46,9 +54,14 @@ import {
   sceneKey,
   sceneText,
   scoreAllows,
-  styleLabel,
 } from "@/lib/image";
 import { decodeSseBuffer, readSseText } from "@/lib/wire";
+import { useI18n } from "@/lib/i18n/use-i18n";
+import { readChatImage } from "@/lib/chat-image";
+import { embedDocument, normalizeDocument, readChatDocument, type ChatDocument } from "@/lib/chat-document";
+import { describeImage, probeBrowserModel, streamBrowserChat } from "@/lib/browser-model";
+import { applyMacros, assemble, planBudget } from "@/lib/prompt";
+import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
 import { Avatar } from "./Avatar";
 
 interface Turn {
@@ -60,12 +73,71 @@ interface Turn {
   swipes?: string[];
   swipeIndex?: number;
   chapterBreak?: boolean;
+  image?: string;
+  /** 本机模型看图后的描述，只发给不能看图的模型 */
+  imageNote?: string;
+  document?: ChatDocument;
 }
+
+type ComposerAttachment =
+  | { kind: "image"; src: string }
+  | { kind: "document"; name: string; text: string };
 
 interface ChatError {
   status: number;
   code: string;
   message: string;
+}
+
+interface PendingTool {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+interface TocItem {
+  id: string;
+  n: number;
+  text: string;
+}
+
+function chapterList(turns: Turn[], opening: string): TocItem[] {
+  if (!turns[0]) return [];
+  const list: TocItem[] = [{ id: "start", n: 1, text: chapterHeading(turns[0].content) || opening }];
+  let n = 1;
+  for (const turn of turns) {
+    if (!turn.chapterBreak) continue;
+    n += 1;
+    list.push({ id: turn.id, n, text: chapterHeading(turn.content) });
+  }
+  return list;
+}
+
+function chapterHeading(content: string): string {
+  const text = parseBlocks(content).find((block) => block.kind === "scene")?.text.trim();
+  return text ? text.slice(0, 40) : "";
+}
+
+/** 手动分章画在这条对话下面。第 1 章固定在最开头，这里从第 2 章数起。 */
+function chapterAt(turns: Turn[], index: number): { n: number; title: string } | null {
+  const turn = turns[index];
+  if (!turn?.chapterBreak) return null;
+  let n = 1;
+  for (let i = 0; i <= index; i += 1) {
+    if (turns[i]?.chapterBreak) n += 1;
+  }
+  return { n, title: chapterHeading(turn.content) };
+}
+
+function absorbToolCall(
+  calls: PendingTool[],
+  frame: { index: number; id?: string; name?: string; arguments?: string },
+): void {
+  while (calls.length <= frame.index) calls.push({ id: "", name: "", arguments: "" });
+  const slot = calls[frame.index];
+  if (frame.id) slot.id = frame.id;
+  if (frame.name) slot.name = frame.name;
+  if (frame.arguments) slot.arguments += frame.arguments;
 }
 
 const SUGGESTION_TEMPERATURE = 0.8;
@@ -86,16 +158,26 @@ function playerText(content: string): string {
  * 带 <player> 标记，让模型看到自己上一轮的输出格式时也能对上玩家的；
  * 服务端的 normalizeUserContent 会在组装时抹掉标记。
  */
-function userTurnsAsMessages(_turn: Turn, text: string): ChatMessage[] {
-  return [{ role: "user", content: markPlayer(text) }];
+function historyContent(turn: Turn): string {
+  if (turn.role !== "user") return turn.content;
+  const text = embedDocument(turn.content, turn.document);
+  if (!turn.imageNote) return text;
+  return `${text}\n\n【图片】\n${turn.imageNote}`;
+}
+
+function userTurnsAsMessages(turn: Turn): ChatMessage[] {
+  return [{ role: "user", content: historyContent(turn) }];
 }
 
 /**
- * 一条回复可能由多个块组成，逐块渲染，块间距交给 ChatColumn 的 gap。
+ * 一条回复可能由多个块组成，逐块渲染。
  *
- * 四类块的渲染差异就在这个函数里：
- * narr 无头像无名牌无背景，与对白共用同一文字栏和同一套文字样式；
- * dlg 带圆形头像与姓名；player 走右侧气泡；scene 是居中中性胶囊。
+ * 同一轮里的块间距收紧到 10px（轮与轮之间仍由 ChatColumn 的 26px 分隔），
+ * 否则旁白、对白、旁白会被拉成三张互不相干的卡片，读起来是断的。
+ *
+ * 四类块的渲染差异：
+ * narr 无头像无名牌，暗一档小半号，左缘一条细线；
+ * dlg 带圆形头像与姓名，墨色最亮；player 走右侧气泡；scene 是居中中性胶囊。
  */
 function AssistantTurn({
   content,
@@ -108,6 +190,7 @@ function AssistantTurn({
   cardName: string;
   actions?: ReactNode;
 }) {
+  const { t } = useI18n();
   const blocks: MessageBlock[] = parseBlocks(content);
   const lastIsDialogue =
     blocks.length > 0 && blocks[blocks.length - 1].kind === "dlg";
@@ -116,7 +199,7 @@ function AssistantTurn({
     return (
       <NarratorBlock>
         <p className="text-ink-3">
-          {streaming ? "正在组织语言" : "（没有内容）"}
+          {streaming ? t("chat.thinking") : t("chat.empty")}
           {streaming ? <TypingCursor /> : null}
         </p>
       </NarratorBlock>
@@ -124,7 +207,7 @@ function AssistantTurn({
   }
 
   return (
-    <>
+    <div className="flex flex-col gap-2.5">
       {blocks.map((block, index) => {
         const isLast = index === blocks.length - 1;
         const cursor = streaming && isLast ? <TypingCursor /> : null;
@@ -135,10 +218,8 @@ function AssistantTurn({
         if (block.kind === "narr") {
           return (
             <NarratorBlock key={key}>
-              <p>
-                {block.text}
-                {cursor}
-              </p>
+              <MarkdownText text={block.text} />
+              {cursor}
             </NarratorBlock>
           );
         }
@@ -146,7 +227,7 @@ function AssistantTurn({
         if (block.kind === "scene") {
           return (
             <SceneEvent key={key}>
-              {block.text}
+              <MarkdownText text={block.text} />
               {cursor}
             </SceneEvent>
           );
@@ -156,7 +237,7 @@ function AssistantTurn({
           // 模型不该产出 player 块，真出现了也按玩家气泡渲染，别混进对白
           return (
             <PlayerBubble key={key}>
-              {block.text}
+              <MarkdownText tone="bubble" text={block.text} />
               {cursor}
             </PlayerBubble>
           );
@@ -170,16 +251,14 @@ function AssistantTurn({
             avatar={<Avatar name={who} />}
             actions={slot}
           >
-            <p>
-              {block.text}
-              {cursor}
-            </p>
+            <MarkdownText text={block.text} />
+            {cursor}
           </DialogueBlock>
         );
       })}
       {/* 末块不是对白时按钮追加在末尾，缩进 48 与旁白、对白正文对齐 */}
       {!lastIsDialogue ? <div className="ml-12">{actions}</div> : null}
-    </>
+    </div>
   );
 }
 
@@ -200,7 +279,15 @@ export function ChatScreen({
   onOpenSettings: () => void;
   onOpenShelf: () => void;
 }) {
-  const greetings = useMemo(() => openingGreetings(card), [card]);
+  const { t, locale } = useI18n();
+  const greetings = useMemo(
+    () =>
+      openingGreetings(card).map((text) =>
+        // 开场白也要走一遍宏：界面上和发给模型的历史里都不能留 {{user}}
+        applyMacros(adaptGreeting(text, locale), { char: card.name, user: userName }),
+      ),
+    [card, locale, userName],
+  );
   const [greetingIndex, setGreetingIndex] = useState(0);
   /** 建议输入由模型看着当前对话现生成，不写死在卡里 */
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -210,14 +297,26 @@ export function ChatScreen({
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
-  const [memory, setMemory] = useState<string | null>(null);
+  const [memory, setMemory] = useState<number | null>(null);
   const [cgBusy, setCgBusy] = useState<string | null>(null);
-  const [plusOpen, setPlusOpen] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [attachment, setAttachment] = useState<ComposerAttachment | null>(null);
   const cgBusyRef = useRef<string | null>(null);
   /** 重新生成时留下的旧回复。新回复落地后成为最后一条 swipe，失败则原样放回去。 */
   const carrySwipesRef = useRef<string[] | null>(null);
   const carryTurnRef = useRef<Turn | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [tocOpen, setTocOpen] = useState(false);
+  const swipeRef = useRef<{ x: number; y: number; left: boolean } | null>(null);
+  const tapRef = useRef<{ x: number; t: number } | null>(null);
+  const [announceOpen, setAnnounceOpen] = useState(false);
+  /** 正在编辑哪一条玩家消息，以及编辑框里的草稿 */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
+  /** 刚复制过哪一条，用来把按钮文字短暂换成「已复制」 */
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [includeNarration, setIncludeNarration] = useState(true);
   const [includeOoc, setIncludeOoc] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -254,10 +353,28 @@ export function ChatScreen({
   /** 滚动摘要与关键事实，由 /api/chat 的 meta 与 PUT 端点维护，并加密存本机 */
   const summaryRef = useRef<RollingSummary | null>(null);
   const factsRef = useRef<KeyFacts>({ characters: {}, places: {}, flags: {} });
+  const journalRef = useRef<Journal>(emptyJournal());
   /** 长期记忆是否已经灌进来。没灌完就发请求会丢掉前面的剧情。 */
   const memoryReadyRef = useRef(false);
 
-  const ready = isConfigured(config);
+  const [browserReady, setBrowserReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void probeBrowserModel().then((ready) => {
+      if (!cancelled) setBrowserReady(ready);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    },
+    [],
+  );
+  const ready = canSend(config, browserReady);
 
   /** 还没说过话时，操作按钮的文案是「换一条开场」而不是「重新生成」 */
   /**
@@ -266,7 +383,7 @@ export function ChatScreen({
    * 整段重写会让旧细节一层层丢掉，那就是漂移。
    */
   async function summarizeNow(allTurns: Turn[]) {
-    if (!ready || summarizingRef.current) return;
+    if (!isConfigured(config) || summarizingRef.current) return;
     const previous = summaryRef.current;
     const covered = previous?.coveredIndex ?? 0;
     const additions: ChatMessage[] = allTurns
@@ -311,6 +428,7 @@ export function ChatScreen({
         cardId,
         summary: summaryRef.current,
         facts: factsRef.current,
+        journal: journalRef.current,
         turn: turnRef.current,
         updatedAt: Date.now(),
       });
@@ -328,7 +446,7 @@ export function ChatScreen({
    */
   const requestSuggestions = useCallback(
     async (history: Turn[]) => {
-      if (!ready || suggestingRef.current) return;
+      if (!isConfigured(config) || suggestingRef.current) return;
       const messages = buildSuggestionMessages(
         history.map((turn) => ({ role: turn.role, content: turn.content })),
       );
@@ -361,7 +479,7 @@ export function ChatScreen({
         suggestingRef.current = false;
       }
     },
-    [ready, config],
+    [config],
   );
 
   // 恢复这张卡上次的会话与长期记忆；没有就从开场白建一个。
@@ -377,6 +495,7 @@ export function ChatScreen({
       if (cancelled) return;
       summaryRef.current = memory.summary;
       factsRef.current = memory.facts;
+      journalRef.current = normalizeJournal(memory.journal);
       turnRef.current = memory.turn;
       memoryReadyRef.current = true;
 
@@ -387,11 +506,21 @@ export function ChatScreen({
       if (existing) {
         sessionRef.current = existing;
         setTurns(
-          existing.messages.map((m) => ({
+          existing.messages.map((m, index) => ({
             id: m.id,
             role: m.role,
-            content: m.content,
+            // 开场白是卡里来的，可能带 {{user}} / {{char}}；旧存档也要补上这一步
+            content:
+              index === 0
+                ? applyMacros(adaptGreeting(m.content, locale), {
+                    char: card.name,
+                    user: userName,
+                  })
+                : adaptGreeting(m.content, locale),
             cg: m.cg,
+            image: m.image,
+            imageNote: m.imageNote,
+            document: normalizeDocument(m.document),
             swipes: m.swipes,
             swipeIndex: m.swipeIndex,
             chapterBreak: m.chapterBreak,
@@ -412,7 +541,7 @@ export function ChatScreen({
     return () => {
       cancelled = true;
     };
-  }, [cardId, card.name, card.first_mes, greetings]);
+  }, [cardId, card.name, card.first_mes, greetings, locale, userName]);
 
   /**
    * 每次回复落地后刷新建议。
@@ -456,6 +585,9 @@ export function ChatScreen({
         ? { swipes: turn.swipes, swipeIndex: turn.swipeIndex ?? turn.swipes.length - 1 }
         : {}),
       ...(turn.chapterBreak ? { chapterBreak: true } : {}),
+      ...(turn.image ? { image: turn.image } : {}),
+      ...(turn.imageNote ? { imageNote: turn.imageNote } : {}),
+      ...(turn.document ? { document: turn.document } : {}),
     }));
 
     const updated: ChatSession = { ...session, messages, updatedAt: Date.now() };
@@ -467,24 +599,54 @@ export function ChatScreen({
    * 跑一轮：baseTurns 是「不含本轮玩家输入」的历史，
    * 函数自己把玩家这一轮和 assistant 占位追加进去。
    *
-   * 组装在服务端做，这里只发原料（角色卡、世界书、历史、摘要、事实），
-   * 浏览器不碰提示词结构。
+   * 远程模型仍由服务端组装。本机 LanguageModel 在浏览器里组装并生成。
    */
-  async function runTurn(userMessage: string, baseTurns: Turn[]) {
+  async function runTurn(
+    userMessage: string,
+    baseTurns: Turn[],
+    image?: string,
+    document?: ChatDocument,
+  ) {
     setError(null);
     needsSummarizeRef.current = false;
+    setStreaming(true);
+    setSuggestions([]);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const local = usesBrowserModel(config, browserReady);
+    const seesImages = local || config.vision;
+    let imageNote = "";
+    let outboundImage = image;
+    if (image && !seesImages) {
+      outboundImage = undefined;
+      if (browserReady) {
+        try {
+          imageNote = await describeImage(image, controller.signal);
+        } catch (caught) {
+          if (caught instanceof Error && caught.name === "AbortError") {
+            setStreaming(false);
+            abortRef.current = null;
+            return;
+          }
+        }
+      }
+    }
 
     const userTurn: Turn = {
       id: createId(),
       role: "user",
       content: markPlayer(userMessage),
+      ...(image ? { image } : {}),
+      ...(imageNote ? { imageNote } : {}),
+      ...(document ? { document } : {}),
     };
     const assistantId = createId();
 
-    // 历史 = 之前所有轮 + 本轮玩家输入，服务端据此组装
     const history: ChatMessage[] = [
-      ...baseTurns.map((turn) => ({ role: turn.role, content: turn.content })),
-      ...userTurnsAsMessages(userTurn, userMessage),
+      ...baseTurns.map((turn) => ({ role: turn.role, content: historyContent(turn) })),
+      ...userTurnsAsMessages(userTurn),
     ];
 
     setTurns((prev) => [
@@ -492,104 +654,180 @@ export function ChatScreen({
       userTurn,
       { id: assistantId, role: "assistant", content: "" },
     ]);
-    setStreaming(true);
-    setSuggestions([]);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
 
     let replyText = "";
+    let toolTrace: ToolTrace[] = [];
+    let allowTools = true;
+
+    const appendReply = (text: string) => {
+      replyText += text;
+      setTurns((prev) =>
+        prev.map((turn) =>
+          turn.id === assistantId ? { ...turn, content: turn.content + text } : turn,
+        ),
+      );
+    };
 
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Key 走请求头，绝不进 URL
-          ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          providerId: config.providerId,
-          model: config.model,
+      if (local) {
+        const assembled = assemble({
+          card: {
+            name: card.name,
+            description: card.description,
+            personality: card.personality,
+            scenario: card.scenario,
+            system_prompt: card.system_prompt,
+            mes_example: card.mes_example,
+            post_history_instructions: card.post_history_instructions,
+          },
+          lorebook: card.character_book ? { entries: card.character_book.entries } : undefined,
+          history,
+          seed,
+          turn: turnRef.current,
+          summary: summaryRef.current ?? undefined,
+          facts: factsRef.current,
+          journal: journalRef.current,
+          style,
+          userName,
+          budget: planBudget(16_000, 1024),
+        });
+        setMemory(Math.round((assembled.budget.used / Math.max(assembled.budget.max, 1)) * 100));
+        await streamBrowserChat({
+          messages: assembled.messages,
           temperature: config.temperature,
-          ...(config.baseURL.trim() ? { baseURL: config.baseURL.trim() } : {}),
-          sessionId,
-          context: {
-            card: {
-              name: card.name,
-              description: card.description,
-              personality: card.personality,
-              scenario: card.scenario,
-              system_prompt: card.system_prompt,
-              mes_example: card.mes_example,
-              post_history_instructions: card.post_history_instructions,
+          image: outboundImage,
+          signal: controller.signal,
+          onDelta: appendReply,
+        });
+      }
+      for (let round = 0; local ? round < 0 : round < 2; round += 1) {
+        const calls: PendingTool[] = [];
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            // Key 走请求头，绝不进 URL
+            ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            providerId: config.providerId,
+            model: config.model,
+            temperature: config.temperature,
+            ...(config.baseURL.trim() ? { baseURL: config.baseURL.trim() } : {}),
+            sessionId,
+            tools: allowTools,
+            ...(outboundImage ? { image: outboundImage } : {}),
+            context: {
+              card: {
+                name: card.name,
+                description: card.description,
+                personality: card.personality,
+                scenario: card.scenario,
+                system_prompt: card.system_prompt,
+                mes_example: card.mes_example,
+                post_history_instructions: card.post_history_instructions,
+              },
+              // 卡上的简化世界书翻译成新版结构：常驻条目原样保留
+              lorebook: card.character_book
+                ? { entries: card.character_book.entries }
+                : undefined,
+              history,
+              seed,
+              turn: turnRef.current,
+              summary: summaryRef.current ?? undefined,
+              facts: factsRef.current,
+              journal: journalRef.current,
+              ...(toolTrace.length > 0 ? { toolTrace } : {}),
+              style,
+              userName,
             },
-            // 卡上的简化世界书翻译成新版结构：常驻条目原样保留
-            lorebook: card.character_book
-              ? { entries: card.character_book.entries }
-              : undefined,
-            history,
-            seed,
-            turn: turnRef.current,
-            summary: summaryRef.current ?? undefined,
-            facts: factsRef.current,
-            style,
-            userName,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | { error?: ChatError }
-          | null;
-        throw Object.assign(new Error("request failed"), {
-          chatError: payload?.error ?? {
-            status: response.status,
-            code: `http_${response.status}`,
-            message: `请求失败（HTTP ${response.status}）`,
-          },
+          }),
         });
-      }
 
-      if (!response.body) {
-        throw Object.assign(new Error("no body"), {
-          chatError: { status: 502, code: "no_body", message: "没有收到响应流" },
-        });
-      }
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: ChatError }
+            | null;
+          throw Object.assign(new Error("request failed"), {
+            chatError: payload?.error ?? {
+              status: response.status,
+              code: `http_${response.status}`,
+              message: t("chat.httpFail", { status: response.status }),
+            },
+          });
+        }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+        if (!response.body) {
+          throw Object.assign(new Error("no body"), {
+            chatError: { status: 502, code: "no_body", message: t("chat.noBody") },
+          });
+        }
 
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-        const { frames, rest } = decodeSseBuffer(buffer);
-        buffer = rest;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
 
-        for (const frame of frames) {
-          if (frame === "[DONE]") continue;
+          const { frames, rest } = decodeSseBuffer(buffer);
+          buffer = rest;
 
-          if (frame.type === "delta") {
-            replyText += frame.text;
-            setTurns((prev) =>
-              prev.map((turn) =>
-                turn.id === assistantId
-                  ? { ...turn, content: turn.content + frame.text }
-                  : turn,
-              ),
-            );
-          } else if (frame.type === "meta") {
-            setMemory(`${Math.round((frame.used / Math.max(frame.max, 1)) * 100)}%`);
-            needsSummarizeRef.current = frame.needsSummarize;
-          } else if (frame.type === "error") {
-            setError({ status: 502, code: "stream", message: frame.message });
+          for (const frame of frames) {
+            if (frame === "[DONE]") continue;
+
+            if (frame.type === "delta") {
+              replyText += frame.text;
+              setTurns((prev) =>
+                prev.map((turn) =>
+                  turn.id === assistantId
+                    ? { ...turn, content: turn.content + frame.text }
+                    : turn,
+                ),
+              );
+            } else if (frame.type === "tool") {
+              absorbToolCall(calls, frame);
+            } else if (frame.type === "meta") {
+              setMemory(Math.round((frame.used / Math.max(frame.max, 1)) * 100));
+              needsSummarizeRef.current = frame.needsSummarize;
+            } else if (frame.type === "error") {
+              setError({ status: 502, code: "stream", message: frame.message });
+            }
           }
         }
+
+        const named = calls.filter((call) => call.name);
+        if (!allowTools || named.length === 0) break;
+
+        let rolled = false;
+        for (const call of named) {
+          if (call.name === "roll_dice") rolled = true;
+          const applied = applyChatTool(journalRef.current, call.name, call.arguments);
+          journalRef.current = applied.journal;
+          toolTrace = [
+            ...toolTrace,
+            { name: call.name, arguments: call.arguments, result: applied.result },
+          ];
+        }
+        void saveCardMemory({
+          cardId,
+          summary: summaryRef.current,
+          facts: factsRef.current,
+          journal: journalRef.current,
+          turn: turnRef.current,
+          updatedAt: Date.now(),
+        });
+        allowTools = false;
+        if (rolled && replyText) {
+          replyText = "";
+          setTurns((prev) =>
+            prev.map((turn) => (turn.id === assistantId ? { ...turn, content: "" } : turn)),
+          );
+        }
+        if (replyText.trim()) break;
       }
     } catch (caught) {
       if (caught instanceof Error && caught.name === "AbortError") {
@@ -600,7 +838,7 @@ export function ChatScreen({
           chatError ?? {
             status: 0,
             code: "network",
-            message: "网络请求失败，检查连接后重试",
+            message: t("chat.network"),
           },
         );
       }
@@ -635,6 +873,7 @@ export function ChatScreen({
         cardId,
         summary: summaryRef.current,
         facts: factsRef.current,
+        journal: journalRef.current,
         turn: turnRef.current,
         updatedAt: Date.now(),
       });
@@ -684,7 +923,7 @@ export function ChatScreen({
         payload?.error ?? {
           status: response.status,
           code: `http_${response.status}`,
-          message: `生图失败（HTTP ${response.status}）`,
+          message: t("chat.imageHttp", { status: response.status }),
         }
       );
     }
@@ -699,7 +938,7 @@ export function ChatScreen({
     try {
       const payload = await postImage({ action: "generate", scene: sceneText(turn.content) });
       if (!payload.src || !payload.prompt) {
-        throw { status: 502, code: "empty_image", message: "没有收到图片" };
+        throw { status: 502, code: "empty_image", message: t("chat.imageEmpty") };
       }
       const cg: StoredCg = {
         id: createId(),
@@ -721,7 +960,7 @@ export function ChatScreen({
         setError(
           info?.message
             ? info
-            : { status: 0, code: "image", message: "生图失败" },
+            : { status: 0, code: "image", message: t("chat.imageFail") },
         );
       }
     } finally {
@@ -769,14 +1008,59 @@ export function ChatScreen({
     anchor.remove();
   }
 
+  /** 清空这场对话和滚动记忆，只留当前开场白。 */
+  function resetSession() {
+    if (streaming) return;
+    const next: Turn[] = [
+      { id: "opening", role: "assistant", content: greetings[greetingIndex] ?? card.first_mes },
+    ];
+    setSuggestions([]);
+    suggestedForRef.current = next[0]?.id ?? null;
+    summaryRef.current = null;
+    factsRef.current = { characters: {}, places: {}, flags: {} };
+    journalRef.current = emptyJournal();
+    turnRef.current = 0;
+    setTurns(next);
+    persist(next);
+    void saveCardMemory(emptyCardMemory(cardId));
+    setResetOpen(false);
+  }
+
   function send(text: string) {
     const userMessage = text.trim();
-    if (!userMessage || streaming) return;
+    if ((!userMessage && !attachment) || streaming) return;
+    const image = attachment?.kind === "image" ? attachment.src : undefined;
+    const document =
+      attachment?.kind === "document"
+        ? { name: attachment.name, text: attachment.text }
+        : undefined;
     carrySwipesRef.current = null;
     carryTurnRef.current = null;
     setInput("");
+    setAttachment(null);
     setSuggestions([]);
-    void runTurn(userMessage, turns);
+    const visible = userMessage || (document ? t("chat.fileOnly") : t("chat.imageOnly"));
+    void runTurn(visible, turns, image, document);
+  }
+
+  async function pickFile(file: File | undefined) {
+    if (!file) return;
+    const looksLikeImage =
+      file.type.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(file.name);
+    if (looksLikeImage) {
+      try {
+        setAttachment({ kind: "image", src: await readChatImage(file) });
+      } catch {
+        setError({ status: 0, code: "image", message: t("chat.imageBad") });
+      }
+      return;
+    }
+    try {
+      const document = await readChatDocument(file);
+      setAttachment({ kind: "document", name: document.name, text: document.text });
+    } catch {
+      setError({ status: 0, code: "file", message: t("chat.fileBad") });
+    }
   }
 
   /** 开场白换一条：在 first_mes 与 alternate_greetings 之间轮换。 */
@@ -805,13 +1089,62 @@ export function ChatScreen({
       return;
     }
     const userText = playerText(base[userIndex].content);
+    const userImage = base[userIndex].image;
+    const userDocument = base[userIndex].document;
     const last = turns[turns.length - 1];
     if (last?.role === "assistant") {
       carrySwipesRef.current = last.swipes?.length ? [...last.swipes] : [last.content];
       carryTurnRef.current = last;
     }
+    setTurns(base.slice(0, userIndex));
+    void runTurn(userText, base.slice(0, userIndex), userImage, userDocument);
+  }
+
+  /** 复制一条消息的正文。剪贴板 API 在不安全来源下没有，退回到老办法。 */
+  async function copyMessage(id: string, text: string) {
+    const body = text.trim();
+    if (!body) return;
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(body);
+      ok = true;
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      const area = document.createElement("textarea");
+      area.value = body;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+        ok = false;
+      }
+      document.body.removeChild(area);
+    }
+    if (!ok) return;
+    setCopiedId(id);
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setCopiedId(null), 1400);
+  }
+
+  function startEdit(turn: Turn) {
+    setEditingId(turn.id);
+    setEditingText(playerText(turn.content));
+  }
+
+  /** 改完这条玩家消息就从这里重跑：后面的对话被丢掉，由模型重新接。 */
+  function applyEdit(turn: Turn, index: number) {
+    const text = editingText.trim();
+    setEditingId(null);
+    if (!text || streaming) return;
+    const base = turns.slice(0, index);
     setTurns(base);
-    void runTurn(userText, base.slice(0, userIndex));
+    void runTurn(text, base, turn.image, turn.document);
   }
 
   function switchSwipe(turn: Turn, delta: number) {
@@ -877,7 +1210,7 @@ export function ChatScreen({
       setError({
         status: 0,
         code: "epub",
-        message: caught instanceof Error ? caught.message : "导出失败",
+        message: caught instanceof Error ? caught.message : t("chat.exportFail"),
       });
     } finally {
       setExporting(false);
@@ -885,17 +1218,90 @@ export function ChatScreen({
   }
 
   const imageReady = isImageConfigured(config);
-  const lastAssistant = [...turns].reverse().find((turn) => turn.role === "assistant");
+  const chapters = chapterList(turns, t("chat.openingChapter")).map((item) => ({
+    id: item.id,
+    n: item.n,
+    text: item.text || t("chat.chapterN", { n: item.n }),
+  }));
+
+  function jumpChapter(id: string) {
+    setTocOpen(false);
+    document.getElementById(`chapter-${id}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+
+  function onTouchStart(event: TouchEvent) {
+    if (window.innerWidth >= 768) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest("button, a, input, textarea")) return;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    swipeRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      left: touch.clientX < window.innerWidth / 2,
+    };
+  }
+
+  function onTouchEnd(event: TouchEvent) {
+    const start = swipeRef.current;
+    swipeRef.current = null;
+    if (!start || window.innerWidth >= 768) return;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (start.left && dx <= -48 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      setTocOpen((open) => !open);
+      return;
+    }
+    if (!start.left || Math.abs(dx) > 12 || Math.abs(dy) > 12) return;
+    const now = Date.now();
+    const last = tapRef.current;
+    if (last && now - last.t < 320 && Math.abs(touch.clientX - last.x) < 48) {
+      tapRef.current = null;
+      setTocOpen((open) => !open);
+      return;
+    }
+    tapRef.current = { x: touch.clientX, t: now };
+  }
 
   return (
-    <div className="relative flex h-dvh flex-col bg-background">
+    <div
+      className="relative flex h-dvh bg-background"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
+      <TocStrip
+        items={chapters}
+        onPick={jumpChapter}
+        open={tocOpen}
+        openLabel={t("chat.toc")}
+        closeLabel={t("common.close")}
+        onOpen={() => setTocOpen(true)}
+        onClose={() => setTocOpen(false)}
+      />
+
+      <div className="flex min-w-0 flex-1 flex-col">
       <TopBar
         avatar={<Avatar name={card.name} />}
         name={card.name}
         subtitle={card.tags?.join(" · ")}
-        memoryPercent={memory ?? "…"}
+        memoryUsed={memory}
+        whoLabel={t("topbar.who")}
+        memoryLabel={
+          memory == null ? t("topbar.memoryUnknown") : t("topbar.memory", { percent: memory })
+        }
+        historyLabel={t("chat.reset")}
+        exportLabel={t("topbar.export")}
+        settingsLabel={t("topbar.settings")}
         onWho={onOpenShelf}
+        onHistory={() => setResetOpen(true)}
+        onExport={() => setExportOpen(true)}
         onSettings={onOpenSettings}
+        extra={<AnnouncementBell onClick={() => setAnnounceOpen(true)} />}
       />
 
       <ChatScroll
@@ -908,41 +1314,115 @@ export function ChatScreen({
         }}
       >
         <ChatColumn>
+          {turns[0] ? (
+            <ChapterMark
+              id="chapter-start"
+              index={t("chat.chapterN", { n: 1 })}
+              title={chapterHeading(turns[0].content) || t("chat.openingChapter")}
+            />
+          ) : null}
           {turns.map((turn, index) => {
+            const chapter = chapterAt(turns, index);
+            const chapterMark = chapter ? (
+              <ChapterMark
+                id={`chapter-${turn.id}`}
+                index={t("chat.chapterN", { n: chapter.n })}
+                title={chapter.title || t("chat.chapterN", { n: chapter.n })}
+              />
+            ) : null;
             if (turn.role === "user") {
+              const editing = editingId === turn.id;
               return (
-                <PlayerBubble key={turn.id}>{playerText(turn.content)}</PlayerBubble>
+                <Fragment key={turn.id}>
+                  {editing ? (
+                    <div className="flex justify-end">
+                      <div className="flex w-full max-w-[82%] flex-col gap-2">
+                        <textarea
+                          autoFocus
+                          rows={3}
+                          value={editingText}
+                          onChange={(event) => setEditingText(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              applyEdit(turn, index);
+                            }
+                            if (event.key === "Escape") setEditingId(null);
+                          }}
+                          className="max-h-[40dvh] w-full resize-y rounded-card border border-line-strong bg-surface-2 px-[18px] py-[11px] text-[15.5px] leading-[1.65] text-ink outline-none"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <ActPill onClick={() => setEditingId(null)}>{t("chat.cancel")}</ActPill>
+                          <ActPill hot onClick={() => applyEdit(turn, index)}>
+                            {t("chat.save")}
+                          </ActPill>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <PlayerBubble>
+                        {turn.image ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={turn.image} alt="" className="mb-2 max-h-60 w-full rounded-md object-cover" />
+                        ) : null}
+                        {turn.document ? (
+                          <p className="mb-1 truncate text-[12px] text-ink-2">{turn.document.name}</p>
+                        ) : null}
+                        <MarkdownText tone="bubble" text={playerText(turn.content)} />
+                      </PlayerBubble>
+                      {/* 生成中不给改，改到一半重跑会把这一轮弄乱 */}
+                      {!streaming ? (
+                        <div className="flex justify-end gap-2">
+                          <ActPill
+                            onClick={() =>
+                              void copyMessage(turn.id, [turn.document?.name, playerText(turn.content)].filter(Boolean).join("\n\n"))
+                            }
+                          >
+                            {copiedId === turn.id ? t("chat.copied") : t("chat.copy")}
+                          </ActPill>
+                          <ActPill onClick={() => startEdit(turn)}>{t("chat.edit")}</ActPill>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                  {chapterMark}
+                </Fragment>
               );
             }
 
             const isLastTurn = index === turns.length - 1;
             const actions = !streaming ? (
               <MessageActions>
-                {isLastTurn ? (
+                {isLastTurn && (turns.length > 1 || greetings.length > 1) ? (
                   <ActPill hot onClick={regenerate}>
-                    {turns.length <= 1 ? "换一条开场" : "重新生成"}
+                    {turns.length <= 1 ? t("chat.newOpening") : t("chat.regenerate")}
                   </ActPill>
                 ) : null}
                 {turn.swipes && turn.swipes.length > 1 ? (
                   <>
-                    <ActPill onClick={() => switchSwipe(turn, -1)}>上一条</ActPill>
+                    <ActPill onClick={() => switchSwipe(turn, -1)}>{t("chat.prev")}</ActPill>
                     <ActPill onClick={() => switchSwipe(turn, 1)}>
                       {(turn.swipeIndex ?? turn.swipes.length - 1) + 1}/{turn.swipes.length}
                     </ActPill>
                   </>
                 ) : null}
-                <ActPill onClick={() => toggleChapter(turn)}>
-                  {turn.chapterBreak ? "取消分章" : "在这里分章"}
+                <ActPill hot={turn.chapterBreak} onClick={() => toggleChapter(turn)}>
+                  {turn.chapterBreak ? t("chat.unchapter") : t("chat.chapter")}
                 </ActPill>
-                {isLastTurn ? (
+                {/* 没配生图模型就整颗不出现，不给假入口 */}
+                {isLastTurn && imageReady ? (
                   <ActPill
-                    disabled={!imageReady || cgBusy === turn.id}
-                    title={imageReady ? "用当前场景出一张 CG" : "未配置生图模型"}
+                    disabled={cgBusy === turn.id}
+                    title={t("chat.cgTitle")}
                     onClick={() => void generateFor(turn, "manual")}
                   >
-                    {imageReady ? "生成当前场景 CG" : "生成 CG · 未配置生图模型"}
+                    {t("chat.cg")}
                   </ActPill>
                 ) : null}
+                <ActPill onClick={() => void copyMessage(turn.id, stripBlocks(turn.content, { quoteDialogue: false }))}>
+                  {copiedId === turn.id ? t("chat.copied") : t("chat.copy")}
+                </ActPill>
               </MessageActions>
             ) : undefined;
 
@@ -955,21 +1435,22 @@ export function ChatScreen({
                   actions={actions}
                 />
                 {cgBusy === turn.id ? (
-                  <CgLoading />
+                  <CgLoading label={t("chat.generating")} />
                 ) : turn.cg ? (
                   <div>
                     <CgCard
                       src={turn.cg.src}
                       alt={turn.cg.prompt}
-                      caption={`${styleLabel(config.image.styleId)} · ${turn.cg.source === "auto" ? "自动" : "手动"}`}
+                      caption={`${t(config.image.styleId === "watercolor" ? "image.style.watercolor" : "image.style.jp-flat")} · ${turn.cg.source === "auto" ? t("chat.cgAuto") : t("chat.cgManual")}`}
                       icon={<IconImage className="size-3.5" />}
                     />
                     <MessageActions>
-                      <ActPill onClick={() => void generateFor(turn, "manual")}>重新生成</ActPill>
-                      <ActPill onClick={() => downloadCg(turn.cg!)}>保存</ActPill>
+                      <ActPill onClick={() => void generateFor(turn, "manual")}>{t("chat.regenerate")}</ActPill>
+                      <ActPill onClick={() => downloadCg(turn.cg!)}>{t("chat.save")}</ActPill>
                     </MessageActions>
                   </div>
                 ) : null}
+                {chapterMark}
                 {/*
                   建议输入挂在最后一条回复下面，跟着对话一起滚，
                   不占输入框上方那块空间。选一条就发，发完这批就消失。
@@ -1001,18 +1482,47 @@ export function ChatScreen({
             <span className="font-bold">{error.message}</span>
             {error.status === 401 || error.status === 400 ? (
               <button type="button" onClick={onOpenSettings} className="underline">
-                打开连接设置
+                {t("chat.openSettings")}
               </button>
             ) : null}
           </div>
         ) : null}
 
+        {attachment ? (
+          <div className="mx-auto mb-2 flex max-w-[660px] items-center gap-2">
+            {attachment.kind === "image" ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={attachment.src} alt="" className="h-14 w-14 rounded-md object-cover" />
+            ) : (
+              <span className="max-w-[420px] truncate text-[13px] text-ink">{attachment.name}</span>
+            )}
+            <button
+              type="button"
+              onClick={() => setAttachment(null)}
+              className="text-[12.5px] text-ink-2 underline"
+            >
+              {attachment.kind === "image" ? t("chat.removeImage") : t("chat.removeFile")}
+            </button>
+          </div>
+        ) : null}
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*,.txt,.md,.markdown,.csv,.json,.log,.docx,text/plain,text/markdown,text/csv,application/json"
+          className="hidden"
+          onChange={(event) => {
+            void pickFile(event.target.files?.[0]);
+            event.target.value = "";
+          }}
+        />
         <Composer
           value={input}
           onChange={setInput}
           onSend={() => send(input)}
-          onPlus={() => setPlusOpen(true)}
-          placeholder={`对${card.name}说……`}
+          hasExtra={!!attachment}
+          onPlus={() => imageInputRef.current?.click()}
+          placeholder={t("chat.sayTo", { name: card.name })}
+          hintAlerts={!ready}
           hint={
             streaming ? (
               <button
@@ -1020,64 +1530,203 @@ export function ChatScreen({
                 onClick={() => abortRef.current?.abort()}
                 className="underline"
               >
-                正在生成，点击停止
+                {t("chat.stop")}
               </button>
             ) : !ready ? (
               <button type="button" onClick={onOpenSettings} className="underline">
-                还没填 Key，点这里去连接设置
+                {t("chat.needKey")}
               </button>
             ) : (
-              "Enter 发送，Shift + Enter 换行"
+              t("chat.hint")
             )
           }
         />
+        {/* AI 生成的出处与责任，常驻在输入框下方，不关也不消失 */}
+        <p className="mx-auto mt-2 max-w-[660px] text-center text-[11.5px] leading-relaxed text-ink-3">
+          {t("chat.aiNotice")}
+        </p>
+      </div>
       </div>
 
-      <Veil open={plusOpen} onClose={() => setPlusOpen(false)} />
-      <Sheet open={plusOpen} title="更多">
-        <MenuRow
-          icon={<IconImage className="size-[17px]" />}
-          disabled={!imageReady || !lastAssistant || cgBusy !== null}
-          note={imageReady ? "当前场景" : "未配置生图模型"}
-          onClick={() => {
-            if (!lastAssistant) return;
-            setPlusOpen(false);
-            void generateFor(lastAssistant, "manual");
-          }}
-        >
-          生成当前场景 CG
-        </MenuRow>
-        <MenuRow
-          icon={<IconDownload className="size-[17px]" />}
-          note="只导出"
-          onClick={() => {
-            setPlusOpen(false);
-            setExportOpen(true);
-          }}
-        >
-          导出 EPUB
-        </MenuRow>
-      </Sheet>
+      <Dialog
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
+        closeLabel={t("common.close")}
+        title={t("chat.reset")}
+      >
+        <p className="m-0 text-[13.5px] leading-relaxed text-ink-2">{t("chat.resetHint")}</p>
+        <div className="mt-4 flex gap-2">
+          <PillButton block onClick={() => setResetOpen(false)}>
+            {t("chat.cancel")}
+          </PillButton>
+          <PillButton variant="danger" block onClick={resetSession}>
+            {t("chat.reset")}
+          </PillButton>
+        </div>
+      </Dialog>
 
       <Veil open={exportOpen} onClose={() => setExportOpen(false)} />
-      <Sheet open={exportOpen} title="导出 EPUB">
-        <div className="mb-4 flex flex-wrap gap-2">
-          <ActPill hot={includeNarration} onClick={() => setIncludeNarration((value) => !value)}>
-            {includeNarration ? "包含旁白" : "不含旁白"}
-          </ActPill>
-          <ActPill hot={includeOoc} onClick={() => setIncludeOoc((value) => !value)}>
-            {includeOoc ? "包含 OOC" : "不含 OOC"}
-          </ActPill>
-        </div>
-        <MenuRow
-          icon={<IconDownload className="size-[17px]" />}
-          disabled={exporting}
-          note={exporting ? "正在生成" : "下载"}
-          onClick={() => void exportEpub()}
-        >
-          生成并下载
-        </MenuRow>
+      <Sheet open={exportOpen} title={t("chat.exportEpub")}>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <PillButton
+              size="sm"
+              variant={includeNarration ? "primary" : "ghost"}
+              onClick={() => setIncludeNarration((value) => !value)}
+            >
+              {includeNarration ? t("chat.withNarration") : t("chat.withoutNarration")}
+            </PillButton>
+            <PillButton
+              size="sm"
+              variant={includeOoc ? "primary" : "ghost"}
+              onClick={() => setIncludeOoc((value) => !value)}
+            >
+              {includeOoc ? t("chat.withOoc") : t("chat.withoutOoc")}
+            </PillButton>
+          </div>
+          <PillButton variant="primary" block disabled={exporting} onClick={() => void exportEpub()}>
+            {exporting ? t("chat.generating") : t("chat.buildDownload")}
+          </PillButton>
       </Sheet>
+
+      {/* 公告抽屉挂在屏幕根部，不套在「更多」里，否则会跟着抽屉一起定位 */}
+      <AnnouncementDialog open={announceOpen} onClose={() => setAnnounceOpen(false)} />
+    </div>
+  );
+}
+
+function TocPanel({ items, onPick }: { items: TocItem[]; onPick: (id: string) => void }) {
+  return (
+    <ul className="m-0 flex list-none flex-col p-0">
+      {items.map((item) => (
+        <li key={item.id} className="shrink-0">
+          <button
+            type="button"
+            onClick={() => onPick(item.id)}
+            aria-label={item.text}
+            className="flex w-full items-baseline gap-2 border-0 bg-transparent px-3 py-1.5 text-left"
+          >
+            <span className="shrink-0 font-mono text-[11px] leading-5 text-ink-3">{item.n}</span>
+            <span className="min-w-0 max-w-[160px] truncate font-serif text-[13px] leading-5 text-ink-2">
+              {item.text}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * 目录贴在视口左缘，不占布局宽度，因此聊天始终居中。
+ * 左缘常驻一根把手：桌面端指针靠近左缘就滑出来，移开收回；
+ * 触屏没有指针，点把手（或左滑、双击左半屏）把它叫出来。
+ */
+function TocStrip({
+  items,
+  onPick,
+  open,
+  openLabel,
+  closeLabel,
+  onOpen,
+  onClose,
+}: {
+  items: TocItem[];
+  onPick: (id: string) => void;
+  open: boolean;
+  openLabel: string;
+  closeLabel: string;
+  onOpen: () => void;
+  onClose: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const hoveredRef = useRef(false);
+  const panelRef = useRef<HTMLElement>(null);
+  /** 上一次按在把手上的是什么指针，用来区分鼠标点击和触摸点按 */
+  const pointerKindRef = useRef("");
+  const shown = hovered || open;
+
+  /* 靠近左缘就展开。用 window 上的 mousemove 判断，而不是靠一小块热区的
+     pointerenter：热区太窄，指针正好停在边上、或者只是轻微移动时不会触发。 */
+  useEffect(() => {
+    const wide = window.matchMedia("(hover: hover) and (min-width: 768px)");
+    const apply = (next: boolean) => {
+      if (hoveredRef.current === next) return;
+      hoveredRef.current = next;
+      setHovered(next);
+    };
+    const onMove = (event: MouseEvent) => {
+      if (!wide.matches) {
+        apply(false);
+        return;
+      }
+      const right = panelRef.current?.getBoundingClientRect().right ?? 0;
+      const staying = hoveredRef.current && event.clientX <= right + 16;
+      apply(event.clientX <= 32 || staying);
+    };
+    const onLeave = () => apply(false);
+    const onChange = () => {
+      if (!wide.matches) apply(false);
+    };
+    window.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseleave", onLeave);
+    wide.addEventListener("change", onChange);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseleave", onLeave);
+      wide.removeEventListener("change", onChange);
+    };
+  }, []);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="fixed inset-y-0 left-0 z-40 flex w-[260px] items-center">
+      {/* 把手：看得见才找得到。触屏上它就是开关，桌面端悬停已经展开，点了不额外做事 */}
+      <button
+        type="button"
+        aria-label={openLabel}
+        aria-expanded={shown}
+        onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
+          pointerKindRef.current = event.pointerType;
+        }}
+        onClick={(event) => {
+          // 鼠标交给悬停；键盘激活的 click 不带指针（detail 为 0）。
+          // 用 click 而不是 pointerdown：手指按在把手上滚动时不该把目录叫出来。
+          if (event.detail !== 0 && pointerKindRef.current === "mouse") return;
+          if (open) onClose();
+          else onOpen();
+        }}
+        className="group/handle flex h-16 w-5 shrink-0 items-center justify-start border-0 bg-transparent p-0"
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            "h-11 w-[3px] rounded-pill transition-colors",
+            shown ? "bg-ink-2" : "bg-line-strong group-hover/handle:bg-ink-3",
+          )}
+        />
+      </button>
+      <nav
+        ref={panelRef}
+        className="max-h-[70dvh] overflow-y-auto overscroll-contain py-2 transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none"
+        style={{
+          opacity: shown ? 1 : 0,
+          transform: shown ? "translate3d(0,0,0)" : "translate3d(-12px,0,0)",
+          pointerEvents: shown ? "auto" : "none",
+        }}
+        aria-hidden={!shown}
+      >
+        <TocPanel items={items} onPick={onPick} />
+      </nav>
+      {/* 窄屏没有指针悬停：面板之外点一下就收起，同时把页面压暗以保证可读 */}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={closeLabel}
+        aria-hidden={!open}
+        className="fixed inset-0 -z-10 border-0 bg-black/55 p-0 transition-opacity duration-200 motion-reduce:transition-none md:hidden"
+        style={{ opacity: open ? 1 : 0, pointerEvents: open ? "auto" : "none" }}
+      />
     </div>
   );
 }

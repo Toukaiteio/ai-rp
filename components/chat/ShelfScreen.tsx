@@ -6,7 +6,6 @@ import {
   CharacterCard,
   IconButton,
   ImportCard,
-  PillButton,
   ScreenHead,
   Tag,
 } from "@/components/ui";
@@ -18,10 +17,13 @@ import {
   type CardEntry,
 } from "@/lib/cards";
 import { addImportedCard, removeImportedCard } from "@/lib/storage/cards";
+import { useI18n } from "@/lib/i18n/use-i18n";
+import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
+import { OnlineCards } from "./OnlineCards";
 import { Avatar } from "./Avatar";
 
-/** 描述在卡片上只露一句，避免长设定把卡片撑爆。 */
-function firstSentence(text: string, limit = 46): string {
+/** 简介只在悬停面板里出现，留得下一段完整的设定开头。 */
+function firstSentence(text: string, limit = 120): string {
   const flat = text.replace(/\s+/g, " ").replace(/【[^】]*】/g, "").trim();
   if (flat.length <= limit) return flat;
   return `${flat.slice(0, limit)}…`;
@@ -32,34 +34,66 @@ export function ShelfScreen({
   currentCardId,
   onSelect,
   onBack,
+  onCardsChanged,
 }: {
   cards: CardEntry[];
   currentCardId: string;
   onSelect: (cardId: string) => void;
-  onBack: () => void;
+  onBack?: () => void;
+  /** 新卡到位。用来把「本来没有卡、被迫留在角色架」的状态续上 */
+  onCardsChanged?: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [announceOpen, setAnnounceOpen] = useState(false);
+  const { t } = useI18n();
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
     setError(null);
     const result = await readCardFile(file);
     if (!result.ok) {
-      setError(`导入失败：${result.error}`);
+      setError(t("shelf.importFail", { error: result.error }));
       return;
     }
     await addImportedCard(result.card);
+    onCardsChanged?.();
   }
 
+  /* 外层只负责定位，不滚动：公告抽屉挂在它上面，才不会跟着内容一起滚。
+     里层才是真正滚动的那一屏。 */
   return (
-    <div className="h-dvh overflow-y-auto bg-background">
-      <div className="mx-auto max-w-[760px] px-6 py-8">
-        <ScreenHead
-          title="角色架"
-          subtitle={`${cards.length} 张卡`}
-          action={<BackPill onClick={onBack}>回到对话</BackPill>}
-        />
+    <div className="relative h-dvh">
+      <div className="h-dvh overflow-y-auto bg-background">
+        <div className="mx-auto max-w-[980px] px-6 py-8">
+          <ScreenHead
+            title={
+              <span className="flex items-baseline gap-2">
+                {t("shelf.title")}
+                <span className="font-sans text-[13px] font-medium text-ink-2">
+                  {t("shelf.count", { count: cards.length })}
+                </span>
+              </span>
+            }
+            action={
+              <span className="flex items-center gap-2">
+                <AnnouncementBell onClick={() => setAnnounceOpen(true)} />
+                {onBack ? <BackPill onClick={onBack}>{t("shelf.back")}</BackPill> : null}
+              </span>
+            }
+          />
+
+          {error ? (
+            <div className="mb-4 rounded-md bg-danger-soft px-4 py-2.5 text-[13px] text-danger">
+              {error}
+            </div>
+          ) : null}
+
+          {cards.length === 0 ? (
+            <p className="m-0 mb-5 text-[13.5px] leading-[1.75] text-ink-2">
+              {t("shelf.empty")}
+            </p>
+          ) : null}
 
         {error ? (
           <div className="mb-4 rounded-md bg-danger-soft px-4 py-2.5 text-[13px] text-danger">
@@ -78,18 +112,20 @@ export function ShelfScreen({
                 description={firstSentence(entry.card.data.description)}
                 tags={
                   <>
-                    {entry.source === "imported" ? <Tag>导入</Tag> : null}
+                    {entry.source === "imported" ? <Tag>{t("shelf.imported")}</Tag> : null}
                     {entry.card.data.tags?.slice(0, 3).map((tag) => (
                       <Tag key={tag}>{tag}</Tag>
                     ))}
                   </>
                 }
                 current={entry.id === currentCardId}
+                currentLabel={t("common.current")}
+                startLabel={t("common.start")}
                 onStart={playable ? () => onSelect(entry.id) : undefined}
                 actions={
                   <>
                     <IconButton
-                      aria-label={`导出 ${entry.card.data.name}`}
+                      aria-label={t("shelf.exportCard", { name: entry.card.data.name })}
                       className="size-8"
                       onClick={() => downloadCard(entry.card)}
                     >
@@ -97,7 +133,7 @@ export function ShelfScreen({
                     </IconButton>
                     {entry.source === "imported" ? (
                       <IconButton
-                        aria-label={`删除 ${entry.card.data.name}`}
+                        aria-label={t("shelf.deleteCard", { name: entry.card.data.name })}
                         className="size-8 text-danger hover:text-danger-hover"
                         onClick={() => void removeImportedCard(entry.id)}
                       >
@@ -110,7 +146,7 @@ export function ShelfScreen({
             );
           })}
 
-          <ImportCard onClick={() => fileRef.current?.click()} />
+          <ImportCard label={t("card.import")} onClick={() => fileRef.current?.click()} />
         </div>
 
         <input
@@ -125,12 +161,11 @@ export function ShelfScreen({
           }}
         />
 
-        <div className="mt-6 flex justify-center">
-          <PillButton variant="ghost" onClick={() => fileRef.current?.click()}>
-            导入角色卡 JSON
-          </PillButton>
-        </div>
+        <OnlineCards onAdded={onCardsChanged} />
       </div>
+      </div>
+
+      <AnnouncementDialog open={announceOpen} onClose={() => setAnnounceOpen(false)} />
     </div>
   );
 }

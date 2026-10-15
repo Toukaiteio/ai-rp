@@ -26,6 +26,12 @@ export interface StoredMessage {
   swipeIndex?: number;
   /** 用户手动从这里另起一章 */
   chapterBreak?: boolean;
+  /** 玩家这条消息附的图，jpeg data URL */
+  image?: string;
+  /** 不能看图的模型用本机模型认出来的文字，只进提示词 */
+  imageNote?: string;
+  /** 玩家这条消息附的文档。正文在发请求时才拼进提示词 */
+  document?: { name: string; text: string };
 }
 
 /**

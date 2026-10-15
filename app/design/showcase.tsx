@@ -63,6 +63,10 @@ import {
   IconTrash,
   IconX,
 } from "@/components/icons";
+import { translate } from "@/lib/i18n";
+
+/** 展示页固定用中文文案，和运行时界面共用同一张表。 */
+const z = translate.bind(null, "zh");
 
 /* ------------------------------------------------------------------
    页面内的排版小工具
@@ -238,7 +242,7 @@ export function Showcase() {
             <IconButton aria-label="删除">
               <IconTrash />
             </IconButton>
-            <BackPill>回到对话</BackPill>
+            <BackPill>{z("shelf.back")}</BackPill>
           </div>
           <div className="mt-5 max-w-[320px]">
             <PillButton variant="primary" block>
@@ -277,7 +281,8 @@ export function Showcase() {
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <ActPill hot>重新生成</ActPill>
             <ActPill>继续</ActPill>
-            <ActPill disabled>生成当前场景 CG</ActPill>
+            <ActPill>生成当前场景 CG</ActPill>
+            <ActPill disabled>禁用态</ActPill>
             <SuggestChip>来杯热姜茶</SuggestChip>
             <SuggestChip>今晚能留宿吗</SuggestChip>
           </div>
@@ -341,7 +346,7 @@ export function Showcase() {
 
             <FormGroup
               title="API Key"
-              note="经保险库加密后存入本机，不经任何服务器。"
+              note="加密后存入本机，不经任何服务器。"
             >
               <Field>
                 <FieldInput type="password" placeholder="sk-…" autoComplete="off" />
@@ -377,9 +382,9 @@ export function Showcase() {
 
             <div className="h-6" />
 
-            <FormGroup title="加密保险库">
+            <FormGroup title="安全">
               <VaultStatus>
-                保险库状态：<b>未设定密钥</b>
+                <b>尚未设定密钥</b>
                 <br />
                 设定后，本机数据一律先加密再落盘；
                 <VaultWarn>连续输错密钥 5 次，将清除本机全部存储。</VaultWarn>
@@ -425,7 +430,7 @@ export function Showcase() {
                 <MessageActions>
                   <ActPill hot>重新生成</ActPill>
                   <ActPill>继续</ActPill>
-                  <ActPill disabled>生成当前场景 CG</ActPill>
+                  <ActPill>生成当前场景 CG</ActPill>
                 </MessageActions>
               </DialogueBlock>
               <CgCard
@@ -436,7 +441,7 @@ export function Showcase() {
                   场景 CG 占位
                 </div>
               </CgCard>
-              <CgLoading />
+              <CgLoading label={z("loader.image")} />
             </ChatColumn>
           </ChatScroll>
         </Demo>
@@ -489,6 +494,8 @@ export function Showcase() {
               }
               turns="已聊 12 轮"
               current
+              currentLabel={z("common.current")}
+              startLabel={z("common.start")}
             />
             <CharacterCard
               portrait={<Avatar initial="艾" />}
@@ -496,8 +503,9 @@ export function Showcase() {
               description="公会新人，火系法杖比人还高。争强好胜，夸一句能飘三天。"
               tags={<Tag>冒险</Tag>}
               turns="已聊 3 轮"
+              startLabel={z("common.start")}
             />
-            <ImportCard />
+            <ImportCard label={z("card.import")} />
           </div>
         </Demo>
       </Section>
@@ -524,9 +532,9 @@ export function Showcase() {
               <h3 className="m-0 mb-3 text-[15px] font-bold text-ink">
                 回到之前的消息
               </h3>
-              <HistoryRow label="第 4 轮" text="老板娘，来杯热姜茶。" />
-              <HistoryRow label="第 3 轮" text="你左眉那道疤，是怎么来的？" />
-              <HistoryRow label="第 2 轮" text="外面雨太大了，我今晚能留宿吗？" />
+              <HistoryRow label="第 4 轮" text="老板娘，来一杯热姜茶。" action="回到这里" />
+              <HistoryRow label="第 3 轮" text="你左眉那道疤，是怎么来的？" action="回到这里" />
+              <HistoryRow label="第 2 轮" text="外面雨太大了，我今晚能留宿吗？" action="回到这里" />
             </div>
           </div>
         </Demo>
@@ -542,8 +550,12 @@ export function Showcase() {
               avatar={<Avatar initial="林" />}
               name="林晚晴"
               subtitle="晚星旅店老板娘"
-              scene="晚星旅店 · 雨夜"
-              memoryPercent="62%"
+              memoryUsed={62}
+              memoryLabel="记忆占用 62%"
+              whoLabel="切换角色"
+              historyLabel="回退消息与重置会话"
+              exportLabel="导出为 EPUB"
+              settingsLabel="连接设置"
               compact={phone}
               onMemory={() => setPanelOpen(true)}
               onHistory={() => setSheet("history")}
@@ -586,8 +598,8 @@ export function Showcase() {
             >
               <MenuRow
                 icon={<IconImage className="size-[18px]" />}
-                note="未配置生图模型 · 已禁用"
-                disabled
+                note="按场景生成"
+                onClick={() => setSheet("more")}
               >
                 生成当前场景 CG
               </MenuRow>
@@ -632,9 +644,9 @@ export function Showcase() {
               title="回到之前的消息"
               description="点任意一轮即可回退，之后的对话会被截断。"
             >
-              <HistoryRow label="第 4 轮" text="老板娘，来杯热姜茶。" />
-              <HistoryRow label="第 3 轮" text="你左眉那道疤，是怎么来的？" />
-              <HistoryRow label="第 2 轮" text="外面雨太大了，我今晚能留宿吗？" />
+              <HistoryRow label="第 4 轮" text="老板娘，来一杯热姜茶。" action="回到这里" />
+              <HistoryRow label="第 3 轮" text="你左眉那道疤，是怎么来的？" action="回到这里" />
+              <HistoryRow label="第 2 轮" text="外面雨太大了，我今晚能留宿吗？" action="回到这里" />
               <div className="mt-5">
                 <PillButton variant="danger" block>
                   重置整个会话
@@ -693,7 +705,7 @@ export function Showcase() {
                 <ScreenHead
                   title="角色架"
                   subtitle="预设角色卡，点「开始」直接进对话"
-                  action={<BackPill>回到对话</BackPill>}
+                  action={<BackPill>{z("shelf.back")}</BackPill>}
                 />
               </div>
             </div>

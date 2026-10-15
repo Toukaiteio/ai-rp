@@ -36,7 +36,7 @@ export function ChapterRow({
 export function HistoryRow({
   label,
   text,
-  action = "回到这里",
+  action,
   className,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -147,7 +147,7 @@ export function TotalRow({
   );
 }
 
-/* 保险库状态：底色用次级填充，警示语用红，其余保持中性 */
+/* 状态说明：底色用次级填充，警示语用红，其余保持中性 */
 export function VaultStatus({
   children,
   className,

@@ -36,7 +36,9 @@ export function Grab({ className }: { className?: string }) {
   );
 }
 
-/* 底部抽屉：低频功能全部收在这里，不占首屏 */
+/* 底部抽屉：低频功能全部收在这里，不占首屏。
+   收起时直接不渲染：translate 只在动画开始时生效，
+   首屏那一帧它会先按文档流占位再被移走，用户会看到抽屉闪一下。 */
 export function Sheet({
   open,
   title,
@@ -50,13 +52,13 @@ export function Sheet({
   children: ReactNode;
   className?: string;
 }) {
+  if (!open) return null;
+
   return (
     <div
-      aria-hidden={!open}
+      role="dialog"
       className={cn(
         "absolute inset-x-0 bottom-0 z-[31] max-h-[82%] overflow-y-auto rounded-t-frame border-t border-line bg-surface px-[22px] pt-2.5 pb-6",
-        "transition-transform duration-[250ms] ease-out motion-reduce:transition-none",
-        open ? "translate-y-0" : "translate-y-[105%]",
         className,
       )}
     >

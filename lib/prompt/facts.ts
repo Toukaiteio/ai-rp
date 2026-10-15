@@ -4,7 +4,8 @@ const MAX_CHARACTERS = 20;
 const MAX_PLACES = 20;
 const MAX_FLAGS = 40;
 
-const FACTS_BLOCK = /<facts>\s*([\s\S]*?)\s*<\/facts>/i;
+/** 模型偶尔漏掉闭合标签。这里连没闭合的那一段也一起收走，别让 JSON 混进摘要正文。 */
+const FACTS_BLOCK = /<facts>\s*([\s\S]*?)\s*(?:<\/facts>|$)/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

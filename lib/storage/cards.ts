@@ -19,7 +19,10 @@ const PREFIX = "card:";
 const EMPTY: ImportedCardRecord[] = [];
 
 let cached: ImportedCardRecord[] | null = null;
-let loading = false;
+/** 进行中的那一次读取。并发调用要等同一个 promise，不能各自提前返回空结果。 */
+let loading: Promise<void> | null = null;
+/** 每次清空都换一代，迟到的读取结果不许再写回内存。 */
+let generation = 0;
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -42,23 +45,36 @@ export function getImportedCardsServerSnapshot(): ImportedCardRecord[] {
 }
 
 async function load(): Promise<void> {
-  if (loading) return;
-  loading = true;
+  if (cached) return;
+  if (loading) return loading;
+
+  const gen = generation;
+  const task = (async () => {
+    try {
+      const rows = await listSlots<ImportedCardRecord>("data", PREFIX);
+      if (gen !== generation) return;
+      cached = rows
+        .map((row) => row.value)
+        .filter((record): record is ImportedCardRecord => !!record?.card?.data?.name)
+        .sort((a, b) => b.importedAt - a.importedAt);
+    } catch {
+      if (gen !== generation) return;
+      cached = null;
+    }
+  })();
+
+  loading = task;
   try {
-    const rows = await listSlots<ImportedCardRecord>("data", PREFIX);
-    cached = rows
-      .map((row) => row.value)
-      .filter((record): record is ImportedCardRecord => !!record?.card?.data?.name)
-      .sort((a, b) => b.importedAt - a.importedAt);
-  } catch {
-    cached = null;
+    await task;
   } finally {
-    loading = false;
+    if (loading === task) loading = null;
   }
-  notify();
+  if (gen === generation) notify();
 }
 
 registerVaultData(load, () => {
+  generation += 1;
+  loading = null;
   cached = null;
   notify();
 });

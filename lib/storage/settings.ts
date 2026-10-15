@@ -13,7 +13,10 @@ import { readSlot, removeSlot, writeSlot } from "@/lib/vault";
 const SLOT = "settings";
 
 let cached: ProviderConfig | null = null;
-let loading = false;
+/** 进行中的那一次读取。并发调用要等同一个 promise，不能各自提前返回空结果。 */
+let loading: Promise<void> | null = null;
+/** 每次清空都换一代，迟到的读取结果不许再写回内存。 */
+let generation = 0;
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -37,21 +40,33 @@ export function getProviderConfigServerSnapshot(): ProviderConfig | null {
 }
 
 async function load(): Promise<void> {
-  if (loading) return;
-  loading = true;
+  if (loading) return loading;
+
+  const gen = generation;
+  const task = (async () => {
+    try {
+      const stored = await readSlot<ProviderConfig>("local", SLOT);
+      if (gen !== generation) return;
+      cached = stored && typeof stored === "object" ? stored : null;
+    } catch {
+      // 未解锁时读不了，保持 null
+      if (gen !== generation) return;
+      cached = null;
+    }
+  })();
+
+  loading = task;
   try {
-    const stored = await readSlot<ProviderConfig>("local", SLOT);
-    cached = stored && typeof stored === "object" ? stored : null;
-  } catch {
-    // 未解锁时读不了，保持 null
-    cached = null;
+    await task;
   } finally {
-    loading = false;
+    if (loading === task) loading = null;
   }
-  notify();
+  if (gen === generation) notify();
 }
 
 registerVaultData(load, () => {
+  generation += 1;
+  loading = null;
   cached = null;
   notify();
 });

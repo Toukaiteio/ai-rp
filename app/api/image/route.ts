@@ -122,7 +122,7 @@ export async function POST(request: Request): Promise<Response> {
       );
       const score = parseScore(text);
       if (score === null) {
-        return jsonError({ status: 502, code: "bad_score", message: "评分没有返回数字" });
+        return jsonError({ status: 502, code: "bad_score", message: "评分未返回数值" });
       }
       return Response.json({ score });
     } catch (error) {
@@ -163,7 +163,7 @@ export async function POST(request: Request): Promise<Response> {
     );
     const prompt = parseImagePrompt(written);
     if (!prompt) {
-      return jsonError({ status: 502, code: "empty_prompt", message: "没有生成出作画提示词" });
+      return jsonError({ status: 502, code: "empty_prompt", message: "未生成作画提示词" });
     }
 
     const image = await generateImage({

@@ -1,7 +1,9 @@
 "use client";
 
+import { Paperclip } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { IconPlus, IconSendUp } from "../icons";
+import { useI18n } from "@/lib/i18n/use-i18n";
+import { IconSendUp } from "../icons";
 import { cn } from "./cn";
 
 /* 输入胶囊：只有一层，发送键常驻右端。
@@ -11,10 +13,12 @@ export function Composer({
   onChange,
   onSend,
   onPlus,
-  placeholder = "说点什么……",
+  placeholder,
   hint,
+  hintAlerts = false,
   plusDisabled = false,
   sendDisabled = false,
+  hasExtra = false,
   className,
 }: {
   value: string;
@@ -23,13 +27,20 @@ export function Composer({
   onPlus?: () => void;
   placeholder?: string;
   hint?: ReactNode;
+  /** 提示需要被看见时（比如还没配密钥），聚焦输入框就让提示闪几下 */
+  hintAlerts?: boolean;
   plusDisabled?: boolean;
   sendDisabled?: boolean;
+  /** 没有文字但有附图时也允许发送 */
+  hasExtra?: boolean;
   className?: string;
 }) {
+  const { t } = useI18n();
   const ref = useRef<HTMLTextAreaElement>(null);
   const [grow, setGrow] = useState(false);
-  const ready = value.trim().length > 0 && !sendDisabled;
+  /** 每次聚焦加一，用来重挂提示节点，把动画从头放一遍 */
+  const [alertTick, setAlertTick] = useState(0);
+  const ready = (value.trim().length > 0 || hasExtra) && !sendDisabled;
 
   /* 多行时圆角从胶囊退成 28，避免文字贴到圆角切线上 */
   useEffect(() => {
@@ -56,12 +67,12 @@ export function Composer({
       >
         <button
           type="button"
-          aria-label="更多功能"
+          aria-label={t("composer.upload")}
           onClick={onPlus}
           disabled={plusDisabled}
           className="grid size-[42px] shrink-0 place-items-center rounded-pill border-0 bg-surface text-ink shadow-raised transition-colors hover:bg-surface-3 disabled:cursor-default disabled:opacity-45"
         >
-          <IconPlus className="size-5" />
+          <Paperclip className="size-5" strokeWidth={1.8} aria-hidden="true" />
         </button>
 
         <textarea
@@ -70,6 +81,9 @@ export function Composer({
           value={value}
           placeholder={placeholder}
           onChange={(event) => onChange(event.target.value)}
+          onFocus={() => {
+            if (hintAlerts) setAlertTick((tick) => tick + 1);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
@@ -81,7 +95,7 @@ export function Composer({
 
         <button
           type="button"
-          aria-label="发送"
+          aria-label={t("composer.send")}
           onClick={submit}
           disabled={!ready}
           className={cn(
@@ -96,7 +110,13 @@ export function Composer({
       </div>
 
       {hint ? (
-        <p className="mx-auto mt-2 max-w-[660px] text-center text-xs text-ink-2">
+        <p
+          key={alertTick}
+          className={cn(
+            "mx-auto mt-2 max-w-[660px] text-center text-xs text-ink-2",
+            alertTick > 0 && "hint-alert",
+          )}
+        >
           {hint}
         </p>
       ) : null}

@@ -13,6 +13,8 @@ export { Field, FieldInput, FieldAction, SliderRow } from "./Field";
 export { FormGroup, OptRow } from "./FormGroup";
 export { Bar, Badge, Toast } from "./Feedback";
 export { Veil, Grab, Sheet, MenuRow, Panel } from "./Sheet";
+export { Dialog } from "./Dialog";
+export { MarkdownText } from "./Markdown";
 export {
   ChapterRow,
   HistoryRow,
@@ -26,7 +28,9 @@ export { ScreenHead } from "./ScreenHead";
 export { Frame } from "./Frame";
 export {
   Prose,
+  NarratorProse,
   NarratorBlock,
+  ChapterMark,
   DialogueBlock,
   PlayerBubble,
   SceneEvent,

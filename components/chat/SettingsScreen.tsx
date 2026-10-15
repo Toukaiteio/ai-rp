@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { ChevronDown, Image as ImageIcon } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   BackPill,
   Field,
@@ -13,13 +14,16 @@ import {
   PillButton,
   ScreenHead,
   SliderRow,
-  VaultStatus,
   VaultWarn,
 } from "@/components/ui";
 import { IconDownload, IconEye, IconLock, IconTrash, IconX } from "@/components/icons";
-import { getProvidersConfig, findProvider } from "@/lib/providers/config";
+import { BROWSER_PROVIDER_ID, probeBrowserModel } from "@/lib/browser-model";
+import { getProvidersConfig, findProvider, modelName, modelSeesImages, type ProviderPreset } from "@/lib/providers/config";
 import { IMAGE_MODEL_PRESETS, IMAGE_STYLES } from "@/lib/image";
 import { defaultImageSettings, type ImageSettings, type ProviderConfig } from "@/lib/providers/settings";
+import { hasMessage } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n/use-i18n";
+import type { MessageKey } from "@/lib/i18n";
 
 /* 只从 config / settings 导入，不要从 @/lib/providers 导入：
    那个入口会带出 openai SDK，整个打进浏览器包。 */
@@ -30,7 +34,6 @@ export function SettingsScreen({
   onLock,
   onWipe,
   onBack,
-  backend,
   onExport,
   onImport,
   archiveBusy,
@@ -41,7 +44,6 @@ export function SettingsScreen({
   onLock: () => void;
   onWipe: () => Promise<void>;
   onBack: () => void;
-  backend?: string | null;
   onExport?: () => void;
   onImport?: (file: File | undefined) => void;
   archiveBusy?: boolean;
@@ -49,9 +51,31 @@ export function SettingsScreen({
 }) {
   const [showKey, setShowKey] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
+  const [browserReady, setBrowserReady] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const { t, locale, setLocale } = useI18n();
 
-  const providers = getProvidersConfig().providers;
+  useEffect(() => {
+    let cancelled = false;
+    void probeBrowserModel().then((ready) => {
+      if (!cancelled) setBrowserReady(ready);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const remoteProviders = getProvidersConfig().providers;
+  const browserPreset: ProviderPreset = {
+    id: BROWSER_PROVIDER_ID,
+    name: t("settings.browser"),
+    baseURL: "",
+    models: [],
+    keyUrl: "",
+    docUrl: "",
+  };
+  const providers = browserReady ? [browserPreset, ...remoteProviders] : remoteProviders;
+  const browserSelected = browserReady && config.providerId === BROWSER_PROVIDER_ID;
   const interfaceTypes = getProvidersConfig().interfaceTypes;
   const preset = findProvider(config.providerId);
 
@@ -66,56 +90,79 @@ export function SettingsScreen({
   }
 
   return (
-    <div className="h-dvh overflow-y-auto bg-background">
-      <div className="mx-auto max-w-[560px] px-6 py-8">
+    <div className="h-dvh overflow-y-auto bg-background px-5">
+      {/* 和对话页同一条 660 栏：外层同样的内边距，里层居中同宽 */}
+      <div className="mx-auto w-full max-w-[660px] py-8">
         <ScreenHead
-          title="连接设置"
-          action={<BackPill onClick={onBack}>回到对话</BackPill>}
+          title={t("settings.title")}
+          action={<BackPill onClick={onBack}>{t("settings.back")}</BackPill>}
         />
 
         <div className="flex flex-col gap-7">
-          <FormGroup title="提供商">
+          <FormGroup title={t("settings.language")}>
+            <OptRow>
+              <OptChip selected={locale === "zh"} onClick={() => setLocale("zh")}>
+                中文
+              </OptChip>
+              <OptChip selected={locale === "en"} onClick={() => setLocale("en")}>
+                English
+              </OptChip>
+            </OptRow>
+          </FormGroup>
+
+          <SettingsCard title={t("settings.languageModel")}>
+          <FormGroup title={t("settings.provider")}>
             <OptRow>
               {providers.map((provider) => (
                 <OptChip
                   key={provider.id}
                   selected={config.providerId === provider.id}
-                  onClick={() =>
+                  onClick={() => {
+                    if (provider.id === BROWSER_PROVIDER_ID) {
+                      patch({ providerId: provider.id, vision: true });
+                      return;
+                    }
+                    const first = provider.models[0];
                     patch({
                       providerId: provider.id,
-                      // 换提供商时把模型带到新预设的第一个，避免留下不存在的模型名
-                      model: provider.models[0] ?? "",
+                      model: modelName(first),
+                      vision: modelSeesImages(first),
                       baseURL: "",
-                    })
-                  }
+                    });
+                  }}
                 >
                   {provider.name}
                 </OptChip>
               ))}
             </OptRow>
-            {preset?.keyUrl ? (
+            {browserSelected ? (
+              <p className="m-0 text-[12.5px] leading-relaxed text-ink-2">{t("settings.browserNote")}</p>
+            ) : preset?.keyUrl ? (
               <a
                 href={preset.keyUrl}
                 target="_blank"
                 rel="noreferrer noopener"
                 className="self-start text-[12.5px] text-ink-2 underline"
               >
-                获取 Key →
+                {t("settings.getKey")}
               </a>
             ) : null}
           </FormGroup>
 
-          <FormGroup title="接口类型">
+          {browserSelected ? null : (
+          <FormGroup title={t("settings.interface")}>
             <OptRow>
               {interfaceTypes.map((type) => (
                 <OptChip key={type.id} selected={type.enabled} disabled={!type.enabled}>
-                  {type.enabled ? type.name : `${type.name} · 后续`}
+                  {type.enabled ? type.name : t("settings.later", { name: type.name })}
                 </OptChip>
               ))}
             </OptRow>
           </FormGroup>
+          )}
 
-          <FormGroup title="Base URL">
+          {browserSelected ? null : (
+          <FormGroup title={t("settings.baseUrl")}>
             <Field>
               <FieldInput
                 type="url"
@@ -128,7 +175,7 @@ export function SettingsScreen({
               />
               {config.baseURL ? (
                 <FieldAction
-                  aria-label="清空，改用预设地址"
+                  aria-label={t("settings.clearUrl")}
                   onClick={() => patch({ baseURL: "" })}
                 >
                   <IconX className="size-[15px]" />
@@ -136,7 +183,9 @@ export function SettingsScreen({
               ) : null}
             </Field>
           </FormGroup>
+          )}
 
+          {browserSelected ? null : (
           <FormGroup title="API Key">
             <Field>
               <FieldInput
@@ -148,26 +197,33 @@ export function SettingsScreen({
                 onChange={(event) => patch({ apiKey: event.target.value })}
               />
               <FieldAction
-                aria-label={showKey ? "隐藏 Key" : "显示 Key"}
+                aria-label={showKey ? t("settings.hideKey") : t("settings.showKey")}
                 onClick={() => setShowKey((value) => !value)}
               >
                 <IconEye className="size-[17px]" />
               </FieldAction>
             </Field>
           </FormGroup>
+          )}
 
-          <FormGroup title="模型">
-            {(preset?.models?.length ?? 0) > 0 ? (
+          {browserSelected ? null : (
+          <FormGroup title={t("settings.model")}>
+            {(preset?.models.length ?? 0) > 0 ? (
               <OptRow>
-                {preset?.models.map((model) => (
-                  <OptChip
-                    key={model}
-                    selected={config.model === model}
-                    onClick={() => patch({ model })}
-                  >
-                    {model}
-                  </OptChip>
-                ))}
+                {preset?.models.map((model) => {
+                  const name = modelName(model);
+                  const sees = modelSeesImages(model);
+                  return (
+                    <OptChip
+                      key={name}
+                      selected={config.model === name}
+                      onClick={() => patch({ model: name, vision: sees })}
+                    >
+                      {sees ? <ImageIcon className="size-3.5" strokeWidth={1.8} aria-hidden="true" /> : null}
+                      {name}
+                    </OptChip>
+                  );
+                })}
               </OptRow>
             ) : null}
             <Field>
@@ -175,16 +231,38 @@ export function SettingsScreen({
                 type="text"
                 spellCheck={false}
                 autoComplete="off"
-                placeholder="模型名"
+                placeholder={t("settings.modelPlaceholder")}
                 value={config.model}
                 onChange={(event) => patch({ model: event.target.value })}
               />
             </Field>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={config.vision}
+              onClick={() => patch({ vision: !config.vision })}
+              className="flex w-full items-center justify-between rounded-pill border border-line bg-surface px-4 py-2.5 text-[13px] text-ink"
+            >
+              <span className="inline-flex items-center gap-2">
+                {config.vision ? <ImageIcon className="size-3.5" strokeWidth={1.8} aria-hidden="true" /> : null}
+                {t("settings.vision")}
+              </span>
+              <span
+                aria-hidden="true"
+                className={`flex h-[22px] w-10 shrink-0 items-center justify-start rounded-pill p-0.5 transition-colors duration-200 ease-out motion-reduce:transition-none ${config.vision ? "bg-accent" : "bg-surface-3"}`}
+              >
+                <span
+                  className={`size-[18px] rounded-pill shadow-raised ${config.vision ? "bg-accent-ink" : "bg-ink"}`}
+                  style={{ transform: config.vision ? "translateX(20px)" : "translateX(0px)", transition: "transform 200ms ease" }}
+                />
+              </span>
+            </button>
           </FormGroup>
+          )}
 
-          <FormGroup title="生成">
+          <FormGroup title={t("settings.sampling")}>
             <SliderRow
-              label="随机度"
+              label={t("settings.temperature")}
               min={0}
               max={20}
               value={Math.round(config.temperature * 10)}
@@ -192,11 +270,13 @@ export function SettingsScreen({
               onChange={(value) => patch({ temperature: value / 10 })}
             />
           </FormGroup>
+          </SettingsCard>
 
-          <FormGroup title="生图">
+          <SettingsCard title={t("settings.image")}>
+          <div className="flex flex-col gap-3">
             <OptRow>
               <OptChip selected={!image.model} onClick={() => patchImage({ model: "" })}>
-                不使用
+                {t("settings.imageOff")}
               </OptChip>
               {IMAGE_MODEL_PRESETS.map((model) => (
                 <OptChip
@@ -213,7 +293,7 @@ export function SettingsScreen({
                 type="text"
                 spellCheck={false}
                 autoComplete="off"
-                placeholder="生图模型名，留空则禁用 CG"
+                placeholder={t("settings.imageModelPlaceholder")}
                 value={image.model}
                 onChange={(event) => patchImage({ model: event.target.value })}
               />
@@ -224,7 +304,7 @@ export function SettingsScreen({
                 inputMode="url"
                 spellCheck={false}
                 autoComplete="off"
-                placeholder="生图 Base URL，空则沿用上面的"
+                placeholder={t("settings.imageBasePlaceholder")}
                 value={image.baseURL}
                 onChange={(event) => patchImage({ baseURL: event.target.value })}
               />
@@ -234,7 +314,7 @@ export function SettingsScreen({
                 type={showKey ? "text" : "password"}
                 spellCheck={false}
                 autoComplete="off"
-                placeholder="生图 Key，空则沿用对话 Key"
+                placeholder={t("settings.imageKeyPlaceholder")}
                 value={image.apiKey}
                 onChange={(event) => patchImage({ apiKey: event.target.value })}
               />
@@ -246,28 +326,28 @@ export function SettingsScreen({
                   selected={image.styleId === id}
                   onClick={() => patchImage({ styleId: id })}
                 >
-                  {IMAGE_STYLES[id].label}
+                  {styleName(id, t)}
                 </OptChip>
               ))}
             </OptRow>
             <OptRow>
               <OptChip selected={!image.auto} onClick={() => patchImage({ auto: false })}>
-                自动生成关
+                {t("settings.autoOff")}
               </OptChip>
               <OptChip selected={image.auto} onClick={() => patchImage({ auto: true })}>
-                自动生成开
+                {t("settings.autoOn")}
               </OptChip>
             </OptRow>
             <SliderRow
-              label="每场上限"
+              label={t("settings.budget")}
               min={1}
               max={10}
               value={image.budget}
-              display={`${image.budget} 张`}
+              display={t("settings.budgetValue", { count: image.budget })}
               onChange={(value) => patchImage({ budget: value })}
             />
             <SliderRow
-              label="自动阈值"
+              label={t("settings.threshold")}
               min={0}
               max={10}
               value={image.threshold}
@@ -275,37 +355,27 @@ export function SettingsScreen({
               onChange={(value) => patchImage({ threshold: value })}
             />
             <p className="m-0 text-[12.5px] leading-relaxed text-ink-2">
-              没填模型时，对话里的「生成 CG」是灰的。自动生成默认关；打开后最多每 10 轮 1 张，且不超过上面的上限，相似场景不重复，不挡住聊天。
+              {t("settings.imageHelp")}
             </p>
-          </FormGroup>
+          </div>
+          </SettingsCard>
 
-          <FormGroup title="存档">
-            <VaultStatus>
-              导出的是<b>加密存档</b>，用你设定的密钥加密。
-              <br />
-              导入时会校验，密钥不对会明确报错，不会静默失败。
-              {backend ? (
-                <>
-                  <br />
-                  聊天与角色卡当前存在 <b>{backend}</b>。
-                </>
-              ) : null}
-            </VaultStatus>
+          <FormGroup title={t("settings.archive")}>
             <MenuRow
               icon={<IconDownload className="size-[17px]" />}
-              note={archiveBusy ? "正在导出" : "加密"}
+              note={archiveBusy ? t("settings.exporting") : t("settings.encrypted")}
               disabled={archiveBusy}
               onClick={() => onExport?.()}
             >
-              导出存档
+              {t("settings.exportArchive")}
             </MenuRow>
             <MenuRow
               icon={<IconDownload className="size-[17px] rotate-180" />}
-              note="需要同一个密钥"
+              note={t("settings.sameKey")}
               disabled={archiveBusy}
               onClick={() => fileRef.current?.click()}
             >
-              导入存档
+              {t("settings.importArchive")}
             </MenuRow>
             {archiveMessage ? (
               <div className="rounded-md bg-danger-soft px-4 py-2.5 text-[13px] text-danger">
@@ -325,15 +395,15 @@ export function SettingsScreen({
             />
           </FormGroup>
 
-          <FormGroup title="保险库">
+          <FormGroup title={t("settings.vault")}>
             <MenuRow icon={<IconLock className="size-[17px]" />} onClick={onLock}>
-              锁定
+              {t("settings.lock")}
             </MenuRow>
             {confirmWipe ? (
               <div className="rounded-lg border border-line bg-surface-2 px-4 py-[14px]">
                 <p className="m-0 mb-3 text-[13px] leading-relaxed text-ink-2">
-                  会清掉本机全部加密数据：聊天记录、角色卡、连接设置、摘要。
-                  <VaultWarn>密钥不存在本机，清除后无法找回。</VaultWarn>
+                  {t("settings.wipeWarn")}
+                  <VaultWarn>{t("settings.wipeIrreversible")}</VaultWarn>
                 </p>
                 <div className="flex gap-2">
                   <PillButton
@@ -344,10 +414,10 @@ export function SettingsScreen({
                       void onWipe();
                     }}
                   >
-                    确认清除
+                    {t("settings.confirmWipe")}
                   </PillButton>
                   <PillButton size="sm" onClick={() => setConfirmWipe(false)}>
-                    取消
+                    {t("settings.cancel")}
                   </PillButton>
                 </div>
               </div>
@@ -355,19 +425,47 @@ export function SettingsScreen({
               <MenuRow
                 icon={<IconTrash className="size-[17px]" />}
                 tone="danger"
-                note="不可恢复"
+                note={t("settings.noRestore")}
                 onClick={() => setConfirmWipe(true)}
               >
-                清除本机数据
+                {t("settings.wipe")}
               </MenuRow>
             )}
           </FormGroup>
 
           <PillButton variant="primary" block onClick={onBack}>
-            回到对话
+            {t("settings.back")}
           </PillButton>
         </div>
       </div>
     </div>
   );
 }
+
+function SettingsCard({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <section className="overflow-hidden rounded-card border border-line-strong bg-surface">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between bg-surface-2 px-4 py-3.5 text-left"
+      >
+        <span className="text-[16px] font-black text-ink">{title}</span>
+        <ChevronDown
+          aria-hidden="true"
+          strokeWidth={1.8}
+          className={`size-4 text-ink-2 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open ? <div className="flex flex-col gap-7 border-t border-line-strong px-4 py-4">{children}</div> : null}
+    </section>
+  );
+}
+
+function styleName(id: string, t: (key: MessageKey) => string): string {
+  const key = `image.style.${id}`;
+  return hasMessage(key) ? t(key) : id;
+}
+

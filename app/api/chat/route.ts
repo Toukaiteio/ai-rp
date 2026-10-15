@@ -19,6 +19,10 @@ import {
   toChatError,
   type ChatErrorInfo,
 } from "@/lib/providers";
+import { isChatImage } from "@/lib/chat-image";
+import { DICE_TOOL } from "@/lib/dice";
+import { MEMORY_TOOLS, normalizeJournal } from "@/lib/memory/journal";
+import type { Journal, ToolTrace } from "@/lib/memory/journal";
 import { encodeSseFrame, type WireEvent } from "@/lib/wire";
 
 /**
@@ -48,6 +52,8 @@ interface ChatRequestBody {
     turn?: number;
     summary?: RollingSummary;
     facts?: KeyFacts;
+    journal?: Journal;
+    toolTrace?: ToolTrace[];
     authorNote?: AssembleInput["authorNote"];
     style?: AssembleInput["style"];
     userName?: string;
@@ -58,6 +64,10 @@ interface ChatRequestBody {
   baseURL?: string;
   /** 会话标识，用于按会话统计缓存命中率 */
   sessionId?: string;
+  /** false 时不再提供函数调用，用来结束「工具结果之后再写一段」的续写 */
+  tools?: boolean;
+  /** 这一轮用户消息附带的图片 */
+  image?: string;
 }
 
 /** 不组装，原样把 messages 送给上游。建议输入走这条，不能混进角色扮演的缓存统计。 */
@@ -138,7 +148,7 @@ function parseBody(raw: unknown): ParsedRequest {
 
   const card = context.card;
   if (!isRecord(card) || typeof card.name !== "string") {
-    return { error: "context.card 缺 name" };
+    return { error: "context.card 缺少 name" };
   }
 
   if (!Array.isArray(context.history)) {
@@ -146,7 +156,7 @@ function parseBody(raw: unknown): ParsedRequest {
   }
 
   const history = parseMessages(context.history);
-  if (!history) return { error: "context.history 里有无法识别的消息" };
+  if (!history) return { error: "context.history 中存在无法识别的消息" };
 
   return {
     kind: "chat",
@@ -172,6 +182,8 @@ function parseBody(raw: unknown): ParsedRequest {
       turn: typeof context.turn === "number" ? context.turn : 0,
       summary: context.summary as RollingSummary | undefined,
       facts: context.facts as KeyFacts | undefined,
+      journal: normalizeJournal(context.journal),
+      toolTrace: parseToolTrace(context.toolTrace),
       authorNote: context.authorNote as AssembleInput["authorNote"],
       style: (context.style === "haruhi" || context.style === "mushoku"
         ? context.style
@@ -184,8 +196,25 @@ function parseBody(raw: unknown): ParsedRequest {
     maxTokens: typeof raw.maxTokens === "number" ? raw.maxTokens : undefined,
     baseURL: asString(raw.baseURL),
     sessionId: asString(raw.sessionId),
+    tools: raw.tools !== false,
+    image: isChatImage(raw.image) ? raw.image : undefined,
     },
   };
+}
+
+function parseToolTrace(value: unknown): ToolTrace[] {
+  if (!Array.isArray(value)) return [];
+  const trace: ToolTrace[] = [];
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.name !== "string" || typeof item.result !== "string") continue;
+    trace.push({
+      name: item.name.slice(0, 60),
+      arguments: typeof item.arguments === "string" ? item.arguments.slice(0, 2000) : "",
+      result: item.result.slice(0, 2000),
+    });
+    if (trace.length >= 8) break;
+  }
+  return trace;
 }
 
 function jsonError(info: ChatErrorInfo, extra?: Record<string, unknown>) {
@@ -220,7 +249,7 @@ export async function POST(request: Request): Promise<Response> {
     return jsonError({
       status: 401,
       code: "missing_key",
-      message: "缺少 API Key，请在连接设置里填一个",
+      message: "缺少 API Key，请在连接设置中配置",
     });
   }
 
@@ -268,12 +297,14 @@ export async function POST(request: Request): Promise<Response> {
 
   let events: Awaited<ReturnType<typeof provider.open>>;
   try {
-    events = await provider.open({
+      events = await provider.open({
       messages,
       model: body.model,
       temperature: body.temperature,
       maxTokens: body.maxTokens,
       signal: controller.signal,
+      ...(body.tools === false ? {} : { tools: [...MEMORY_TOOLS, DICE_TOOL] }),
+      ...(body.image ? { image: body.image } : {}),
     });
   } catch (error) {
     // 只传 apiKey 用于抹除，绝不把 error 原样返回（headers 里有凭据回显）
@@ -463,7 +494,7 @@ async function complete(request: Request, body: CompleteRequestBody): Promise<Re
     return jsonError({
       status: 401,
       code: "missing_key",
-      message: "缺少 API Key，请在连接设置里填一个",
+      message: "缺少 API Key，请在连接设置中配置",
     });
   }
 

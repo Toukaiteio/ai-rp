@@ -1,3 +1,4 @@
+import type { Journal } from "@/lib/memory/journal";
 import type { KeyFacts, RollingSummary } from "@/lib/prompt/types";
 import type { ChatSession, SessionStore } from "./types";
 import { registerVaultData } from "@/lib/vault/registry";
@@ -14,7 +15,10 @@ const PREFIX = "session:";
 
 const sessions = new Map<string, ChatSession>();
 let loaded = false;
-let loading = false;
+/** 进行中的那一次读取。并发调用要等同一个 promise，不能各自提前返回空结果。 */
+let loading: Promise<void> | null = null;
+/** 每次清空都换一代，迟到的读取结果不许再写回内存。 */
+let generation = 0;
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -29,27 +33,40 @@ export function subscribeSessions(listener: () => void): () => void {
 }
 
 async function load(): Promise<void> {
-  if (loading) return;
-  loading = true;
-  try {
-    const rows = await listSlots<ChatSession>("data", PREFIX);
-    sessions.clear();
-    for (const row of rows) {
-      if (row.value?.id === row.id.slice(PREFIX.length)) {
-        sessions.set(row.value.id, row.value);
+  if (loaded) return;
+  if (loading) return loading;
+
+  const gen = generation;
+  const task = (async () => {
+    try {
+      const rows = await listSlots<ChatSession>("data", PREFIX);
+      if (gen !== generation) return;
+      sessions.clear();
+      for (const row of rows) {
+        if (row.value?.id === row.id.slice(PREFIX.length)) {
+          sessions.set(row.value.id, row.value);
+        }
       }
+      loaded = true;
+    } catch {
+      if (gen !== generation) return;
+      sessions.clear();
+      loaded = true;
     }
-    loaded = true;
-  } catch {
-    sessions.clear();
-    loaded = true;
+  })();
+
+  loading = task;
+  try {
+    await task;
   } finally {
-    loading = false;
+    if (loading === task) loading = null;
   }
-  notify();
+  if (gen === generation) notify();
 }
 
 registerVaultData(load, () => {
+  generation += 1;
+  loading = null;
   sessions.clear();
   loaded = false;
   notify();
@@ -60,7 +77,7 @@ function sorted(): ChatSession[] {
 }
 
 async function ensureLoaded(): Promise<void> {
-  if (!loaded && !loading) await load();
+  await load();
 }
 
 export function createLocalSessionStore(): SessionStore {
@@ -132,6 +149,8 @@ export interface CardMemory {
   cardId: string;
   summary: RollingSummary | null;
   facts: KeyFacts;
+  /** 模型用函数调用写下的人物、地点、事件。旧存档没有这个字段 */
+  journal?: Journal;
   turn: number;
   updatedAt: number;
 }
@@ -139,7 +158,14 @@ export interface CardMemory {
 const MEMORY_PREFIX = "memory:";
 
 export function emptyCardMemory(cardId: string): CardMemory {
-  return { cardId, summary: null, facts: { characters: {}, places: {}, flags: {} }, turn: 0, updatedAt: 0 };
+  return {
+    cardId,
+    summary: null,
+    facts: { characters: {}, places: {}, flags: {} },
+    journal: { characters: {}, places: {}, events: {} },
+    turn: 0,
+    updatedAt: 0,
+  };
 }
 
 export async function loadCardMemory(cardId: string): Promise<CardMemory> {
@@ -150,6 +176,7 @@ export async function loadCardMemory(cardId: string): Promise<CardMemory> {
       cardId,
       summary: stored.summary ?? null,
       facts: stored.facts ?? { characters: {}, places: {}, flags: {} },
+      journal: stored.journal ?? { characters: {}, places: {}, events: {} },
       turn: typeof stored.turn === "number" ? stored.turn : 0,
       updatedAt: stored.updatedAt ?? 0,
     };

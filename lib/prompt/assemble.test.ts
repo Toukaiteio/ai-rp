@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { PRESET_CARDS } from "@/lib/cards/presets";
 import {
   appendSummary,
   applySummary,
@@ -394,6 +393,12 @@ describe("摘要与关键事实", () => {
     expect(parseFactsPayload("没有事实。<facts>{坏的</facts>").facts).toBeNull();
   });
 
+  it("漏掉闭合标签的事实块也要收走，不能留在摘要正文里", () => {
+    const parsed = parseFactsPayload('她坐下了。\n<facts>{"characters":{"林晚晴":"添柴"}}');
+    expect(parsed.prose).toBe("她坐下了。");
+    expect(parsed.facts?.characters["林晚晴"]).toBe("添柴");
+  });
+
   it("只对还没压过的历史计阈值", () => {
     const history: ChatMessage[] = [{ role: "user", content: "字".repeat(200) }];
     expect(needsSummarize(history, undefined, 10)).toBe(true);
@@ -461,22 +466,29 @@ describe("五十轮之后", () => {
     expect(linesOf(other.messages).join("\n")).not.toContain("嘴上赶人，手上添茶。");
   });
 
-  it("林晚晴的卡：常驻世界书进提示词，关键词本身不进", () => {
-    const preset = PRESET_CARDS.find((entry) => entry.id === "lin-wanqing");
-    expect(preset).toBeTruthy();
-    if (!preset) return;
-    const data = preset.card.data;
+  it("整张卡：常驻世界书进提示词，关键词本身不进", () => {
+    const lorebook = {
+      entries: [
+        { keys: [], content: "晚星旅店一楼酒堂，壁炉、账本、墙上的账。", constant: true },
+        { keys: ["北方", "渔村"], content: "她十五岁那年渔村出事，只身南下，从不细说。" },
+      ],
+    };
+    const data: AssembleInput["card"] = {
+      ...card,
+      description: `${card.description}\n她十五岁那年渔村出事，只身南下。`,
+      post_history_instructions: "不要发明北方渔村的细节。",
+    };
     const result = assemble({
       card: data,
-      lorebook: data.character_book,
+      lorebook,
       history: [
-        { role: "assistant", content: data.first_mes },
+        { role: "assistant", content: "<narr>雨还在下。</narr>" },
         { role: "user", content: "你到底是从北方哪里来的？" },
       ],
       seed: 1,
       budget: 100_000,
     });
-    const book = result.messages.find((message) => message.content.includes("她十五岁那年渔村出事"));
+    const book = result.messages.find((message) => message.content.includes("渔村出事，只身南下"));
     expect(book).toBeTruthy();
     expect(book?.content).not.toContain("北方");
     expect(result.budget.lorebookEntries).toBeGreaterThan(0);

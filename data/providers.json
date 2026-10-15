@@ -5,9 +5,15 @@
   "providers": [
     {
       "id": "yosei-router",
-      "name": "Yosei-Router · 预设",
+      "name": "YoseiRouter",
       "baseURL": "https://router.dys.asia/v1",
-      "models": ["deepseek-v4-flash-200k", "gpt-5-mini", "claude-sonnet-4-5", "deepseek-chat"],
+      "models": [
+        { "id": "deepseek-v4-flash-200k", "vision": false },
+        { "id": "u2-flash", "vision": false },
+        { "id": "deepseek-v4.1-flash", "vision": true },
+        { "id": "glm-5.3-flash", "vision": true },
+        { "id": "step-5-preview", "vision": true }
+      ],
       "keyUrl": "https://router.dys.asia/",
       "docUrl": "https://router.dys.asia/"
     },

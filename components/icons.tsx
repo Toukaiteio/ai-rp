@@ -1,3 +1,4 @@
+import { Brain } from "lucide-react";
 import type { ReactNode, SVGProps } from "react";
 
 type IconProps = Omit<SVGProps<SVGSVGElement>, "children" | "strokeWidth"> & {
@@ -46,6 +47,19 @@ export function IconHistory(props: IconProps) {
       <path d="M3 12a9 9 0 1 0 2.64-6.36L3 8" />
       <path d="M3 3v5h5" />
       <path d="M12 7v5l4 2" />
+    </Icon>
+  );
+}
+
+export function IconContents(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <line x1="9" y1="6" x2="20" y2="6" />
+      <line x1="9" y1="12" x2="20" y2="12" />
+      <line x1="9" y1="18" x2="20" y2="18" />
+      <line x1="4" y1="6" x2="4.01" y2="6" />
+      <line x1="4" y1="12" x2="4.01" y2="12" />
+      <line x1="4" y1="18" x2="4.01" y2="18" />
     </Icon>
   );
 }
@@ -148,6 +162,47 @@ export function IconDownload(props: IconProps) {
       <path d="M12 3v12" />
       <polyline points="7 10 12 15 17 10" />
       <path d="M4 19h16" />
+    </Icon>
+  );
+}
+
+/** 在线角色卡：列表来自网络，用一个地球加一格信号表示。 */
+export function IconGlobe(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3c2.6 2.4 4 5.6 4 9s-1.4 6.6-4 9c-2.6-2.4-4-5.6-4-9s1.4-6.6 4-9z" />
+    </Icon>
+  );
+}
+
+/** 仓库入口。实心标记，和旁边的描边图标用同一档尺寸。 */
+export function IconGithub({ className = "size-[19px]", ...rest }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+      {...rest}
+    >
+      <path d="M12 2C6.48 2 2 6.58 2 12.26c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1.01.07 1.54 1.06 1.54 1.06.9 1.57 2.36 1.12 2.94.86.09-.67.35-1.12.63-1.38-2.22-.26-4.55-1.14-4.55-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05a9.36 9.36 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.59.69.49A10.04 10.04 0 0 0 22 12.26C22 6.58 17.52 2 12 2z" />
+    </svg>
+  );
+}
+
+/** 记忆：用 Lucide 的 Brain，不自己画。外面的进度环由调用方画。 */
+export function IconBrain({ className = "size-[19px]", ...rest }: IconProps) {
+  return <Brain className={className} strokeWidth={1.8} aria-hidden="true" {...rest} />;
+}
+
+/** 公告：一只铃铛，未读时调用方在角上加点 */
+export function IconNotice(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6.5 9.5a5.5 5.5 0 0 1 11 0c0 4.5 1.8 5.6 1.8 5.6H4.7s1.8-1 1.8-5.6" />
+      <path d="M10 19a2.2 2.2 0 0 0 4 0" />
     </Icon>
   );
 }

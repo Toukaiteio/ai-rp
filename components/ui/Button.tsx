@@ -66,7 +66,7 @@ export function IconButton({
 
 /* 屏幕内的返回入口：比图标按钮多一个箭头和文字，压在内容流里 */
 export function BackPill({
-  children = "返回",
+  children,
   className,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement>) {

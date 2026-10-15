@@ -13,6 +13,7 @@ import {
   type Envelope,
 } from "./crypto";
 import { hydrateVaultData, resetVaultData } from "./registry";
+import { blockRememberedSession, forgetRememberedKey, keepRememberedKey, setRememberPref, takeRememberedKey } from "./remember";
 import {
   getDataBackend,
   getLocalBackend,
@@ -23,7 +24,7 @@ import {
 export * from "./crypto";
 export { registerVaultData } from "./registry";
 
-/** 保险库头。只有盐和校验值，密钥的任何一个字节都不在这里。 */
+/** 加密头。只有盐和校验值，密钥的任何一个字节都不在这里。 */
 const HEADER_KEY = "ai-rp:vault:v1";
 /** 阶段 1 到 3 留下的明文键。升级后必须清掉，不能让旧数据留在磁盘上 */
 const LEGACY_PLAINTEXT_KEYS = [
@@ -59,6 +60,9 @@ export class VaultError extends Error {
       | "wiped"
       | "locked"
       | "no_webcrypto",
+    /** 界面按这个词条翻译。message 仍是中文，给没有界面的调用方兜底 */
+    readonly phrase?: string,
+    readonly vars?: Record<string, string | number>,
   ) {
     super(message);
     this.name = "VaultError";
@@ -129,7 +133,7 @@ export function getVaultKey(): CryptoKey | null {
 }
 
 export function requireVaultKey(): CryptoKey {
-  if (!activeKey) throw new VaultError("保险库未解锁", "locked");
+  if (!activeKey) throw new VaultError("尚未解锁", "locked", "locked");
   return activeKey;
 }
 
@@ -188,11 +192,26 @@ function dropLegacyPlaintext(): void {
 
 /* ---------------------------------------------------------------- 生命周期 */
 
-/** 客户端挂载后探测一次：本机有没有建过保险库。 */
+/** 客户端挂载后探测一次：本机有没有设过密钥。 */
 export async function probeVault(): Promise<void> {
   if (status === "unlocked") return;
   const header = readHeader();
   if (header) {
+    const remembered = await takeRememberedKey();
+    if (remembered && (await checkVerifier(remembered, header.verifier))) {
+      activeKey = remembered;
+      attempts = 0;
+      writeHeader({ ...header, attempts: 0 });
+      publish({
+        status: "unlocked",
+        attemptsLeft: MAX_ATTEMPTS,
+        backend: await resolveBackendKind(),
+        notice: null,
+      });
+      await hydrateVaultData();
+      return;
+    }
+    if (remembered) await forgetRememberedKey();
     attempts = header.attempts;
     publish({ status: "locked", attemptsLeft: MAX_ATTEMPTS - Math.max(0, attempts) });
     return;
@@ -207,19 +226,28 @@ async function resolveBackendKind(): Promise<BackendKind> {
   return kind;
 }
 
-/** 第一次设定密钥。此前本机没有保险库，所以先把旧明文清掉再建。 */
-export async function setupVault(passphrase: string, confirm: string): Promise<void> {
+/** 第一次设定密钥。此前本机没有加密头，所以先把旧明文清掉再建。 */
+export async function setupVault(
+  passphrase: string,
+  confirm: string,
+  rememberMs = 0,
+): Promise<void> {
   if (readHeader()) {
-    throw new VaultError("本机已经设过密钥，请输入密钥解锁", "has_vault");
+    throw new VaultError("本机已经设过密钥，请输入密钥解锁", "has_vault", "has_vault");
   }
   if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
-    throw new VaultError(`密钥至少 ${MIN_PASSPHRASE_LENGTH} 个字符`, "weak_passphrase");
+    throw new VaultError(
+      `密钥至少 ${MIN_PASSPHRASE_LENGTH} 个字符`,
+      "weak_passphrase",
+      "weak",
+      { min: MIN_PASSPHRASE_LENGTH },
+    );
   }
   if (passphrase !== confirm) {
-    throw new VaultError("两次输入的密钥不一样", "mismatch");
+    throw new VaultError("两次输入的密钥不一样", "mismatch", "mismatch");
   }
   if (!globalThis.crypto?.subtle) {
-    throw new VaultError("当前环境不支持 WebCrypto，无法加密存储", "no_webcrypto");
+    throw new VaultError("当前环境不支持 WebCrypto，无法加密存储", "no_webcrypto", "no_crypto");
   }
 
   dropLegacyPlaintext();
@@ -237,6 +265,7 @@ export async function setupVault(passphrase: string, confirm: string): Promise<v
 
   activeKey = key;
   attempts = 0;
+  await keepRememberedKey(key, rememberMs);
   publish({
     status: "unlocked",
     attemptsLeft: MAX_ATTEMPTS,
@@ -252,17 +281,17 @@ export async function setupVault(passphrase: string, confirm: string): Promise<v
  * 失败文案不区分「密钥错」和「密文坏了」，也不透露还差几位，
  * 只说还剩几次机会——次数是给正常用户看的，对攻击者没有密钥信息。
  */
-export async function unlockVault(passphrase: string): Promise<void> {
+export async function unlockVault(passphrase: string, rememberMs = 0): Promise<void> {
   const header = readHeader();
   if (!header) {
-    throw new VaultError("本机还没有设过密钥，先设一个", "no_vault");
+    throw new VaultError("本机还没有设过密钥，先设一个", "no_vault", "no_vault");
   }
 
   let key: CryptoKey;
   try {
     key = await deriveKey(passphrase, fromBase64(header.salt), header.iterations);
   } catch {
-    throw new VaultError("当前环境不支持 WebCrypto，无法解锁", "no_webcrypto");
+    throw new VaultError("当前环境不支持 WebCrypto，无法解锁", "no_webcrypto", "no_crypto");
   }
 
   if (!(await checkVerifier(key, header.verifier))) {
@@ -272,15 +301,23 @@ export async function unlockVault(passphrase: string): Promise<void> {
       throw new VaultError(
         `密钥连续错误 ${MAX_ATTEMPTS} 次，本机数据已全部清除，请重新设置密钥`,
         "wiped",
+        "wiped",
+        { max: MAX_ATTEMPTS },
       );
     }
     writeHeader({ ...header, attempts: next });
     publish({ status: "locked", attemptsLeft: MAX_ATTEMPTS - next });
-    throw new VaultError(`密钥错误，还可以再试 ${MAX_ATTEMPTS - next} 次`, "bad_passphrase");
+    throw new VaultError(
+      `密钥错误，还可以再试 ${MAX_ATTEMPTS - next} 次`,
+      "bad_passphrase",
+      "bad_passphrase",
+      { left: MAX_ATTEMPTS - next },
+    );
   }
 
   activeKey = key;
   writeHeader({ ...header, attempts: 0 });
+  await keepRememberedKey(key, rememberMs);
   publish({
     status: "unlocked",
     attemptsLeft: MAX_ATTEMPTS,
@@ -293,6 +330,7 @@ export async function unlockVault(passphrase: string): Promise<void> {
 /** 锁定：内存里的密钥和各数据镜像一起丢掉，磁盘上的密文留着。 */
 export function lockVault(): void {
   activeKey = null;
+  blockRememberedSession();
   resetVaultData();
   const header = readHeader();
   publish({
@@ -302,7 +340,7 @@ export function lockVault(): void {
   });
 }
 
-/** 只清密文与镜像，不动保险库头（密钥与错误计数留着）。 */
+/** 只清密文与镜像，不动加密头（密钥与错误计数留着）。 */
 async function clearStoredData(): Promise<void> {
   await (await getLocalBackend()).clear();
   await (await getDataBackend()).clear();
@@ -311,11 +349,13 @@ async function clearStoredData(): Promise<void> {
 }
 
 /**
- * 清除本机数据：密文、保险库头、旧明文全部清掉，回到「还没设过密钥」的状态。
- * 密钥本身没存过，所以这一步之后本机真的什么都不剩，只能重新设一个密钥。
+ * 清除本机数据：密文、加密头、旧明文全部清掉，回到「还没设过密钥」的状态。
+ * 口令本身没存过。打开过自动解锁的话，暂存的派生密钥也在这一步删掉。
  */
 export async function wipeVaultData(): Promise<void> {
   activeKey = null;
+  blockRememberedSession();
+  setRememberPref(0);
   await clearStoredData();
   dropHeader();
   dropLegacyPlaintext();
@@ -323,7 +363,7 @@ export async function wipeVaultData(): Promise<void> {
     status: "uninitialized",
     attemptsLeft: MAX_ATTEMPTS,
     backend: null,
-    notice: "本机数据已清除。重新设置一个密钥才能继续。",
+    notice: "wiped",
   });
 }
 
@@ -430,21 +470,21 @@ export async function importArchive(text: string): Promise<{ payload: unknown; e
   try {
     envelope = JSON.parse(text);
   } catch {
-    throw new VaultError("这个文件不是有效的存档", "bad_passphrase");
+    throw new VaultError("这个文件不是有效的存档", "bad_passphrase", "archive_invalid");
   }
   if (!isEnvelope(envelope)) {
-    throw new VaultError("这个文件不是本项目导出的加密存档", "bad_passphrase");
+    throw new VaultError("这个文件不是本项目导出的加密存档", "bad_passphrase", "archive_foreign");
   }
 
   let archive: VaultArchive;
   try {
     archive = await decryptJson<VaultArchive>(key, envelope);
   } catch {
-    throw new VaultError("密钥错误，解不开这个存档", "bad_passphrase");
+    throw new VaultError("密钥错误，解不开这个存档", "bad_passphrase", "archive_key");
   }
 
   if (archive?.kind !== "ai-rp-archive") {
-    throw new VaultError("这个文件不是本项目导出的存档", "bad_passphrase");
+    throw new VaultError("这个文件不是本项目导出的存档", "bad_passphrase", "archive_kind");
   }
   return { payload: archive.payload, exportedAt: archive.exportedAt ?? 0 };
 }

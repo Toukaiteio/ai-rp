@@ -578,7 +578,7 @@
           <span class="scope-pill">接口 <b>Chat Completions</b></span>
           <span class="scope-pill">接入 <b>BYOK · 预设提供商</b></span>
           <span class="scope-pill">账号 <b>无</b></span>
-          <span class="scope-pill">存储 <b>本机加密保险库</b></span>
+          <span class="scope-pill">存储 <b>本机加密</b></span>
           <span class="scope-pill">形态 <b>可交互原型，可直接点</b></span>
         </div>
       </header>
@@ -721,7 +721,7 @@
                   </div>
                   <div class="f-group">
                     <h4>API Key</h4>
-                    <p class="f-note">经下方保险库加密后存入本机 localStorage，不经任何服务器。未设密钥时不落盘。</p>
+                    <p class="f-note">加密后存入本机 localStorage，不经任何服务器。未设密钥时不落盘。</p>
                     <div class="field">
                       <input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" />
                       <button class="eye" id="btnEye" aria-label="显示或隐藏 Key">
@@ -765,9 +765,9 @@
                   </div>
                   <button class="pill-btn primary block" id="btnSaveSettings">保存连接</button>
                   <div class="f-group">
-                    <h4>加密保险库</h4>
+                    <h4>安全</h4>
                     <p class="f-note">你设定一个加密密钥：API 凭据加密存 localStorage，对话、角色卡与设置加密存 IndexedDB（不支持时自动回退 localStorage）。密钥本身不存任何位置，忘了无法找回。</p>
-                    <div class="vault-status" id="vaultStatus">保险库状态：<b>未设定密钥</b><br />设定后，本机数据一律先加密再落盘；连续输错密钥 5 次，将清除本机全部存储。</div>
+                    <div class="vault-status" id="vaultStatus"><b>未设定密钥</b><br />设定后，本机数据一律先加密再落盘；连续输错密钥 5 次，将清除本机全部存储。</div>
                     <div id="vaultSetBox">
                       <div class="field" style="margin-top:12px;"><input id="vaultPw1" type="password" placeholder="设定加密密钥（至少 8 位）" autocomplete="new-password" /></div>
                       <div class="field"><input id="vaultPw2" type="password" placeholder="再输入一次确认" autocomplete="new-password" /></div>
@@ -778,7 +778,7 @@
                     <div id="vaultUnlockBox" style="display:none;">
                       <div class="field" style="margin-top:12px;"><input id="vaultPwUnlock" type="password" placeholder="输入加密密钥解锁" autocomplete="off" /></div>
                       <div class="vault-actions">
-                        <button class="pill-btn primary" id="btnVaultUnlock">解锁保险库</button>
+                        <button class="pill-btn primary" id="btnVaultUnlock">解锁</button>
                       </div>
                     </div>
                     <div id="vaultOpenBox" style="display:none;">
@@ -868,7 +868,7 @@
                 <button class="opt" id="optOoc">包含场外话</button>
               </div>
               <button class="pill-btn primary block" id="btnDoExport">导出 EPUB</button>
-              <p class="sub" style="margin-top:12px;text-align:center;">EPUB 仅供导出阅读，本站不提供 EPUB 导入。要备份或迁移对话，请在「连接设置 · 加密保险库」里导出加密存档。</p>
+              <p class="sub" style="margin-top:12px;text-align:center;">EPUB 仅供导出阅读，本站不提供 EPUB 导入。要备份或迁移对话，请在「连接设置 · 安全」里导出加密存档。</p>
             </div>
 
             <!-- history / rewind sheet -->
@@ -1618,15 +1618,15 @@
               vault = { set:true, unlocked:true, salt: salt.buffer, key: key, fails:0,
                         verifier: { iv: bufToB64(iv.buffer), data: bufToB64(ct) } };
               $("vaultPw1").value = ""; $("vaultPw2").value = "";
-              vaultStatus("保险库状态：<b>已启用并解锁</b><br />凭据层 · localStorage（加密）<br />数据层 · " + storageBackendLabel() + "（加密）<br />密钥派生 · PBKDF2 × " + VAULT_ITER.toLocaleString("en-US") + " + AES-256-GCM");
+              vaultStatus("<b>已启用并解锁</b><br />凭据层 · localStorage（加密）<br />数据层 · " + storageBackendLabel() + "（加密）<br />密钥派生 · PBKDF2 × " + VAULT_ITER.toLocaleString("en-US") + " + AES-256-GCM");
               toast("加密存储已启用，密钥不会被保存，请自行保管");
             });
           }).catch(function(){ toast("加密初始化失败，请重试"); });
         });
         $("btnVaultLock").addEventListener("click", function(){
           vault.unlocked = false; vault.key = null;
-          vaultStatus("保险库状态：<b>已锁定</b><br />输入你的密钥解锁。连续输错 5 次将清除本机全部存储。");
-          toast("保险库已锁定");
+          vaultStatus("<b>已锁定</b><br />输入你的密钥解锁。连续输错 5 次将清除本机全部存储。");
+          toast("已锁定");
         });
         $("btnVaultUnlock").addEventListener("click", function(){
           var pw = $("vaultPwUnlock").value;
@@ -1636,14 +1636,14 @@
             return crypto.subtle.decrypt({ name:"AES-GCM", iv: new Uint8Array(b64ToBuf(v.iv)) }, key, b64ToBuf(v.data)).then(function(){
               vault.key = key; vault.unlocked = true; vault.fails = 0;
               $("vaultPwUnlock").value = "";
-              vaultStatus("保险库状态：<b>已启用并解锁</b><br />凭据层 · localStorage（加密）<br />数据层 · " + storageBackendLabel() + "（加密）");
-              toast("保险库已解锁");
+              vaultStatus("<b>已启用并解锁</b><br />凭据层 · localStorage（加密）<br />数据层 · " + storageBackendLabel() + "（加密）");
+              toast("已解锁");
             });
           }).catch(function(){
             vault.fails++;
             $("vaultPwUnlock").value = "";
             if(vault.fails >= 5){ wipeAllLocal(); return; }
-            vaultStatus("保险库状态：<b>已锁定</b><br /><span class='warn'>密钥错误（第 " + vault.fails + " 次），还剩 " + (5 - vault.fails) + " 次，之后将清除本机全部存储。</span>");
+            vaultStatus("<b>已锁定</b><br /><span class='warn'>密钥错误（第 " + vault.fails + " 次），还剩 " + (5 - vault.fails) + " 次，之后将清除本机全部存储。</span>");
             toast("密钥错误，还剩 " + (5 - vault.fails) + " 次机会");
           });
         });
@@ -1654,7 +1654,7 @@
           setImageModel("");
           document.querySelectorAll("#imageRow .opt").forEach(function(o, i){ o.classList.toggle("on", i === 0); });
           resetSession(true);
-          vaultStatus("保险库状态：<b>未设定密钥</b><br />此前数据已因连续输错密钥被全部清除。重新设定密钥后可再次启用加密存储。");
+          vaultStatus("<b>未设定密钥</b><br />此前数据已因连续输错密钥被全部清除。重新设定密钥后可再次启用加密存储。");
           showScreen("settings");
           toast("密钥连续错误 5 次：本机全部存储已清除");
         }
@@ -1667,7 +1667,7 @@
             character: state.char, turns: turns.length, messages: messages });
         }
         $("btnExportArchive").addEventListener("click", function(){
-          if(!vault.unlocked || !vault.key){ toast("先解锁保险库再导出存档"); return; }
+          if(!vault.unlocked || !vault.key){ toast("先解锁再导出存档"); return; }
           var iv = crypto.getRandomValues(new Uint8Array(12));
           crypto.subtle.encrypt({ name:"AES-GCM", iv: iv }, vault.key, new TextEncoder().encode(collectArchive())).then(function(ct){
             var payload = { app:"rp-client-archive", encrypted:true, kdf:"PBKDF2-HMAC-SHA-256",
@@ -1689,13 +1689,13 @@
             var payload;
             try { payload = JSON.parse(txt); } catch(e){ toast("不是有效的存档文件"); return; }
             if(!payload.encrypted || !payload.salt || !payload.data){ toast("该文件不是加密存档（EPUB 等文件不可导入）"); return; }
-            if(!vault.unlocked){ toast("请先用存档的密钥设定并解锁保险库，再导入"); return; }
+            if(!vault.unlocked){ toast("请先用存档的密钥设定并解锁，再导入"); return; }
             deriveVaultKeyFromCurrent(payload);
           });
           function deriveVaultKeyFromCurrent(payload){
             /* re-derive from the currently unlocked vault key material is not possible;
                use the verifier path: try decrypting with the unlocked key only when salts match */
-            if(bufToB64(vault.salt) !== payload.salt){ toast("该存档使用的密钥与当前保险库不同，无法解密"); return; }
+            if(bufToB64(vault.salt) !== payload.salt){ toast("该存档使用的密钥与当前密钥不同，无法解密"); return; }
             crypto.subtle.decrypt({ name:"AES-GCM", iv: new Uint8Array(b64ToBuf(payload.iv)) }, vault.key, b64ToBuf(payload.data))
               .then(function(pt){
                 var data = JSON.parse(new TextDecoder().decode(pt));

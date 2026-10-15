@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { DEFAULT_CARD_ID, PRESET_CARDS, type CardEntry } from "@/lib/cards";
+import type { CardEntry } from "@/lib/cards";
 import {
   describeApiKey,
   withImage,
@@ -28,18 +28,16 @@ import {
   subscribeVault,
   wipeVaultData,
 } from "@/lib/vault";
+import { explainError, loadLocale } from "@/lib/i18n";
+import { loadUnfiltered } from "@/lib/cards/unfiltered";
+import { watchRememberedSession } from "@/lib/vault/remember";
+import { useI18n } from "@/lib/i18n/use-i18n";
 import { ChatScreen } from "./ChatScreen";
 import { SettingsScreen } from "./SettingsScreen";
 import { ShelfScreen } from "./ShelfScreen";
 import { VaultGate } from "./VaultGate";
 
 type Screen = "chat" | "shelf" | "settings";
-
-const BACKEND_LABEL: Record<string, string> = {
-  indexeddb: "IndexedDB",
-  localstorage: "localStorage（本机不支持 IndexedDB，已自动回退）",
-  memory: "内存（本机不可用持久化存储）",
-};
 
 /** 导出成文本文件。纯浏览器行为，不经过服务端。 */
 function downloadText(text: string, filename: string): void {
@@ -57,7 +55,7 @@ function downloadText(text: string, filename: string): void {
 }
 
 /**
- * 应用外壳：管画面切换、当前角色、连接配置，以及保险库的解锁状态。
+ * 应用外壳：管画面切换、当前角色、连接配置，以及解锁状态。
  *
  * 未解锁时整个聊天和设置都不挂载——它们的数据在密文里，
  * 没有密钥读不出来，挂载了也只会显示空壳。
@@ -66,11 +64,13 @@ function downloadText(text: string, filename: string): void {
  */
 export function AppShell() {
   const [screen, setScreen] = useState<Screen>("chat");
-  const [cardId, setCardId] = useState(DEFAULT_CARD_ID);
+  /** 没有默认卡：进来先进角色架，挑一张或在线拉一张再开聊 */
+  const [cardId, setCardId] = useState<string | null>(null);
   const [edited, setEdited] = useState<ProviderConfig | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [archiveMessage, setArchiveMessage] = useState<string | null>(null);
   const [archiveNote, setArchiveNote] = useState<string | null>(null);
+  const { t } = useI18n();
 
   const vault = useSyncExternalStore(
     subscribeVault,
@@ -89,18 +89,24 @@ export function AppShell() {
   );
 
   useEffect(() => {
+    loadLocale();
+    loadUnfiltered();
     void probeVault();
   }, []);
 
+  useEffect(() => {
+    if (vault.status !== "unlocked") return;
+    return watchRememberedSession(() => lockVault());
+  }, [vault.status]);
+
+  /** 角色全部来自本机：在线下载或 JSON 导入，代码里不放别人的卡。 */
   const cards = useMemo<CardEntry[]>(
-    () => [
-      ...PRESET_CARDS,
-      ...imported.map((record) => ({
+    () =>
+      imported.map((record) => ({
         id: record.id,
         card: record.card,
         source: "imported" as const,
       })),
-    ],
     [imported],
   );
 
@@ -124,12 +130,12 @@ export function AppShell() {
         const text = await buildArchiveWithCards(sessions, imported);
         downloadText(text, `ai-rp-archive-${new Date().toISOString().slice(0, 10)}.json`);
       } catch (caught) {
-        setArchiveMessage(caught instanceof Error ? caught.message : "导出失败");
+        setArchiveMessage(explainError(caught, t));
       } finally {
         setArchiveBusy(false);
       }
     })();
-  }, [imported]);
+  }, [imported, t]);
 
   const handleImport = useCallback((file: File | undefined) => {
     if (!file) return;
@@ -139,30 +145,41 @@ export function AppShell() {
       try {
         const result = await readArchiveFile(file);
         setArchiveMessage(null);
-        setArchiveNote(`已导入 ${result.sessions} 个会话、${result.cards} 张卡`);
+        setArchiveNote(t("shell.imported", { sessions: result.sessions, cards: result.cards }));
       } catch (caught) {
-        setArchiveMessage(caught instanceof Error ? caught.message : "导入失败");
+        setArchiveMessage(explainError(caught, t));
       } finally {
         setArchiveBusy(false);
       }
     })();
-  }, []);
+  }, [t]);
 
-  if (!current) {
+  if (vault.status !== "unlocked") {
     return (
-      <div className="grid h-dvh place-items-center bg-background px-6 text-center text-[14px] text-ink-2">
-        没有可用的角色卡。检查 data/cards/ 下的 JSON 是否合法。
+      <div className="h-dvh overflow-y-auto bg-background">
+        <div className="mx-auto max-w-[520px] px-6 py-10">
+          <VaultGate
+            status={vault.status}
+            attemptsLeft={vault.attemptsLeft}
+            notice={vault.notice}
+          />
+        </div>
       </div>
     );
   }
 
-  if (vault.status !== "unlocked") {
+  // 一张卡都没有时没有对话可显示，只能留在角色架。
+  // 玩家正在挑卡，所以新卡到位后也留在角色架，想聊就点卡片上的「开始」。
+  if (!current) {
     return (
-      <VaultGate
-        status={vault.status}
-        attemptsLeft={vault.attemptsLeft}
-        backend={vault.backend}
-        notice={vault.notice}
+      <ShelfScreen
+        cards={cards}
+        currentCardId=""
+        onSelect={(id) => {
+          setCardId(id);
+          setScreen("chat");
+        }}
+        onCardsChanged={() => setScreen("shelf")}
       />
     );
   }
@@ -191,6 +208,7 @@ export function AppShell() {
             setScreen("chat");
           }}
           onBack={() => setScreen("chat")}
+          onCardsChanged={() => setScreen("shelf")}
         />
       ) : null}
 
@@ -208,7 +226,6 @@ export function AppShell() {
             setEdited(null);
             await wipeVaultData();
           }}
-          backend={BACKEND_LABEL[vault.backend ?? ""] ?? null}
           onExport={handleExport}
           onImport={handleImport}
           archiveBusy={archiveBusy}

@@ -1,10 +1,27 @@
 import type { ChatMessage } from "@/lib/prompt/types";
 
-/** 流式事件。第一版只做 Chat Completions，所以只有文本增量。 */
+/** 流式事件。文本增量，以及函数调用的参数碎片。 */
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
+  | {
+      type: "tool";
+      index: number;
+      id?: string;
+      name?: string;
+      arguments?: string;
+    }
   | { type: "done"; finishReason?: string }
   | { type: "error"; message: string };
+
+/** OpenAI Chat Completions 的 tools 字段。中继按这个形状接收。 */
+export interface ChatTool {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
 
 export interface ChatRequest {
   /**
@@ -18,6 +35,10 @@ export interface ChatRequest {
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
+  /** 不传就不向模型提供函数调用 */
+  tools?: ChatTool[];
+  /** 贴在最后一条用户消息上的 jpeg data URL */
+  image?: string;
 }
 
 /**

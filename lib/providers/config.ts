@@ -1,10 +1,22 @@
 import rawConfig from "@/data/providers.json";
 
+/** 预设里的一个模型。旧数据可能只是名字字符串。 */
+export type ProviderModel = string | { id: string; vision?: boolean };
+
+export function modelName(model: ProviderModel | undefined): string {
+  if (!model) return "";
+  return typeof model === "string" ? model : model.id;
+}
+
+export function modelSeesImages(model: ProviderModel | undefined): boolean {
+  return typeof model === "object" && !!model && model.vision === true;
+}
+
 export interface ProviderPreset {
   id: string;
   name: string;
   baseURL: string;
-  models: string[];
+  models: ProviderModel[];
   /** 「获取 Key」跳转地址 */
   keyUrl: string;
   docUrl: string;

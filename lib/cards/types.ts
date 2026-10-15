@@ -67,7 +67,7 @@ export interface CharacterCard {
 export const CARD_SPEC = "chara_card_v2";
 export const CARD_SPEC_VERSION = "2.0";
 
-/** 卡在界面上的身份：预设来自 data/cards/，导入的来自本地存储。 */
+/** 卡在界面上的身份：在线下载或本地导入，全都存在本机。 */
 export interface CardEntry {
   id: string;
   card: CharacterCard;

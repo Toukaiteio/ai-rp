@@ -1,3 +1,5 @@
+import type { Journal, ToolTrace } from "@/lib/memory/journal";
+
 export type ChatRole = "system" | "user" | "assistant";
 
 export interface ChatMessage {
@@ -128,6 +130,10 @@ export interface AssembleInput {
   turn?: number;
   summary?: RollingSummary;
   facts?: KeyFacts;
+  /** 本机记下的人物、地点、事件。放在历史后面，不进前缀缓存 */
+  journal?: Journal;
+  /** 这一轮已经执行过的函数调用结果，只在续写时带上 */
+  toolTrace?: ToolTrace[];
   authorNote?: AuthorNote;
   style?: StyleId;
   userName?: string;

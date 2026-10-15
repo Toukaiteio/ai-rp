@@ -7,7 +7,14 @@ export {
 } from "./validate";
 export type { ParseResult } from "./validate";
 export { downloadCard, readCardFile } from "./io";
-export { PRESET_CARDS, DEFAULT_CARD_ID, findPresetCard } from "./presets";
+export { extractCardJson } from "./png";
+export type { OnlineCardItem, OnlineCardSource } from "./online";
+export {
+  ONLINE_SOURCE,
+  normalizeOnlineCard,
+  onlineCardPageUrl,
+  onlineCardPngUrl,
+} from "./online";
 
 import type { CharacterCardData } from "./types";
 

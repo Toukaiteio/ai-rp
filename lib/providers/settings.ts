@@ -1,5 +1,12 @@
 import { DEFAULT_CG_BUDGET, DEFAULT_CG_THRESHOLD, DEFAULT_IMAGE_STYLE, type ImageStyleId } from "@/lib/image";
-import { getDefaultProvider, listProviders } from "./config";
+import { BROWSER_PROVIDER_ID } from "@/lib/browser-model";
+import {
+  findProvider,
+  getDefaultProvider,
+  listProviders,
+  modelName,
+  modelSeesImages,
+} from "./config";
 
 export interface ProviderConfig {
   providerId: string;
@@ -13,6 +20,8 @@ export interface ProviderConfig {
   baseURL: string;
   /** 0 到 2 */
   temperature: number;
+  /** 当前选中的模型能不能看图。预设模型会带上，自定义名字靠开关。 */
+  vision: boolean;
   /** 生图。model 为空表示没配，界面上的 CG 按钮保持禁用。 */
   image: ImageSettings;
 }
@@ -56,6 +65,12 @@ export function withImage(config: Partial<ProviderConfig> | null | undefined): P
     ...base,
     ...config,
     apiKey: config.apiKey ?? "",
+    vision:
+      typeof config.vision === "boolean"
+        ? config.vision
+        : modelSeesImages(findProvider(config.providerId ?? base.providerId)?.models.find(
+            (item) => modelName(item) === (config.model ?? base.model),
+          )),
     image: { ...defaultImageSettings(), ...(config.image ?? {}) },
   };
 }
@@ -64,10 +79,11 @@ export function defaultProviderConfig(): ProviderConfig {
   const preset = getDefaultProvider();
   return {
     providerId: preset.id,
-    model: preset.models[0] ?? "",
+    model: modelName(preset.models[0]),
     apiKey: "",
     baseURL: "",
     temperature: 0.9,
+    vision: modelSeesImages(preset.models[0]),
     image: defaultImageSettings(),
   };
 }
@@ -77,9 +93,23 @@ export function selectableProviders() {
   return listProviders();
 }
 
-/** 已经配好 Key 和模型才能发请求。 */
+/** 已经配好 Key 和模型才能走远程接口。 */
 export function isConfigured(config: ProviderConfig): boolean {
   return config.apiKey.trim().length > 0 && config.model.trim().length > 0;
+}
+
+/**
+ * 浏览器里的 LanguageModel 已经能响应时：
+ * 选了「浏览器原生」，或者还没填 Key，就用它，不再催着去配提供商。
+ */
+export function usesBrowserModel(config: ProviderConfig, browserReady: boolean): boolean {
+  if (!browserReady) return false;
+  if (config.providerId === BROWSER_PROVIDER_ID) return true;
+  return config.apiKey.trim().length === 0;
+}
+
+export function canSend(config: ProviderConfig, browserReady: boolean): boolean {
+  return usesBrowserModel(config, browserReady) || isConfigured(config);
 }
 
 /** 界面上显示用的 Key 摘要。只露前 4 位与长度，够认出来是哪一把，不够还原。 */

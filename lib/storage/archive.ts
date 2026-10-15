@@ -48,7 +48,7 @@ export async function buildArchiveWithCards(
 
 export async function readArchiveFile(file: File): Promise<{ sessions: number; cards: number }> {
   if (file.size > MAX_FILE_BYTES) {
-    throw new VaultError("文件超过 32MB", "bad_passphrase");
+    throw new VaultError("文件超过 32MB", "bad_passphrase", "archive_too_big");
   }
   const text = await file.text();
   const { payload } = await importArchive(text);

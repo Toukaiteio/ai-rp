@@ -189,6 +189,123 @@
       transform: rotate(360deg);
     }
   }
+
+  /* 自动解锁的时长：从开关下方向两侧散开，收起时回到原处 */
+  .remember-spread {
+    animation: remember-spread 180ms ease-out both;
+  }
+
+  .remember-collapse {
+    animation: remember-collapse 150ms ease-in both;
+  }
+
+  @keyframes remember-spread {
+    from {
+      opacity: 0;
+      transform: translate(var(--remember-x), -6px) scale(0.8);
+    }
+    to {
+      opacity: 1;
+      transform: translate(0, 0) scale(1);
+    }
+  }
+
+  @keyframes remember-collapse {
+    from {
+      opacity: 1;
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translate(var(--remember-x), -6px) scale(0.8);
+    }
+  }
+
+  /* 输入框下方的提示需要被看见时（还没配密钥）闪红几下，
+     聚焦输入框就重放一次，文字颜色渐变进出，不做突兀的开关式闪烁。 */
+  .hint-alert {
+    animation: hint-alert 900ms ease-in-out 3 both;
+  }
+
+  @keyframes hint-alert {
+    0%,
+    100% {
+      color: var(--ink-2);
+      text-shadow: none;
+    }
+    45% {
+      color: var(--danger);
+      text-shadow: 0 0 14px color-mix(in srgb, var(--danger) 45%, transparent);
+    }
+  }
+
+  /* 角色卡默认只露名字与标签。窄屏没有悬停，简介就留在卡片里。
+     这两个块自己管 display：卡片上不能再挂 flex 这类工具类，
+     否则 utilities 层会盖掉这里的 none。 */
+  .card-info-inline {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .card-info-hover {
+    display: none;
+  }
+
+  /* 标签排成一行不换行，多了就裁掉，不把卡片撑开 */
+  .card-tags {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  .card-name {
+    container-type: inline-size;
+    overflow: hidden;
+  }
+
+  .card-name > span {
+    display: inline-block;
+    min-width: 100%;
+    white-space: nowrap;
+  }
+
+  /* PC 上悬停或键盘聚焦时，简介与卡级操作压在画面上浮出，卡片总高不变。
+     名字过长时同一个动作把它横向推到底：容器查询单位拿得到可见宽度，
+     短名字算出来正好是 0，不会乱动。 */
+  @media (hover: hover) and (min-width: 768px) {
+    .card-info-inline {
+      display: none;
+    }
+
+    .card-info-hover {
+      display: flex;
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition:
+        opacity 200ms ease,
+        visibility 200ms;
+    }
+
+    .group:hover .card-info-hover,
+    .group:focus-within .card-info-hover {
+      visibility: visible;
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .card-name > span {
+      transition: transform 900ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+
+    .group:hover .card-name > span,
+    .group:focus-within .card-name > span {
+      transform: translateX(calc(-100% + 100cqw));
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -199,5 +316,22 @@
   .cursor-blink,
   .spin-ring {
     animation: none;
+  }
+
+  .remember-spread,
+  .remember-collapse {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+
+  .card-name > span,
+  .card-info-hover {
+    transition-duration: 1ms;
+  }
+
+  /* 不强闪：只留一次慢速渐变，提示还在，但不晃眼睛 */
+  .hint-alert {
+    animation-duration: 600ms;
+    animation-iteration-count: 1;
   }
 }

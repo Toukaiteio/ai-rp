@@ -48,7 +48,7 @@ export function CgCard({
 
 /* 生图等待态：占住同样的位置和比例，避免生成完成后页面跳动 */
 export function CgLoading({
-  label = "正在生成场景 CG……",
+  label,
   className,
 }: {
   label?: ReactNode;

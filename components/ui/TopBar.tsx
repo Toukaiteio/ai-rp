@@ -1,90 +1,135 @@
 import type { ReactNode } from "react";
-import { IconBook, IconHistory, IconSliders } from "../icons";
+import { IconBook, IconBrain, IconHistory, IconSliders } from "../icons";
 import { IconButton } from "./Button";
-import { Capsule, CapsuleButton } from "./Chip";
 import { cn } from "./cn";
 
-/* 顶栏：角色入口在左，状态胶囊居中，低频入口收在右侧图标里。
-   compact 对应手机宽度——隐藏场景胶囊与角色副标题，只留头像和记忆占用。 */
+/* 顶栏本身没有底色、没有边框，只浮着左右两块：
+   左边一个大胶囊（头像、名字、标签），右边四个圆按钮。
+   记忆是大脑图标，外圈进度表示上下文占用的百分比。 */
 export function TopBar({
   avatar,
   name,
   subtitle,
-  scene,
-  memoryPercent,
+  memoryUsed = null,
+  whoLabel,
+  memoryLabel,
+  historyLabel,
+  exportLabel,
+  settingsLabel,
   onWho,
   onMemory,
   onHistory,
   onExport,
   onSettings,
+  /** 跟右侧圆按钮放在一起，尺寸由调用方对齐到 40px */
+  extra,
   compact = false,
   className,
 }: {
   avatar?: ReactNode;
   name: ReactNode;
   subtitle?: ReactNode;
-  scene?: ReactNode;
-  memoryPercent?: ReactNode;
+  /** 0 到 100。还没有统计时为 null，只画空环 */
+  memoryUsed?: number | null;
+  whoLabel: string;
+  memoryLabel: string;
+  historyLabel: string;
+  exportLabel: string;
+  settingsLabel: string;
   onWho?: () => void;
   onMemory?: () => void;
   onHistory?: () => void;
   onExport?: () => void;
   onSettings?: () => void;
+  extra?: ReactNode;
   compact?: boolean;
   className?: string;
 }) {
+  const used =
+    memoryUsed == null ? null : Math.min(100, Math.max(0, Math.round(memoryUsed)));
+
   return (
-    <div
-      className={cn(
-        "flex shrink-0 items-center gap-[10px] border-b border-line px-4 py-3",
-        className,
-      )}
-    >
+    <div className={cn("flex shrink-0 items-center gap-1.5 bg-transparent px-3 py-3 md:gap-3 md:px-4", className)}>
       <button
         type="button"
         onClick={onWho}
-        aria-label="切换角色"
-        className="flex min-w-0 items-center gap-[10px] border-0 bg-transparent p-0 text-left"
+        aria-label={whoLabel}
+        className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-pill border border-line bg-surface p-0 text-left transition-colors hover:border-line-strong md:h-auto md:w-auto md:max-w-[46%] md:min-w-0 md:justify-start md:gap-2.5 md:py-1 md:pr-4 md:pl-1"
       >
-        <span className="size-[42px] shrink-0 overflow-hidden rounded-pill bg-surface-2">
+        <span className="size-full shrink-0 overflow-hidden rounded-pill bg-surface-2 md:size-10">
           {avatar}
         </span>
-        <span className="min-w-0">
-          <span className="block truncate font-serif text-[16.5px] leading-tight font-black text-ink">
+        <span className="hidden min-w-0 py-0.5 pr-1 md:block">
+          <span className="block truncate font-serif text-[15.5px] leading-tight font-black text-ink">
             {name}
           </span>
           {subtitle && !compact ? (
-            <span className="block truncate text-xs text-ink-2">
-              {subtitle}
-            </span>
+            <span className="block truncate text-[12px] leading-tight text-ink-2">{subtitle}</span>
           ) : null}
         </span>
       </button>
 
-      {scene && !compact ? (
-        <Capsule className="ml-1">{scene}</Capsule>
-      ) : null}
-
       <span className="flex-1" />
 
-      <CapsuleButton
-        onClick={onMemory}
-        aria-label="查看记忆与上下文"
-        className={compact ? "px-2.5" : undefined}
-      >
-        <span className={compact ? "hidden" : undefined}>记忆</span>
-        {memoryPercent}
-      </CapsuleButton>
-
-      <IconButton onClick={onHistory} aria-label="回退消息与重置会话">
-        <IconHistory />
-      </IconButton>
-      <IconButton onClick={onExport} aria-label="导出为 EPUB">
-        <IconBook />
-      </IconButton>
-      <IconButton onClick={onSettings} aria-label="连接设置">
-        <IconSliders />
-      </IconButton>
+      <div className="flex shrink-0 items-center gap-1 md:gap-2">
+        <MemoryButton percent={used} label={memoryLabel} onClick={onMemory} />
+        <IconButton onClick={onHistory} aria-label={historyLabel}>
+          <IconHistory />
+        </IconButton>
+        <IconButton onClick={onExport} aria-label={exportLabel}>
+          <IconBook />
+        </IconButton>
+        <IconButton onClick={onSettings} aria-label={settingsLabel}>
+          <IconSliders />
+        </IconButton>
+        {extra}
+      </div>
     </div>
+  );
+}
+
+/** 大脑图标外圈一环。环的实线长度就是占用百分比。 */
+function MemoryButton({
+  percent,
+  label,
+  onClick,
+}: {
+  percent: number | null;
+  label: string;
+  onClick?: () => void;
+}) {
+  /* 和其他 IconButton 同一档：40px 的圆，描边落在外缘，图标 19px。 */
+  const radius = 19;
+  const circumference = 2 * Math.PI * radius;
+  const filled = percent == null ? 0 : (percent / 100) * circumference;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="relative grid size-10 shrink-0 place-items-center rounded-pill bg-surface text-ink"
+    >
+      <svg
+        viewBox="0 0 40 40"
+        className="pointer-events-none absolute inset-0 size-10 -rotate-90 overflow-visible"
+        aria-hidden="true"
+      >
+        <circle cx="20" cy="20" r={radius} fill="none" stroke="var(--line)" strokeWidth="1.5" />
+        {percent != null && percent > 0 ? (
+          <circle
+            cx="20"
+            cy="20"
+            r={radius}
+            fill="none"
+            stroke="var(--ink)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeDasharray={`${filled} ${circumference - filled}`}
+          />
+        ) : null}
+      </svg>
+      <IconBrain className="size-[19px]" />
+    </button>
   );
 }
