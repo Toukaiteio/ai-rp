@@ -7,12 +7,8 @@ export interface MessageBlock {
   text: string;
 }
 
-const TAG = "(narr|dlg|scene|player)";
-const OPEN_WITH_CLOSE = new RegExp(
-  `<${TAG}(?:\\s+who="([^"]*)")?>([\\s\\S]*?)<\\/\\1>`,
-  "g",
-);
-const OPEN_ONLY = new RegExp(`^\\s*<${TAG}(?:\\s+who="([^"]*)")?>([\\s\\S]*)$`);
+const BLOCK_TAG = /<\s*(\/?)\s*(narr|dlg|scene|player)\b([^>]*)>/gi;
+const WHO_ATTRIBUTE = /\bwho\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
 
 /**
  * 把模型输出拆成块。
@@ -26,35 +22,56 @@ export function parseBlocks(raw: string): MessageBlock[] {
   if (!raw) return blocks;
 
   let last = 0;
+  let open: { kind: BlockKind; who?: string; textStart: number } | null = null;
   let match: RegExpExecArray | null;
 
-  OPEN_WITH_CLOSE.lastIndex = 0;
-  while ((match = OPEN_WITH_CLOSE.exec(raw)) !== null) {
-    const before = raw.slice(last, match.index).trim();
-    if (before) blocks.push({ kind: "dlg", text: before });
-    blocks.push({
-      kind: match[1] as BlockKind,
-      who: match[2] || undefined,
-      text: match[3].trim(),
-    });
-    last = match.index + match[0].length;
+  BLOCK_TAG.lastIndex = 0;
+  while ((match = BLOCK_TAG.exec(raw)) !== null) {
+    const closing = match[1] === "/";
+    const kind = match[2].toLowerCase() as BlockKind;
+
+    if (closing) {
+      if (open?.kind === kind) {
+        pushBlock(blocks, open.kind, raw.slice(open.textStart, match.index), open.who);
+        open = null;
+        last = match.index + match[0].length;
+      }
+      continue;
+    }
+
+    // If a malformed response starts another block before closing the previous
+    // one, keep both blocks visible instead of letting the first one swallow it.
+    if (open) {
+      pushBlock(blocks, open.kind, raw.slice(open.textStart, match.index), open.who);
+    } else {
+      pushDialogue(blocks, raw.slice(last, match.index));
+    }
+
+    const whoMatch = WHO_ATTRIBUTE.exec(match[3]);
+    open = {
+      kind,
+      who: whoMatch?.[1] ?? whoMatch?.[2] ?? undefined,
+      textStart: match.index + match[0].length,
+    };
   }
 
-  const tail = raw.slice(last).trim();
-  if (tail) {
-    const open = OPEN_ONLY.exec(tail);
-    if (open) {
-      blocks.push({
-        kind: open[1] as BlockKind,
-        who: open[2] || undefined,
-        text: open[3].trim(),
-      });
-    } else {
-      blocks.push({ kind: "dlg", text: tail });
-    }
+  if (open) {
+    pushBlock(blocks, open.kind, raw.slice(open.textStart), open.who);
+  } else {
+    pushDialogue(blocks, raw.slice(last));
   }
 
   return blocks;
+}
+
+function pushDialogue(blocks: MessageBlock[], text: string) {
+  const value = text.trim();
+  if (value) blocks.push({ kind: "dlg", text: value });
+}
+
+function pushBlock(blocks: MessageBlock[], kind: BlockKind, text: string, who?: string) {
+  const value = text.trim();
+  if (value) blocks.push({ kind, who, text: value });
 }
 
 /**
