@@ -26,7 +26,7 @@ export const zh = {
   "announce.empty": "暂无公告。",
   "announcement.policy-001.title": "公告",
   "announcement.policy-001.body":
-    "本站禁止涉及色情、反动、政治、宗教相关内容。\n本站不设内容审查：无相应资源支持，且不读取、不留存聊天内容。\n角色与剧情均由 AI 实时生成，请自行判断。",
+    "本站不支持色情、反动、政治、宗教等言论，请勿涉及相关内容。\n聊天记录加密保存在本机，服务端不留存。\n角色与剧情全部由 AI 实时生成，请自行判断是否继续。",
 
   "vault.github": "GitHub",
   "vault.placeholderSetup": "设置密钥，至少 {min} 个字符",
@@ -213,4 +213,3 @@ export const zh = {
 } as const;
 
 export type MessageKey = keyof typeof zh;
-  "shelf.chubRegionUnavailable": "Chub 当前国家/地区不可用，在线角色卡入口已隐藏。",

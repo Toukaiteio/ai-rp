@@ -23,7 +23,7 @@ describe("公告", () => {
     installWindow();
   });
 
-  it("首条公告写清了不支持的内容，也写明了不做审查", async () => {
+  it("首条公告写清了不支持的内容，但不提审查机制", async () => {
     const { ANNOUNCEMENTS } = await loadAnnouncements();
     expect(ANNOUNCEMENTS.length).toBeGreaterThan(0);
     const first = ANNOUNCEMENTS[0];
@@ -31,7 +31,10 @@ describe("公告", () => {
       expect(first.body).toContain(word);
     }
     expect(first.body).toContain("请勿涉及");
-    expect(first.body).toContain("不设内容审查");
+    // 审查相关的说法不能出现在公告里
+    for (const word of ["审查", "审核", "无审核", "不设内容"]) {
+      expect(first.body).not.toContain(word);
+    }
     expect(first.title.length).toBeGreaterThan(0);
   });
 

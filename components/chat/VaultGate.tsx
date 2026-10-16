@@ -127,7 +127,9 @@ export function VaultGate({
   }
 
   return (
-    <div className="relative flex h-dvh items-center justify-center bg-background px-6 pb-[18dvh]">
+    <div className="relative flex h-dvh items-start justify-center overflow-y-auto bg-background px-6 pt-[calc(41dvh_-_140px)] pb-10">
+      {/* 顶对齐而不是垂直居中：时长选项展开时只把下方内容往下挤，
+          不会把上面的输入框顶上去。41dvh - 140px 约等于原来居中时整块的上边缘。 */}
       <div className="absolute right-4 top-4 flex items-center gap-2">
         <a
           href="https://github.com/Toukaiteio/ai-rp"
@@ -168,15 +170,18 @@ export function VaultGate({
           </div>
 
           {isSetup && !archiveFile ? (
-            <input
-              type="password"
-              autoComplete="new-password"
-              spellCheck={false}
-              placeholder={t("vault.confirm")}
-              value={confirm}
-              onChange={(event) => setConfirm(event.target.value)}
-              className="w-full rounded-pill border border-line bg-surface px-5 py-3 text-center text-[14.5px] text-ink outline-none placeholder:text-ink-3 focus:border-line-strong"
-            />
+            <div className="flex items-center gap-2 rounded-pill border border-line bg-surface pr-1.5 pl-4 transition-colors focus-within:border-line-strong">
+              <IconLock className="size-[17px] shrink-0 text-ink-2" />
+              <input
+                type="password"
+                autoComplete="new-password"
+                spellCheck={false}
+                placeholder={t("vault.confirm")}
+                value={confirm}
+                onChange={(event) => setConfirm(event.target.value)}
+                className="min-w-0 flex-1 border-0 bg-transparent py-3 text-[14.5px] text-ink outline-none placeholder:text-ink-3"
+              />
+            </div>
           ) : null}
 
             <PillButton
@@ -194,7 +199,12 @@ export function VaultGate({
                   : t("vault.unlock")}
             </PillButton>
 
-          <RememberToggle ms={rememberMs} label={t("vault.remember")} />
+          {/* 开关和时长选项同一组：折叠时只占开关那一行，
+              展开时把下面的内容顺着曲线推下去，不留多余的间距 */}
+          <div className="flex flex-col">
+            <RememberToggle ms={rememberMs} label={t("vault.remember")} />
+            <RememberChoices open={rememberMs > 0} selected={rememberMs} />
+          </div>
 
           {isSetup && onImportArchive ? (
             <div className="mt-2 border-t border-line pt-3">
@@ -263,8 +273,6 @@ export function VaultGate({
             </p>
           ) : null}
         </form>
-
-        <RememberChoices open={rememberMs > 0} selected={rememberMs} />
       </div>
 
       <AnnouncementDialog open={announceOpen} onClose={() => setAnnounceOpen(false)} />
@@ -295,47 +303,43 @@ function rememberMotion(index: number, phase: "open" | "closed"): CSSProperties 
 
 function RememberChoices({ open, selected }: { open: boolean; selected: number }) {
   const { t } = useI18n();
-  const [present, setPresent] = useState(open);
-  const [phase, setPhase] = useState<"open" | "closed">(open ? "open" : "closed");
 
-  if (open) {
-    if (!present) setPresent(true);
-    if (phase !== "open") setPhase("open");
-  } else if (present && phase !== "closed") {
-    setPhase("closed");
-  }
-
-  if (!present) return null;
-
+  /* 高度用 0fr → 1fr 过渡，下方的组件才会跟着缓动下移而不是瞬移。
+     缓出曲线和项目里别处一致，不做匀速。 */
   return (
     <div
       className={cn(
-        "absolute inset-x-0 top-full mt-3 flex flex-wrap justify-center gap-1.5",
-        phase === "closed" && "pointer-events-none",
+        "grid overflow-hidden",
+        "transition-[grid-template-rows] duration-[220ms] ease-[cubic-bezier(0.22,0.61,0.36,1)]",
+        "motion-reduce:transition-none",
       )}
-      onAnimationEnd={(event) => {
-        if (phase !== "closed" || event.animationName !== "remember-collapse") return;
-        if (event.target !== event.currentTarget.querySelector("button")) return;
-        setPresent(false);
-      }}
+      style={{ gridTemplateRows: open ? "1fr" : "0fr" }}
+      {...(open ? {} : { inert: true })}
     >
-      {REMEMBER_OPTIONS.map((option, index) => (
-        <button
-          key={option.id}
-          type="button"
-          onClick={() => setRememberPref(option.ms)}
-          className={cn(
-            phase === "open" ? "remember-spread" : "remember-collapse",
-            "rounded-pill border px-2.5 py-1 text-[12px] transition-colors",
-            selected === option.ms
-              ? "border-selected-line bg-selected font-medium text-selected-ink"
-              : "border-line bg-surface text-ink-2 hover:border-line-strong hover:text-ink",
-          )}
-          style={rememberMotion(index, phase)}
-        >
-          {t(REMEMBER_LABEL[option.id])}
-        </button>
-      ))}
+      <div
+        className={cn(
+          "min-h-0 flex flex-wrap justify-center gap-1.5 pt-3",
+          !open && "pointer-events-none",
+        )}
+      >
+        {REMEMBER_OPTIONS.map((option, index) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => setRememberPref(option.ms)}
+            className={cn(
+              open ? "remember-spread" : "remember-collapse",
+              "rounded-pill border px-2.5 py-1 text-[12px] transition-colors",
+              selected === option.ms
+                ? "border-selected-line bg-selected font-medium text-selected-ink"
+                : "border-line bg-surface text-ink-2 hover:border-line-strong hover:text-ink",
+            )}
+            style={rememberMotion(index, open ? "open" : "closed")}
+          >
+            {t(REMEMBER_LABEL[option.id])}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
