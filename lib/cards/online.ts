@@ -51,6 +51,15 @@ export interface OnlineCardsPayload {
 export const ONLINE_PAGE_SIZE = 24;
 
 /**
+ * 只把 Chub 明确返回的地区限制识别出来。
+ * 普通的 403、网络失败和其它错误页面都不能据此隐藏在线角色卡入口。
+ */
+export function isChubRegionRestriction(status: number, responseText: string): boolean {
+  if (status !== 403) return false;
+  return /not\s+available\s+in\s+your\s+(?:country|region)/i.test(responseText);
+}
+
+/**
  * 浏览器直连的搜索地址。参数只会附加到固定的 Chub API 地址，调用方不能传入代理目标。
  */
 export function onlineSearchUrl(
@@ -58,10 +67,11 @@ export function onlineSearchUrl(
   page: number,
   includeAdult: boolean,
   tags: string[],
+  pageSize = ONLINE_PAGE_SIZE,
 ): string {
   const url = new URL(ONLINE_SOURCE.searchUrl);
   url.searchParams.set("namespace", "characters");
-  url.searchParams.set("first", String(ONLINE_PAGE_SIZE));
+  url.searchParams.set("first", String(pageSize));
   url.searchParams.set("page", String(page));
   url.searchParams.set("nsfw", includeAdult ? "true" : "false");
   if (query) url.searchParams.set("search", query);

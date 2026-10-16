@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CharacterCard,
   IconButton,
@@ -15,7 +15,11 @@ import {
   readCardFile,
   type CardEntry,
 } from "@/lib/cards";
-import { cardPortraitUrl } from "@/lib/cards/online";
+import {
+  cardPortraitUrl,
+  isChubRegionRestriction,
+  onlineSearchUrl,
+} from "@/lib/cards/online";
 import { addImportedCard, removeImportedCard } from "@/lib/storage/cards";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
@@ -45,8 +49,32 @@ export function ShelfScreen({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [chubRegionRestricted, setChubRegionRestricted] = useState(false);
   const [announceOpen, setAnnounceOpen] = useState(false);
   const { t } = useI18n();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    void fetch(onlineSearchUrl("", 1, false, [], 1), {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const responseText = await response.text();
+        if (active && isChubRegionRestriction(response.status, responseText)) {
+          setChubRegionRestricted(true);
+        }
+      })
+      .catch(() => {
+        // 探测失败不等于地区限制，在线入口仍照常显示。
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -88,6 +116,12 @@ export function ShelfScreen({
           {error ? (
             <div className="mb-4 rounded-md bg-danger-soft px-4 py-2.5 text-[13px] text-danger">
               {error}
+            </div>
+          ) : null}
+
+          {chubRegionRestricted ? (
+            <div className="mb-4 rounded-md bg-yellow-300 px-4 py-2.5 text-[13px] text-yellow-950">
+              {t("shelf.chubRegionUnavailable")}
             </div>
           ) : null}
 
@@ -165,7 +199,7 @@ export function ShelfScreen({
           }}
         />
 
-        <OnlineCards onAdded={onCardsChanged} />
+        {!chubRegionRestricted ? <OnlineCards onAdded={onCardsChanged} /> : null}
       </div>
       </div>
 

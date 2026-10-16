@@ -212,3 +212,4 @@ export const zh = {
 } as const;
 
 export type MessageKey = keyof typeof zh;
+  "shelf.chubRegionUnavailable": "Chub 当前国家/地区不可用，在线角色卡入口已隐藏。",

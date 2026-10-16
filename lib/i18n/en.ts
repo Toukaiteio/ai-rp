@@ -213,3 +213,4 @@ export const en: Record<MessageKey, string> = {
   "shell.exportedWithKdf": "Exported. Recovery parameters: salt={salt}, iterations={iterations}",
   "shell.restoringArchive": "Restoring archive…",
 };
+  "shelf.chubRegionUnavailable": "Chub is not available in your country or region. Online cards are hidden.",

@@ -6,6 +6,7 @@ import {
   cardPortraitUrl,
   normalizeOnlineCard,
   normalizeOnlineSearchResponse,
+  isChubRegionRestriction,
   onlineCardPageUrl,
   onlineCardPngUrl,
   onlineSearchUrl,
@@ -24,6 +25,18 @@ const NODE = {
 };
 
 describe("在线卡源归一化", () => {
+  it("只把带明确地区限制文案的 403 识别为 Chub 地区不可用", () => {
+    expect(isChubRegionRestriction(403, "This service is not available in your country.")).toBe(
+      true,
+    );
+    expect(isChubRegionRestriction(403, "This service is not available in your region.")).toBe(
+      true,
+    );
+    expect(isChubRegionRestriction(403, "Forbidden")).toBe(false);
+    expect(isChubRegionRestriction(200, "not available in your country")).toBe(false);
+    expect(isChubRegionRestriction(500, "not available in your region")).toBe(false);
+  });
+
   it("搜索 URL 固定指向 Chub 并保留搜索参数", () => {
     const url = new URL(onlineSearchUrl("魔法", 2, true, ["Fantasy", "RPG"]));
     expect(url.origin + url.pathname).toBe("https://api.chub.ai/search");
@@ -33,6 +46,7 @@ describe("在线卡源归一化", () => {
     expect(url.searchParams.get("nsfw")).toBe("true");
     expect(url.searchParams.get("search")).toBe("魔法");
     expect(url.searchParams.getAll("tags")).toEqual(["Fantasy", "RPG"]);
+    expect(new URL(onlineSearchUrl("", 1, false, [], 1)).searchParams.get("first")).toBe("1");
   });
 
   it("搜索响应先用 normalizeOnlineCard 清洗节点", () => {
