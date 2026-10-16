@@ -11,6 +11,20 @@ describe("消息块解析", () => {
     ]);
   });
 
+  it("不会把人物、旁白、人物的交替顺序解析成连续人物消息", () => {
+    expect(
+      parseBlocks(
+        '<dlg who="Fuka Shikuzaki">真的……</dlg>\n' +
+          "<narr>她想了想，眉头轻轻皱起来……</narr>\n" +
+          '<dlg who="Fuka Shikuzaki">我有一根差不多的。</dlg>',
+      ),
+    ).toEqual([
+      { kind: "dlg", text: "真的……", who: "Fuka Shikuzaki" },
+      { kind: "narr", text: "她想了想，眉头轻轻皱起来……", who: undefined },
+      { kind: "dlg", text: "我有一根差不多的。", who: "Fuka Shikuzaki" },
+    ]);
+  });
+
   it("兼容大小写标签和单引号 who", () => {
     expect(parseBlocks("<NARR>旁白。</NARR><DLG who='林晚晴'>坐。</DLG>")).toEqual([
       { kind: "narr", text: "旁白。", who: undefined },
