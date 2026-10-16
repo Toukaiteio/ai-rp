@@ -92,23 +92,6 @@ function writeCache(key: string, payload: CardsPayload): void {
   }
 }
 
-/** 远端头像加载失败就退回按名字生成的首字母头像。 */
-function RemoteAvatar({ src, name }: { src: string; name: string }) {
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) return <Avatar name={name} />;
-  return (
-    /* eslint-disable-next-line @next/next/no-img-element */
-    <img
-      src={src}
-      alt=""
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-      className="h-full w-full object-cover"
-    />
-  );
-}
-
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -414,7 +397,7 @@ export function OnlineCards({ onAdded }: { onAdded?: () => void }) {
                       className="flex items-center gap-3 rounded-md border border-line bg-surface-2 px-3 py-2.5"
                     >
                       <span className="size-11 shrink-0 overflow-hidden rounded-md bg-surface-3">
-                        <RemoteAvatar src={item.avatarUrl} name={item.name} />
+                        <Avatar name={item.name} src={item.avatarUrl} />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[14.5px] font-bold text-ink">

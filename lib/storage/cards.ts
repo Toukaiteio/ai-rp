@@ -120,10 +120,12 @@ export async function removeImportedCard(id: string): Promise<void> {
 
 /** 存档导入用：把一批卡直接写进去，按 id 去重。 */
 export async function replaceImportedCards(records: ImportedCardRecord[]): Promise<void> {
+  // 先更新内存镜像。导入期间页面可能已经开始挂载角色架，不能让它读到旧的空列表。
+  cached = [...records].sort((a, b) => b.importedAt - a.importedAt);
+  notify();
   for (const record of records) {
     await writeSlot("data", `${PREFIX}${record.id}`, record);
   }
-  await load();
 }
 
 export { readSlot as readCardSlot };

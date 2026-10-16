@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   ONLINE_SOURCE,
+  avatarProxyUrl,
+  avatarTarget,
+  cardPortraitUrl,
   normalizeOnlineCard,
   onlineCardPageUrl,
   onlineCardPngUrl,
 } from "./online";
+import type { CharacterCardData } from "./types";
 
 const NODE = {
   id: 109444,
@@ -102,5 +106,44 @@ describe("在线卡源归一化", () => {
     expect(onlineCardPngUrl("../etc")).toBeNull();
     expect(onlineCardPngUrl("")).toBeNull();
     expect(onlineCardPageUrl("https://evil.example/x")).toBeNull();
+  });
+});
+
+describe("立绘地址与中转", () => {
+  it("卡里带出处就拼得出卡源立绘地址", () => {
+    const url = cardPortraitUrl({
+      name: "Fuka",
+      extensions: { chub: { full_path: "shyzombie/fuka-shikuzaki-f2cea3d2" } },
+    } as unknown as CharacterCardData);
+    expect(url).toBe(
+      "https://avatars.charhub.io/avatars/shyzombie/fuka-shikuzaki-f2cea3d2/avatar.webp",
+    );
+  });
+
+  it("不是卡源来的卡拼不出立绘，路径不合规也不拼", () => {
+    expect(cardPortraitUrl({ name: "本地卡" } as CharacterCardData)).toBeNull();
+    expect(
+      cardPortraitUrl({
+        name: "越权",
+        extensions: { chub: { full_path: "../../etc/passwd" } },
+      } as unknown as CharacterCardData),
+    ).toBeNull();
+  });
+
+  it("中转只放行卡源图片主机", () => {
+    expect(
+      avatarTarget("https://avatars.charhub.io/avatars/a/b/avatar.webp")?.hostname,
+    ).toBe("avatars.charhub.io");
+    expect(avatarTarget("http://avatars.charhub.io/avatars/a/b/avatar.webp")).toBeNull();
+    expect(avatarTarget("https://example.com/steal.png")).toBeNull();
+    expect(avatarTarget("https://avatars.charhub.io.evil.com/x.png")).toBeNull();
+    expect(avatarTarget("不是地址")).toBeNull();
+  });
+
+  it("中转地址带着原始地址，编码后能原样取回", () => {
+    const target = "https://avatars.charhub.io/avatars/a/b/avatar.webp";
+    const proxied = avatarProxyUrl(target);
+    expect(proxied.startsWith("/api/cards/avatar?url=")).toBe(true);
+    expect(decodeURIComponent(proxied.split("url=")[1])).toBe(target);
   });
 });

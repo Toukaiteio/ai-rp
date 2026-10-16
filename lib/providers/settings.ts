@@ -1,8 +1,10 @@
 import { DEFAULT_CG_BUDGET, DEFAULT_CG_THRESHOLD, DEFAULT_IMAGE_STYLE, type ImageStyleId } from "@/lib/image";
 import { BROWSER_PROVIDER_ID } from "@/lib/browser-model";
+import { cleanApiKey } from "./apikey";
 import {
   findProvider,
   getDefaultProvider,
+  imageProviderForModel,
   listProviders,
   modelName,
   modelSeesImages,
@@ -27,6 +29,11 @@ export interface ProviderConfig {
 }
 
 export interface ImageSettings {
+  /**
+   * 选中的生图预设：提供商 id、"custom"（自己填）或空（关）。
+   * 选了提供商预设，模型名也一起定死：model 存的就是它第一个生图模型。
+   */
+  providerId: string;
   model: string;
   /** 空则沿用对话的 Base URL */
   baseURL: string;
@@ -43,6 +50,7 @@ export interface ImageSettings {
 
 export function defaultImageSettings(): ImageSettings {
   return {
+    providerId: "",
     model: "",
     baseURL: "",
     apiKey: "",
@@ -54,7 +62,26 @@ export function defaultImageSettings(): ImageSettings {
 }
 
 export function isImageConfigured(config: ProviderConfig): boolean {
+  if (!config.image.providerId) return false;
   return config.image.model.trim().length > 0;
+}
+
+/** 生图请求该按哪个提供商取地址。自定义或旧存档没有提供商时，按模型名回查。 */
+export function imageProviderId(config: ProviderConfig): string {
+  const selected = config.image.providerId;
+  if (selected && selected !== "custom") return selected;
+  return imageProviderForModel(config.image.model)?.id ?? config.providerId;
+}
+
+/** 旧存档只有 model，没有 providerId。按模型名认回提供商，认不出就是自定义。 */
+function migrateImage(value: Partial<ImageSettings> | undefined): ImageSettings {
+  const merged: ImageSettings = { ...defaultImageSettings(), ...(value ?? {}) };
+  if (value && !("providerId" in value)) {
+    merged.providerId = merged.model
+      ? imageProviderForModel(merged.model)?.id ?? "custom"
+      : "";
+  }
+  return merged;
 }
 
 /** 旧存档没有 image 字段。补上默认值，避免按钮判断时读到空。 */
@@ -71,7 +98,7 @@ export function withImage(config: Partial<ProviderConfig> | null | undefined): P
         : modelSeesImages(findProvider(config.providerId ?? base.providerId)?.models.find(
             (item) => modelName(item) === (config.model ?? base.model),
           )),
-    image: { ...defaultImageSettings(), ...(config.image ?? {}) },
+    image: migrateImage(config.image),
   };
 }
 
@@ -93,19 +120,22 @@ export function selectableProviders() {
   return listProviders();
 }
 
-/** 已经配好 Key 和模型才能走远程接口。 */
+/** 已经配好 Key 和模型才能走远程接口。判断用的是清洗后的 Key。 */
 export function isConfigured(config: ProviderConfig): boolean {
-  return config.apiKey.trim().length > 0 && config.model.trim().length > 0;
+  return cleanApiKey(config.apiKey).value.length > 0 && config.model.trim().length > 0;
 }
 
 /**
  * 浏览器里的 LanguageModel 已经能响应时：
  * 选了「浏览器原生」，或者还没填 Key，就用它，不再催着去配提供商。
+ *
+ * 只看清洗后的 Key：整段粘错（比如粘进来一句中文）等于没填 Key，
+ * 这时应该照旧回退到本机模型，而不是卡在「已配置」却发不出去。
  */
 export function usesBrowserModel(config: ProviderConfig, browserReady: boolean): boolean {
   if (!browserReady) return false;
   if (config.providerId === BROWSER_PROVIDER_ID) return true;
-  return config.apiKey.trim().length === 0;
+  return cleanApiKey(config.apiKey).value.length === 0;
 }
 
 export function canSend(config: ProviderConfig, browserReady: boolean): boolean {
@@ -114,7 +144,7 @@ export function canSend(config: ProviderConfig, browserReady: boolean): boolean 
 
 /** 界面上显示用的 Key 摘要。只露前 4 位与长度，够认出来是哪一把，不够还原。 */
 export function describeApiKey(key: string): string {
-  const trimmed = key.trim();
+  const trimmed = cleanApiKey(key).value;
   if (!trimmed) return "";
   const prefix = trimmed.slice(0, 4);
   return `${prefix}…（${trimmed.length} 位）`;

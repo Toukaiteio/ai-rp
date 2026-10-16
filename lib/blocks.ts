@@ -1,13 +1,13 @@
-export type BlockKind = "narr" | "dlg" | "scene" | "player";
+export type BlockKind = "narr" | "act" | "dlg" | "scene" | "player";
 
 export interface MessageBlock {
   kind: BlockKind;
-  /** 只有 dlg 块带说话人 */
+  /** dlg 和 act 块可以带说话人 */
   who?: string;
   text: string;
 }
 
-const BLOCK_TAG = /<\s*(\/?)\s*(narr|dlg|scene|player)\b([^>]*)>/gi;
+const BLOCK_TAG = /<\s*(\/?)\s*(narr|act|dlg|scene|player)\b([^>]*)>/gi;
 const WHO_ATTRIBUTE = /\bwho\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
 
 /**
@@ -64,6 +64,28 @@ export function parseBlocks(raw: string): MessageBlock[] {
   return blocks;
 }
 
+function speakerName(block: MessageBlock, cardName: string): string {
+  return block.who?.trim() || cardName;
+}
+
+/**
+ * 这段对白要不要接着上一句，省掉头像和名字。
+ * 中间只隔动作块，还是同一个人，就接着写。
+ * 隔了旁白、换场或玩家发言，要重新报一次名字。
+ */
+export function dialogueContinues(blocks: MessageBlock[], index: number, cardName: string): boolean {
+  const block = blocks[index];
+  if (!block || block.kind !== "dlg") return false;
+  const speaker = speakerName(block, cardName);
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const prev = blocks[i];
+    if (prev.kind === "act") continue;
+    if (prev.kind !== "dlg") return false;
+    return speakerName(prev, cardName) === speaker;
+  }
+  return false;
+}
+
 function pushDialogue(blocks: MessageBlock[], text: string) {
   const value = text.trim();
   if (value) blocks.push({ kind: "dlg", text: value });
@@ -85,8 +107,8 @@ function pushBlock(blocks: MessageBlock[], kind: BlockKind, text: string, who?: 
 export function blocksToRaw(blocks: MessageBlock[]): string {
   return blocks
     .map((block) => {
-      if (block.kind === "dlg") {
-        return `<dlg who="${block.who ?? ""}">${block.text}</dlg>`;
+      if (block.kind === "dlg" || block.kind === "act") {
+        return `<${block.kind} who="${block.who ?? ""}">${block.text}</${block.kind}>`;
       }
       return `<${block.kind}>${block.text}</${block.kind}>`;
     })
@@ -122,6 +144,8 @@ export function blocksToPlainText(
       switch (block.kind) {
         case "narr":
           return `${narratorMarker}${block.text}`;
+        case "act":
+          return block.text;
         case "scene":
           return `${sceneBrackets[0]}${block.text}${sceneBrackets[1]}`;
         case "player":

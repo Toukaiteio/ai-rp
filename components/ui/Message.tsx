@@ -59,7 +59,26 @@ export function NarratorBlock({ children }: { children: ReactNode }) {
   );
 }
 
+/* 当前角色的动作与心理活动：不显示头像和名字，但与对白保持同一文字栏。
+   和旁白共用左缘细线这个形状，靠颜色分开：旁白是中性灰，动作是淡黄。
+   全站只在这里破一次「不用色相」的规矩，因为这两块最容易看混。 */
+export function ActionBlock({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <div className="ml-12 min-w-0 flex-1">
+        <div className="-ml-[14px] border-l border-act-line pl-[13px]">
+          <div className="font-serif text-[15px] leading-[1.8] italic text-act [&_p]:m-0 [&_p]:mb-2.5 [&_p:last-child]:mb-0">
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* 角色对白：头像 + 姓名，正文墨色。
+   同一个人连着说几段时，后面的块传 continued：只留出同宽的左侧空槽，
+   头像和名字不再重复，正文仍然和第一条严格对齐。
    actions 用来把「重新生成 / 继续」这类操作贴在最后一条回复内部，
    和正文同一个文字栏，不额外占一层间距。 */
 export function DialogueBlock({
@@ -67,28 +86,39 @@ export function DialogueBlock({
   avatar,
   sceneTag,
   actions,
+  continued = false,
   children,
 }: {
   who: ReactNode;
   avatar?: ReactNode;
   sceneTag?: ReactNode;
   actions?: ReactNode;
+  /** 同一说话人的后续段落：不重复头像和名字 */
+  continued?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className="flex gap-3">
-      <div className="mt-0.5 size-9 shrink-0 overflow-hidden rounded-pill bg-surface-2">
-        {avatar}
-      </div>
+      {avatar ? (
+        continued ? (
+          <div className="mt-0.5 size-9 shrink-0" aria-hidden="true" />
+        ) : (
+          <div className="mt-0.5 size-9 shrink-0 overflow-hidden rounded-pill bg-surface-2">
+            {avatar}
+          </div>
+        )
+      ) : null}
       <div className="min-w-0 flex-1">
-        <div className="mb-[5px] flex items-center gap-2 text-[12.5px] text-ink-2">
-          {who}
-          {sceneTag ? (
-            <span className="rounded-pill border border-line px-[9px] py-px text-[11px] text-ink-2">
-              {sceneTag}
-            </span>
-          ) : null}
-        </div>
+        {continued ? null : (
+          <div className="mb-[5px] flex items-center gap-2 text-[12.5px] text-ink-2">
+            {who}
+            {sceneTag ? (
+              <span className="rounded-pill border border-line px-[9px] py-px text-[11px] text-ink-2">
+                {sceneTag}
+              </span>
+            ) : null}
+          </div>
+        )}
         <Prose>{children}</Prose>
         {actions}
       </div>
@@ -205,6 +235,19 @@ export function ChatColumn({
       )}
     >
       {children}
+    </div>
+  );
+}
+
+/* 建议输入前的分隔：一条细线加一个极小的说明。
+   操作胶囊和建议胶囊长得太像，挨在一起时看不出哪个是对这条回复的操作、
+   哪个是玩家接下来能说的话，所以用一条线加一行字把它们分开。 */
+export function SuggestDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="h-px flex-1 bg-line" aria-hidden="true" />
+      <span className="shrink-0 text-[11px] tracking-[0.08em] text-ink-3">{label}</span>
+      <span className="h-px flex-1 bg-line" aria-hidden="true" />
     </div>
   );
 }

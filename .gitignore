@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 本地抓模型输出用的临时文件与工具残留，别提交
+/probe-raw*.txt
+/fuka-tmp.json
+/.opencode/

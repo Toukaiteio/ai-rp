@@ -39,6 +39,20 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+/** 角色头像压成小图再进记忆和存档。1024 的原图一张就能占掉几百 KB。 */
+export async function shrinkPortrait(src: string): Promise<string> {
+  const image = await loadImage(src);
+  const edge = 128;
+  const scale = Math.min(1, edge / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("no-canvas");
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.72);
+}
+
 /** 只接受浏览器压出来的 data URL，拒绝别的地址，免得把任意 URL 转给上游。 */
 export function isChatImage(value: unknown): value is string {
   return typeof value === "string" && value.startsWith("data:image/jpeg;base64,") && value.length <= MAX_DATA_URL;

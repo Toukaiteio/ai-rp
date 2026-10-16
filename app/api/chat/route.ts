@@ -20,6 +20,7 @@ import {
   type ChatErrorInfo,
 } from "@/lib/providers";
 import { isChatImage } from "@/lib/chat-image";
+import { cleanApiKey, headerSafeValue } from "@/lib/providers/apikey";
 import { DICE_TOOL } from "@/lib/dice";
 import { MEMORY_TOOLS, normalizeJournal } from "@/lib/memory/journal";
 import type { Journal, ToolTrace } from "@/lib/memory/journal";
@@ -96,14 +97,19 @@ function asString(value: unknown): string | undefined {
 /**
  * Key 从请求头透传，只活在这一个请求的内存里。
  * 不接受 query 参数，避免 Key 落进访问日志与 Referer。
+ *
+ * 再过一遍 cleanApiKey：HTTP 头本身只可能是 ISO-8859-1，
+ * 但非浏览器客户端有可能塞进高位字节，清洗后统一当「没有 Key」处理，
+ * 好过把它原样丢给 SDK 换来一个看不懂的上游报错。
  */
 function readApiKey(request: Request): string | null {
   const authorization = request.headers.get("authorization");
   if (authorization) {
     const match = /^Bearer\s+(.+)$/i.exec(authorization.trim());
-    if (match) return match[1].trim();
+    if (match) return cleanApiKey(match[1]).value || null;
   }
-  return request.headers.get("x-api-key")?.trim() || null;
+  const fallback = request.headers.get("x-api-key");
+  return fallback ? cleanApiKey(fallback).value || null : null;
 }
 
 function parseMessages(value: unknown): ChatMessage[] | null {
@@ -372,7 +378,8 @@ export async function POST(request: Request): Promise<Response> {
     "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
-    "X-Provider": provider.name,
+    // 提供商名里的兜底文案是中文，直接进头会让 Response 构造抛异常
+    "X-Provider": headerSafeValue(provider.name),
     // 前缀指纹随响应头发下去，方便内测时核对缓存有没有串卡
     "X-Cache-Key": cacheKey,
   };
@@ -570,7 +577,8 @@ async function complete(request: Request, body: CompleteRequestBody): Promise<Re
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
-      "X-Provider": provider.name,
+      // 同上：provider.name 可能带中文兜底文案，不能直接进头
+      "X-Provider": headerSafeValue(provider.name),
     },
   });
 }

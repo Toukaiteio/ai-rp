@@ -1,8 +1,9 @@
 import type { CharacterCard } from "@/lib/cards/types";
-import { loadCardMemory, listCardMemories, replaceCardMemories, replaceSessions } from "./local";
+import { normalizeJournal } from "@/lib/memory/journal";
+import { loadCardMemory, listCardMemories, replaceCardMemories, replaceSessions, type CardMemory } from "./local";
 import { replaceImportedCards, type ImportedCardRecord } from "./cards";
 import type { ChatSession } from "./types";
-import { exportArchive, importArchive, VaultError } from "@/lib/vault";
+import { exportArchive, importArchive, importArchiveWithPassphrase, VaultError } from "@/lib/vault";
 
 /**
  * 存档导出 / 导入。整包用用户设定的密钥加密，文件里没有明文。
@@ -14,13 +15,19 @@ import { exportArchive, importArchive, VaultError } from "@/lib/vault";
 export interface ArchivePayload {
   sessions: ChatSession[];
   cards: ImportedCardRecord[];
-  memories: Array<{
-    cardId: string;
-    summary: unknown;
-    facts: unknown;
-    turn: number;
-    updatedAt: number;
-  }>;
+  /**
+   * 每张卡的长期记忆。journal 里有人物、地点、事件和生成的头像。
+   * 头像是 data URL，只存在这里，不进提示词。
+   */
+  memories: CardMemory[];
+}
+
+/** 导出前把记忆收成稳定形状，旧字段和新头像都留住。 */
+export function packMemories(list: CardMemory[]): CardMemory[] {
+  return list.map((memory) => ({
+    ...memory,
+    journal: normalizeJournal(memory.journal),
+  }));
 }
 
 const MAX_FILE_BYTES = 32 * 1024 * 1024;
@@ -29,7 +36,7 @@ export async function buildArchive(loadSessions: () => Promise<ChatSession[]>): 
   const payload: ArchivePayload = {
     sessions: await loadSessions(),
     cards: [],
-    memories: await listCardMemories(),
+    memories: packMemories(await listCardMemories()),
   };
   return exportArchive(payload);
 }
@@ -42,7 +49,7 @@ export async function buildArchiveWithCards(
   return exportArchive({
     sessions,
     cards,
-    memories: await listCardMemories(),
+    memories: packMemories(await listCardMemories()),
   });
 }
 
@@ -52,10 +59,38 @@ export async function readArchiveFile(file: File): Promise<{ sessions: number; c
   }
   const text = await file.text();
   const { payload } = await importArchive(text);
+  return restoreArchivePayload(payload);
+}
+
+export async function readArchiveFileWithPassphrase(
+  file: File,
+  passphrase: string,
+  params: import("@/lib/vault").VaultKdfParams,
+): Promise<{ sessions: number; cards: number }> {
+  const payload = await readArchivePayloadWithPassphrase(file, passphrase, params);
+  return restoreArchivePayload(payload);
+}
+
+export async function readArchivePayloadWithPassphrase(
+  file: File,
+  passphrase: string,
+  params: import("@/lib/vault").VaultKdfParams,
+): Promise<unknown> {
+  if (file.size > MAX_FILE_BYTES) {
+    throw new VaultError("文件超过 32MB", "bad_passphrase", "archive_too_big");
+  }
+  const text = await file.text();
+  const { payload } = await importArchiveWithPassphrase(text, passphrase, params);
+  return payload;
+}
+
+export async function restoreArchivePayload(payload: unknown): Promise<{ sessions: number; cards: number }> {
   const parsed = normalizePayload(payload);
-  await replaceSessions(parsed.sessions);
-  await replaceImportedCards(parsed.cards);
-  await replaceCardMemories(parsed.memories);
+  await Promise.all([
+    replaceSessions(parsed.sessions),
+    replaceImportedCards(parsed.cards),
+    replaceCardMemories(parsed.memories),
+  ]);
   return { sessions: parsed.sessions.length, cards: parsed.cards.length };
 }
 
@@ -78,9 +113,10 @@ function normalizePayload(payload: unknown): {
       )
     : [];
   const memories = Array.isArray(source.memories)
-    ? source.memories.filter(
-        (memory): memory is Awaited<ReturnType<typeof listCardMemories>>[number] =>
-          !!memory && typeof memory.cardId === "string",
+    ? packMemories(
+        source.memories.filter(
+          (memory): memory is CardMemory => !!memory && typeof memory.cardId === "string",
+        ),
       )
     : [];
   return { sessions, cards, memories };

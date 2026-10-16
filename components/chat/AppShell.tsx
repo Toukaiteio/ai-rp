@@ -13,7 +13,12 @@ import {
   subscribeImportedCards,
 } from "@/lib/storage/cards";
 import { getSessionStore } from "@/lib/storage";
-import { buildArchiveWithCards, readArchiveFile } from "@/lib/storage/archive";
+import {
+  buildArchiveWithCards,
+  readArchiveFile,
+  readArchivePayloadWithPassphrase,
+  restoreArchivePayload,
+} from "@/lib/storage/archive";
 import {
   getProviderConfigServerSnapshot,
   getProviderConfigSnapshot,
@@ -23,10 +28,13 @@ import {
 import {
   getVaultServerSnapshot,
   getVaultSnapshot,
+  getVaultKdfParams,
   lockVault,
   probeVault,
+  setupVault,
   subscribeVault,
   wipeVaultData,
+  type VaultKdfParams,
 } from "@/lib/vault";
 import { explainError, loadLocale } from "@/lib/i18n";
 import { loadUnfiltered } from "@/lib/cards/unfiltered";
@@ -68,6 +76,7 @@ export function AppShell() {
   const [cardId, setCardId] = useState<string | null>(null);
   const [edited, setEdited] = useState<ProviderConfig | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveRestoring, setArchiveRestoring] = useState(false);
   const [archiveMessage, setArchiveMessage] = useState<string | null>(null);
   const [archiveNote, setArchiveNote] = useState<string | null>(null);
   const { t } = useI18n();
@@ -129,6 +138,12 @@ export function AppShell() {
         const sessions = await store.list();
         const text = await buildArchiveWithCards(sessions, imported);
         downloadText(text, `ai-rp-archive-${new Date().toISOString().slice(0, 10)}.json`);
+        const kdf = getVaultKdfParams();
+        if (kdf) {
+          setArchiveNote(
+            t("shell.exportedWithKdf", { salt: kdf.salt, iterations: kdf.iterations }),
+          );
+        }
       } catch (caught) {
         setArchiveMessage(explainError(caught, t));
       } finally {
@@ -154,15 +169,38 @@ export function AppShell() {
     })();
   }, [t]);
 
+  const handleInitialArchiveImport = useCallback(
+    async (file: File, passphrase: string, params: VaultKdfParams, rememberMs: number) => {
+      setArchiveRestoring(true);
+      try {
+        const payload = await readArchivePayloadWithPassphrase(file, passphrase, params);
+        await setupVault(passphrase, passphrase, rememberMs, params);
+        return await restoreArchivePayload(payload);
+      } finally {
+        setArchiveRestoring(false);
+      }
+    },
+    [],
+  );
+
+  if (archiveRestoring) {
+    return (
+      <div className="grid h-dvh place-items-center bg-background px-6 text-[14px] text-ink-2">
+        {t("shell.restoringArchive")}
+      </div>
+    );
+  }
+
   if (vault.status !== "unlocked") {
     return (
       <div className="h-dvh overflow-y-auto bg-background">
         <div className="mx-auto max-w-[520px] px-6 py-10">
-          <VaultGate
-            status={vault.status}
-            attemptsLeft={vault.attemptsLeft}
-            notice={vault.notice}
-          />
+            <VaultGate
+              status={vault.status}
+              attemptsLeft={vault.attemptsLeft}
+              notice={vault.notice}
+              onImportArchive={handleInitialArchiveImport}
+            />
         </div>
       </div>
     );

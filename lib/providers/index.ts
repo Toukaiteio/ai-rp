@@ -20,10 +20,12 @@ export function getProvider(options: {
   apiKey: string;
   baseURL: string;
   timeoutMs?: number;
+  maxRetries?: number;
 }): ProviderAdapter {
   return createOpenAIProvider({
     apiKey: options.apiKey,
     baseURL: options.baseURL,
     timeoutMs: options.timeoutMs,
+    maxRetries: options.maxRetries,
   });
 }

@@ -29,6 +29,8 @@ export function escapeHtml(text: string): string {
 
 export const CHAPTER_CSS = [
   ".narr{margin:0.7em 0;line-height:1.7;}",
+  // 动作块用淡黄，和旁白的中性灰分开；阅读器底色多为白，色值要压深才够对比
+  ".act{margin:0.7em 0 0.7em 1.2em;line-height:1.7;font-style:italic;color:#7d6e24;}",
   ".dlg{margin:0.9em 0 0.9em 1.2em;line-height:1.7;}",
   ".player{margin:0.9em 0;line-height:1.7;text-align:right;}",
   ".who{font-weight:bold;}",
@@ -49,6 +51,7 @@ function blocksOf(message: ExportMessage, options: RenderOptions): MessageBlock[
 function renderBlock(block: MessageBlock, options: RenderOptions): string {
   const text = escapeHtml(block.text);
   if (block.kind === "narr") return `<p class="narr">${text}</p>`;
+  if (block.kind === "act") return `<p class="act">${text}</p>`;
   if (block.kind === "scene") return `<p class="scene">${text}</p>`;
   if (block.kind === "player") {
     return `<p class="player"><span class="who">${escapeHtml(options.userName)}</span> ${text}</p>`;

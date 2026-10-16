@@ -13,6 +13,7 @@ import {
 } from "react";
 import {
   ActPill,
+  ActionBlock,
   CgCard,
   CgLoading,
   ChatColumn,
@@ -29,23 +30,40 @@ import {
   SceneEvent,
   Sheet,
   SuggestChip,
+  SuggestDivider,
   SuggestRow,
   TopBar,
   TypingCursor,
   Veil,
 } from "@/components/ui";
-import { IconImage } from "@/components/icons";
+import { IconCheck, IconCopy, IconEdit, IconImage } from "@/components/icons";
 import { cn } from "@/components/ui/cn";
 import { hashSeed } from "@/lib/seed";
-import { parseBlocks, stripBlocks, type MessageBlock } from "@/lib/blocks";
+import { dialogueContinues, parseBlocks, type MessageBlock } from "@/lib/blocks";
 import { buildSuggestionMessages, parseSuggestions } from "@/lib/suggest";
-import { applyChatTool, emptyJournal, normalizeJournal, type Journal, type ToolTrace } from "@/lib/memory/journal";
+import {
+  applyChatTool,
+  emptyJournal,
+  normalizeJournal,
+  putPortrait,
+  type Journal,
+  type ToolTrace,
+} from "@/lib/memory/journal";
 import { adaptGreeting } from "@/lib/cards/builder-opening";
 import { openingGreetings } from "@/lib/cards/greetings";
 import type { CharacterCardData } from "@/lib/cards/types";
 import type { ChatMessage } from "@/lib/prompt/types";
 import type { KeyFacts, RollingSummary } from "@/lib/prompt/types";
-import { canSend, isConfigured, isImageConfigured, usesBrowserModel, type ProviderConfig } from "@/lib/providers/settings";
+import { presetChat } from "@/lib/providers/config";
+import {
+  canSend,
+  imageProviderId,
+  isConfigured,
+  isImageConfigured,
+  usesBrowserModel,
+  type ProviderConfig,
+} from "@/lib/providers/settings";
+import { authHeaders, cleanApiKey } from "@/lib/providers/apikey";
 import { createId, createSession, emptyCardMemory, getSessionStore, loadCardMemory, saveCardMemory } from "@/lib/storage";
 import type { ChatSession, StoredCg, StoredMessage } from "@/lib/storage";
 import {
@@ -57,12 +75,27 @@ import {
 } from "@/lib/image";
 import { decodeSseBuffer, readSseText } from "@/lib/wire";
 import { useI18n } from "@/lib/i18n/use-i18n";
-import { readChatImage } from "@/lib/chat-image";
+import { readChatImage, shrinkPortrait } from "@/lib/chat-image";
 import { embedDocument, normalizeDocument, readChatDocument, type ChatDocument } from "@/lib/chat-document";
-import { describeImage, probeBrowserModel, streamBrowserChat } from "@/lib/browser-model";
+import { BROWSER_PROVIDER_ID, describeImage, probeBrowserModel, streamBrowserChat } from "@/lib/browser-model";
 import { applyMacros, assemble, planBudget } from "@/lib/prompt";
+import { cardPortraitUrl } from "@/lib/cards/online";
 import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
 import { Avatar } from "./Avatar";
+
+/** 这次 remember_character 是不是第一次记下这个人。更新旧条目不重新出头像。 */
+function newCharacter(journal: Journal, raw: string): { name: string; detail: string } | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const record = parsed as { name?: unknown; detail?: unknown };
+    const name = typeof record.name === "string" ? record.name.replace(/\s+/g, " ").trim().slice(0, 24) : "";
+    if (!name || name in journal.characters) return null;
+    return { name, detail: typeof record.detail === "string" ? record.detail : "" };
+  } catch {
+    return null;
+  }
+}
 
 interface Turn {
   id: string;
@@ -142,6 +175,7 @@ function absorbToolCall(
 
 const SUGGESTION_TEMPERATURE = 0.8;
 const SUGGESTION_MAX_TOKENS = 160;
+
 /** 玩家那几轮在存储里带标记，导出时才能和旁白、对白区分开。 */
 function markPlayer(text: string): string {
   return `<player>${text}</player>`;
@@ -183,17 +217,28 @@ function AssistantTurn({
   content,
   streaming,
   cardName,
+  portraitUrl,
+  portraits,
   actions,
 }: {
   content: string;
   streaming: boolean;
   cardName: string;
+  /** 这张卡的立绘地址。没有就不画头像槽 */
+  portraitUrl?: string | null;
+  /** 生成出来的配角头像，按 who 的名字取 */
+  portraits?: Record<string, string>;
   actions?: ReactNode;
 }) {
   const { t } = useI18n();
-  const blocks: MessageBlock[] = parseBlocks(content);
-  const lastIsDialogue =
-    blocks.length > 0 && blocks[blocks.length - 1].kind === "dlg";
+  // 解析和续接判断都按 content 缓存：输入时整个界面会重渲染，
+  // 不能让每一回合都把整段重新解析一遍。
+  const blocks: MessageBlock[] = useMemo(() => parseBlocks(content), [content]);
+  const lastIsDialogue = blocks.length > 0 && blocks[blocks.length - 1].kind === "dlg";
+  const continuedFlags = useMemo(
+    () => blocks.map((_, index) => dialogueContinues(blocks, index, cardName)),
+    [blocks, cardName],
+  );
 
   if (blocks.length === 0) {
     return (
@@ -224,6 +269,15 @@ function AssistantTurn({
           );
         }
 
+        if (block.kind === "act") {
+          return (
+            <ActionBlock key={key}>
+              <MarkdownText text={block.text} />
+              {cursor}
+            </ActionBlock>
+          );
+        }
+
         if (block.kind === "scene") {
           return (
             <SceneEvent key={key}>
@@ -243,12 +297,14 @@ function AssistantTurn({
           );
         }
 
-        const who = block.who ?? cardName;
+        const who = (block.who ?? cardName).trim() || cardName;
+        const src = who === cardName ? portraitUrl : portraits?.[who];
         return (
           <DialogueBlock
             key={key}
             who={who}
-            avatar={<Avatar name={who} />}
+            avatar={src ? <Avatar name={who} src={src} /> : undefined}
+            continued={continuedFlags[index]}
             actions={slot}
           >
             <MarkdownText text={block.text} />
@@ -259,6 +315,46 @@ function AssistantTurn({
       {/* 末块不是对白时按钮追加在末尾，缩进 48 与旁白、对白正文对齐 */}
       {!lastIsDialogue ? <div className="ml-12">{actions}</div> : null}
     </div>
+  );
+}
+
+/**
+ * Keep the draft state next to the textarea.  A draft changes on every
+ * keystroke, so it must not live in ChatScreen, whose state also owns the
+ * complete message history and its markdown tree.
+ */
+function ChatComposer({
+  hasExtra,
+  onPlus,
+  onSend,
+  placeholder,
+  hintAlerts,
+  hint,
+}: {
+  hasExtra: boolean;
+  onPlus: () => void;
+  onSend: (text: string) => boolean;
+  placeholder: string;
+  hintAlerts: boolean;
+  hint?: ReactNode;
+}) {
+  const [draft, setDraft] = useState("");
+
+  function submit() {
+    if (onSend(draft)) setDraft("");
+  }
+
+  return (
+    <Composer
+      value={draft}
+      onChange={setDraft}
+      onSend={submit}
+      hasExtra={hasExtra}
+      onPlus={onPlus}
+      placeholder={placeholder}
+      hintAlerts={hintAlerts}
+      hint={hint}
+    />
   );
 }
 
@@ -294,7 +390,7 @@ export function ChatScreen({
   const [turns, setTurns] = useState<Turn[]>(() => [
     { id: "opening", role: "assistant", content: greetings[0] ?? card.first_mes },
   ]);
-  const [input, setInput] = useState("");
+  const [composerReset, setComposerReset] = useState(0);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
   const [memory, setMemory] = useState<number | null>(null);
@@ -354,8 +450,22 @@ export function ChatScreen({
   const summaryRef = useRef<RollingSummary | null>(null);
   const factsRef = useRef<KeyFacts>({ characters: {}, places: {}, flags: {} });
   const journalRef = useRef<Journal>(emptyJournal());
+  const [portraits, setPortraits] = useState<Record<string, string>>({});
+  const portraitBusy = useRef(new Set<string>());
+  /** 额度或频率到顶后，自动生图和头像都停。手动再点仍会试一次。 */
+  const imageHaltRef = useRef(false);
+  useEffect(() => {
+    imageHaltRef.current = false;
+  }, [config.providerId, config.model, config.image.model, config.image.baseURL, config.apiKey, config.image.apiKey]);
   /** 长期记忆是否已经灌进来。没灌完就发请求会丢掉前面的剧情。 */
   const memoryReadyRef = useRef(false);
+
+  /** 这张卡的立绘。卡里带着出处才拼得出来，拼不出来就退回首字母 */
+  const portraitUrl = useMemo(() => cardPortraitUrl(card), [card]);
+  const chatRoute = useMemo(
+    () => presetChat({ providerId: config.providerId, model: config.model, baseURL: config.baseURL }),
+    [config.providerId, config.model, config.baseURL],
+  );
 
   const [browserReady, setBrowserReady] = useState(false);
   useEffect(() => {
@@ -395,15 +505,15 @@ export function ChatScreen({
       needsSummarizeRef.current = false;
     try {
       const response = await fetch("/api/chat", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders(config.apiKey),
         },
         body: JSON.stringify({
           providerId: config.providerId,
-          model: config.model,
-          ...(config.baseURL.trim() ? { baseURL: config.baseURL.trim() } : {}),
+          model: chatRoute.model,
+          ...(chatRoute.baseURL ? { baseURL: chatRoute.baseURL } : {}),
           previous: previous?.text ?? "",
           additions,
           facts: factsRef.current,
@@ -457,16 +567,16 @@ export function ChatScreen({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+            ...authHeaders(config.apiKey),
           },
           body: JSON.stringify({
             mode: "complete",
             providerId: config.providerId,
-            model: config.model,
+            model: chatRoute.model,
             messages,
             temperature: SUGGESTION_TEMPERATURE,
             maxTokens: SUGGESTION_MAX_TOKENS,
-            ...(config.baseURL.trim() ? { baseURL: config.baseURL.trim() } : {}),
+            ...(chatRoute.baseURL ? { baseURL: chatRoute.baseURL } : {}),
           }),
         });
         if (!response.ok || !response.body) return;
@@ -496,6 +606,7 @@ export function ChatScreen({
       summaryRef.current = memory.summary;
       factsRef.current = memory.facts;
       journalRef.current = normalizeJournal(memory.journal);
+      setPortraits(journalRef.current.portraits ?? {});
       turnRef.current = memory.turn;
       memoryReadyRef.current = true;
 
@@ -505,27 +616,49 @@ export function ChatScreen({
       const existing = sessions.find((s) => s.cardId === cardId);
       if (existing) {
         sessionRef.current = existing;
-        setTurns(
-          existing.messages.map((m, index) => ({
-            id: m.id,
-            role: m.role,
-            // 开场白是卡里来的，可能带 {{user}} / {{char}}；旧存档也要补上这一步
-            content:
-              index === 0
-                ? applyMacros(adaptGreeting(m.content, locale), {
-                    char: card.name,
-                    user: userName,
-                  })
-                : adaptGreeting(m.content, locale),
-            cg: m.cg,
-            image: m.image,
-            imageNote: m.imageNote,
-            document: normalizeDocument(m.document),
-            swipes: m.swipes,
-            swipeIndex: m.swipeIndex,
-            chapterBreak: m.chapterBreak,
-          })),
-        );
+        const restored = existing.messages.map((m, index) => ({
+          id: m.id,
+          role: m.role,
+          // 开场白是卡里来的，可能带 {{user}} / {{char}}；旧存档也要补上这一步
+          content:
+            index === 0
+              ? applyMacros(adaptGreeting(m.content, locale), {
+                  char: card.name,
+                  user: userName,
+                })
+              : adaptGreeting(m.content, locale),
+          cg: m.cg,
+          image: m.image,
+          imageNote: m.imageNote,
+          document: normalizeDocument(m.document),
+          swipes: m.swipes,
+          swipeIndex: m.swipeIndex,
+          chapterBreak: m.chapterBreak,
+        }));
+        setTurns(restored);
+        // 占用百分比只在发送时由服务端带回。刷新后用同一套组装再算一次，环才不会归零。
+        const assembled = assemble({
+          card: {
+            name: card.name,
+            description: card.description,
+            personality: card.personality,
+            scenario: card.scenario,
+            system_prompt: card.system_prompt,
+            mes_example: card.mes_example,
+            post_history_instructions: card.post_history_instructions,
+          },
+          lorebook: card.character_book ? { entries: card.character_book.entries } : undefined,
+          history: restored.map((turn) => ({ role: turn.role, content: historyContent(turn) })),
+          seed: hashSeed(existing.id),
+          turn: turnRef.current,
+          summary: summaryRef.current ?? undefined,
+          facts: factsRef.current,
+          journal: journalRef.current,
+          style,
+          userName,
+          budget: planBudget(16_000, 1024),
+        });
+        setMemory(Math.round((assembled.budget.used / Math.max(assembled.budget.max, 1)) * 100));
         return;
       }
 
@@ -616,7 +749,22 @@ export function ChatScreen({
     abortRef.current = controller;
 
     const local = usesBrowserModel(config, browserReady);
-    const seesImages = local || config.vision;
+    if (process.env.NODE_ENV === "development") {
+      console.debug("[ai-rp] chat transport", {
+        providerId: config.providerId,
+        model: config.model,
+        hasApiKey: cleanApiKey(config.apiKey).value.length > 0,
+        apiKeyJunkChars: cleanApiKey(config.apiKey).removed,
+        browserReady,
+        local,
+        reason: local
+          ? config.providerId === BROWSER_PROVIDER_ID
+            ? "browser provider selected"
+            : "browser fallback because no API key was available"
+          : "remote API route",
+      });
+    }
+    const seesImages = local || (chatRoute.vision ?? config.vision);
     let imageNote = "";
     let outboundImage = image;
     if (image && !seesImages) {
@@ -707,14 +855,14 @@ export function ChatScreen({
           headers: {
             "Content-Type": "application/json",
             // Key 走请求头，绝不进 URL
-            ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+            ...authHeaders(config.apiKey),
           },
           signal: controller.signal,
           body: JSON.stringify({
             providerId: config.providerId,
-            model: config.model,
+            model: chatRoute.model,
             temperature: config.temperature,
-            ...(config.baseURL.trim() ? { baseURL: config.baseURL.trim() } : {}),
+            ...(chatRoute.baseURL ? { baseURL: chatRoute.baseURL } : {}),
             sessionId,
             tools: allowTools,
             ...(outboundImage ? { image: outboundImage } : {}),
@@ -803,14 +951,23 @@ export function ChatScreen({
         if (!allowTools || named.length === 0) break;
 
         let rolled = false;
+        const freshCharacters: Array<{ name: string; detail: string }> = [];
         for (const call of named) {
           if (call.name === "roll_dice") rolled = true;
-          const applied = applyChatTool(journalRef.current, call.name, call.arguments);
+          if (call.name === "remember_character") {
+            const created = newCharacter(journalRef.current, call.arguments);
+            if (created) freshCharacters.push(created);
+          }
+          // 带上当前轮次：模型不传 turn 时，目录也能知道哪条是新的
+          const applied = applyChatTool(journalRef.current, call.name, call.arguments, turnRef.current);
           journalRef.current = applied.journal;
           toolTrace = [
             ...toolTrace,
             { name: call.name, arguments: call.arguments, result: applied.result },
           ];
+        }
+        for (const created of freshCharacters) {
+          void ensurePortrait(created.name, created.detail);
         }
         void saveCardMemory({
           cardId,
@@ -833,12 +990,15 @@ export function ChatScreen({
       if (caught instanceof Error && caught.name === "AbortError") {
         // 主动停止，不算错误，已经吐出来的内容保留
       } else {
+        if (process.env.NODE_ENV === "development") {
+          console.error("[ai-rp] chat request failed", caught);
+        }
         const chatError = (caught as { chatError?: ChatError }).chatError;
         setError(
           chatError ?? {
             status: 0,
-            code: "network",
-            message: t("chat.network"),
+            code: local ? "browser_model" : "network",
+            message: t(local ? "chat.browserFail" : "chat.network"),
           },
         );
       }
@@ -894,17 +1054,19 @@ export function ChatScreen({
 
   async function postImage(body: Record<string, unknown>) {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
-    if (config.image.apiKey.trim()) headers["x-image-key"] = config.image.apiKey.trim();
+    const chatKey = cleanApiKey(config.apiKey).value;
+    const imageKey = cleanApiKey(config.image.apiKey).value;
+    if (chatKey) headers.Authorization = `Bearer ${chatKey}`;
+    if (imageKey) headers["x-image-key"] = imageKey;
     const response = await fetch("/api/image", {
       method: "POST",
       headers,
       body: JSON.stringify({
         providerId: config.providerId,
-        model: config.model,
-        ...(config.baseURL.trim() ? { baseURL: config.baseURL.trim() } : {}),
+        model: chatRoute.model,
+        ...(chatRoute.baseURL ? { baseURL: chatRoute.baseURL } : {}),
         imageModel: config.image.model.trim(),
-        imageProviderId: config.providerId,
+        imageProviderId: imageProviderId(config),
         ...(config.image.baseURL.trim() ? { imageBaseURL: config.image.baseURL.trim() } : {}),
         styleId: config.image.styleId,
         name: card.name,
@@ -930,8 +1092,47 @@ export function ChatScreen({
     return payload ?? {};
   }
 
+  function noteImageHalt(error: unknown) {
+    const status = (error as { status?: number } | null)?.status;
+    if (status === 402 || status === 403 || status === 429) imageHaltRef.current = true;
+  }
+
+  /** 新角色的头像。没配生图模型就跳过，失败也不打断对话。 */
+  async function ensurePortrait(name: string, detail: string) {
+    if (imageHaltRef.current) return;
+    if (!isImageConfigured(config) || name === card.name) return;
+    if (journalRef.current.portraits?.[name] || portraitBusy.current.has(name)) return;
+    portraitBusy.current.add(name);
+    try {
+      const payload = await postImage({
+        action: "generate",
+        name,
+        appearance: detail,
+        scene: "",
+        portrait: true,
+      });
+      if (!payload.src) return;
+      const src = await shrinkPortrait(payload.src);
+      journalRef.current = putPortrait(journalRef.current, name, src);
+      setPortraits({ ...(journalRef.current.portraits ?? {}) });
+      void saveCardMemory({
+        cardId,
+        summary: summaryRef.current,
+        facts: factsRef.current,
+        journal: journalRef.current,
+        turn: turnRef.current,
+        updatedAt: Date.now(),
+      });
+    } catch (caught) {
+      noteImageHalt(caught);
+    } finally {
+      portraitBusy.current.delete(name);
+    }
+  }
+
   /** 出图不占对话的 streaming 状态，所以打字和发送都不会被它卡住。 */
   async function generateFor(turn: Turn, source: "manual" | "auto") {
+    if (source === "auto" && imageHaltRef.current) return;
     if (!isImageConfigured(config) || cgBusyRef.current) return;
     cgBusyRef.current = turn.id;
     setCgBusy(turn.id);
@@ -955,6 +1156,7 @@ export function ChatScreen({
         return next;
       });
     } catch (caught) {
+      noteImageHalt(caught);
       if (source === "manual") {
         const info = caught as ChatError;
         setError(
@@ -974,6 +1176,7 @@ export function ChatScreen({
    * 不进主提示词，也不把 streaming 再设回去。
    */
   async function maybeAutoCg(allTurns: Turn[]) {
+    if (imageHaltRef.current) return;
     if (!config.image.auto || !isImageConfigured(config)) return;
     const last = allTurns[allTurns.length - 1];
     if (!last || last.role !== "assistant" || !last.content) return;
@@ -993,8 +1196,8 @@ export function ChatScreen({
       const payload = await postImage({ action: "score", scene: sceneText(last.content) });
       if (!scoreAllows(payload.score ?? null, config.image.threshold)) return;
       await generateFor(last, "auto");
-    } catch {
-      // 自动失败不影响对话，也不弹错误
+    } catch (caught) {
+      noteImageHalt(caught);
     }
   }
 
@@ -1019,6 +1222,7 @@ export function ChatScreen({
     summaryRef.current = null;
     factsRef.current = { characters: {}, places: {}, flags: {} };
     journalRef.current = emptyJournal();
+    setPortraits({});
     turnRef.current = 0;
     setTurns(next);
     persist(next);
@@ -1026,9 +1230,9 @@ export function ChatScreen({
     setResetOpen(false);
   }
 
-  function send(text: string) {
+  function send(text: string): boolean {
     const userMessage = text.trim();
-    if ((!userMessage && !attachment) || streaming) return;
+    if ((!userMessage && !attachment) || streaming) return false;
     const image = attachment?.kind === "image" ? attachment.src : undefined;
     const document =
       attachment?.kind === "document"
@@ -1036,11 +1240,12 @@ export function ChatScreen({
         : undefined;
     carrySwipesRef.current = null;
     carryTurnRef.current = null;
-    setInput("");
+    setComposerReset((key) => key + 1);
     setAttachment(null);
     setSuggestions([]);
     const visible = userMessage || (document ? t("chat.fileOnly") : t("chat.imageOnly"));
     void runTurn(visible, turns, image, document);
+    return true;
   }
 
   async function pickFile(file: File | undefined) {
@@ -1270,7 +1475,7 @@ export function ChatScreen({
 
   return (
     <div
-      className="relative flex h-dvh bg-background"
+      className="relative flex h-dvh"
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
@@ -1286,7 +1491,8 @@ export function ChatScreen({
 
       <div className="flex min-w-0 flex-1 flex-col">
       <TopBar
-        avatar={<Avatar name={card.name} />}
+        className="absolute inset-x-0 top-0 z-20"
+        avatar={<Avatar name={card.name} src={portraitUrl} />}
         name={card.name}
         subtitle={card.tags?.join(" · ")}
         memoryUsed={memory}
@@ -1360,7 +1566,9 @@ export function ChatScreen({
                       </div>
                     </div>
                   ) : (
-                    <>
+                    /* 气泡和操作行包在一起：对话列的轮间距 26px 只落在轮与轮之间，
+                       气泡和自己这行图标之间只留 4px */
+                    <div className="flex flex-col gap-1">
                       <PlayerBubble>
                         {turn.image ? (
                           /* eslint-disable-next-line @next/next/no-img-element */
@@ -1373,18 +1581,34 @@ export function ChatScreen({
                       </PlayerBubble>
                       {/* 生成中不给改，改到一半重跑会把这一轮弄乱 */}
                       {!streaming ? (
-                        <div className="flex justify-end gap-2">
-                          <ActPill
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            type="button"
+                            aria-label={t("chat.copy")}
+                            title={copiedId === turn.id ? t("chat.copied") : t("chat.copy")}
                             onClick={() =>
                               void copyMessage(turn.id, [turn.document?.name, playerText(turn.content)].filter(Boolean).join("\n\n"))
                             }
+                            className="grid size-7 place-items-center rounded-sm text-ink-3 transition-colors hover:bg-surface-3 hover:text-ink"
                           >
-                            {copiedId === turn.id ? t("chat.copied") : t("chat.copy")}
-                          </ActPill>
-                          <ActPill onClick={() => startEdit(turn)}>{t("chat.edit")}</ActPill>
+                            {copiedId === turn.id ? (
+                              <IconCheck className="size-4" />
+                            ) : (
+                              <IconCopy className="size-4" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={t("chat.edit")}
+                            title={t("chat.edit")}
+                            onClick={() => startEdit(turn)}
+                            className="grid size-7 place-items-center rounded-sm text-ink-3 transition-colors hover:bg-surface-3 hover:text-ink"
+                          >
+                            <IconEdit className="size-4" />
+                          </button>
                         </div>
                       ) : null}
-                    </>
+                    </div>
                   )}
                   {chapterMark}
                 </Fragment>
@@ -1420,9 +1644,6 @@ export function ChatScreen({
                     {t("chat.cg")}
                   </ActPill>
                 ) : null}
-                <ActPill onClick={() => void copyMessage(turn.id, stripBlocks(turn.content, { quoteDialogue: false }))}>
-                  {copiedId === turn.id ? t("chat.copied") : t("chat.copy")}
-                </ActPill>
               </MessageActions>
             ) : undefined;
 
@@ -1432,6 +1653,8 @@ export function ChatScreen({
                   content={turn.content}
                   streaming={streaming && isLastTurn}
                   cardName={card.name}
+                  portraitUrl={portraitUrl}
+                  portraits={portraits}
                   actions={actions}
                 />
                 {cgBusy === turn.id ? (
@@ -1456,19 +1679,22 @@ export function ChatScreen({
                   不占输入框上方那块空间。选一条就发，发完这批就消失。
                 */}
                 {isLastTurn && !streaming && suggestions.length > 0 ? (
-                  <SuggestRow className="!px-0">
-                    {suggestions.map((text) => (
-                      <SuggestChip
-                        key={text}
-                        onClick={() => {
-                          setSuggestions([]);
-                          send(text);
-                        }}
-                      >
-                        {text}
-                      </SuggestChip>
-                    ))}
-                  </SuggestRow>
+                  <div className="ml-12 flex flex-col gap-2.5">
+                    <SuggestDivider label={t("chat.suggestLabel")} />
+                    <SuggestRow className="!w-auto !px-0 !py-0">
+                      {suggestions.map((text) => (
+                        <SuggestChip
+                          key={text}
+                          onClick={() => {
+                            setSuggestions([]);
+                            send(text);
+                          }}
+                        >
+                          {text}
+                        </SuggestChip>
+                      ))}
+                    </SuggestRow>
+                  </div>
                 ) : null}
               </Fragment>
             );
@@ -1515,12 +1741,11 @@ export function ChatScreen({
             event.target.value = "";
           }}
         />
-        <Composer
-          value={input}
-          onChange={setInput}
-          onSend={() => send(input)}
+        <ChatComposer
+          key={composerReset}
           hasExtra={!!attachment}
           onPlus={() => imageInputRef.current?.click()}
+          onSend={send}
           placeholder={t("chat.sayTo", { name: card.name })}
           hintAlerts={!ready}
           hint={
@@ -1536,9 +1761,7 @@ export function ChatScreen({
               <button type="button" onClick={onOpenSettings} className="underline">
                 {t("chat.needKey")}
               </button>
-            ) : (
-              t("chat.hint")
-            )
+            ) : null
           }
         />
         {/* AI 生成的出处与责任，常驻在输入框下方，不关也不消失 */}
@@ -1680,12 +1903,18 @@ function TocStrip({
   if (items.length === 0) return null;
 
   return (
-    <div className="fixed inset-y-0 left-0 z-40 flex w-[260px] items-center">
+    /* 整条容器不吃指针事件：它盖住左缘 260px，否则顶栏的头像按钮点不动。
+       只有把手和展开后的面板各自打开自己的命中区。 */
+    <div
+      className="fixed inset-y-0 left-0 z-40 flex w-[260px] items-center"
+      style={{ pointerEvents: "none" }}
+    >
       {/* 把手：看得见才找得到。触屏上它就是开关，桌面端悬停已经展开，点了不额外做事 */}
       <button
         type="button"
         aria-label={openLabel}
         aria-expanded={shown}
+        style={{ pointerEvents: "auto" }}
         onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
           pointerKindRef.current = event.pointerType;
         }}

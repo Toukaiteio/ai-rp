@@ -18,15 +18,28 @@ import {
 } from "@/components/ui";
 import { IconDownload, IconEye, IconLock, IconTrash, IconX } from "@/components/icons";
 import { BROWSER_PROVIDER_ID, probeBrowserModel } from "@/lib/browser-model";
-import { getProvidersConfig, findProvider, modelName, modelSeesImages, type ProviderPreset } from "@/lib/providers/config";
-import { IMAGE_MODEL_PRESETS, IMAGE_STYLES } from "@/lib/image";
+import {
+  getProvidersConfig,
+  findProvider,
+  listProviders,
+  modelName,
+  modelSeesImages,
+  type ProviderPreset,
+} from "@/lib/providers/config";
+import { IMAGE_STYLES } from "@/lib/image";
 import { defaultImageSettings, type ImageSettings, type ProviderConfig } from "@/lib/providers/settings";
+import { cleanApiKey } from "@/lib/providers/apikey";
 import { hasMessage } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import type { MessageKey } from "@/lib/i18n";
 
 /* 只从 config / settings 导入，不要从 @/lib/providers 导入：
    那个入口会带出 openai SDK，整个打进浏览器包。 */
+
+/** 能生图的预设才出现在生图这一栏。没有生图模型的不给入口。 */
+function imageProviders(): ProviderPreset[] {
+  return listProviders().filter((provider) => (provider.imageModels?.length ?? 0) > 0);
+}
 
 export function SettingsScreen({
   config,
@@ -85,6 +98,12 @@ export function SettingsScreen({
 
   const image = config.image ?? defaultImageSettings();
 
+  /* 粘贴 Key 时常混进全角空格、零宽字符、BOM 或整段中文说明。
+     这些字符进不了 HTTP 头，浏览器会在发请求前直接抛错，
+     表现却只是「网络请求失败」，所以在这里就说清楚。 */
+  const keyJunk = cleanApiKey(config.apiKey).removed;
+  const imageKeyJunk = cleanApiKey(image.apiKey).removed;
+
   function patchImage(next: Partial<ImageSettings>) {
     patch({ image: { ...image, ...next } });
   }
@@ -130,6 +149,7 @@ export function SettingsScreen({
                       baseURL: "",
                     });
                   }}
+                  badge={provider.badge === "free" ? t("settings.free") : undefined}
                 >
                   {provider.name}
                 </OptChip>
@@ -149,7 +169,7 @@ export function SettingsScreen({
             ) : null}
           </FormGroup>
 
-          {browserSelected ? null : (
+          {browserSelected || preset?.hideEndpoint ? null : (
           <FormGroup title={t("settings.interface")}>
             <OptRow>
               {interfaceTypes.map((type) => (
@@ -161,7 +181,7 @@ export function SettingsScreen({
           </FormGroup>
           )}
 
-          {browserSelected ? null : (
+          {browserSelected || preset?.hideEndpoint ? null : (
           <FormGroup title={t("settings.baseUrl")}>
             <Field>
               <FieldInput
@@ -203,10 +223,15 @@ export function SettingsScreen({
                 <IconEye className="size-[17px]" />
               </FieldAction>
             </Field>
+            {keyJunk > 0 ? (
+              <p className="m-0 text-[12.5px] leading-relaxed">
+                <VaultWarn>{t("settings.keyJunk", { count: keyJunk })}</VaultWarn>
+              </p>
+            ) : null}
           </FormGroup>
           )}
 
-          {browserSelected ? null : (
+          {browserSelected || preset?.hideModel ? null : (
           <FormGroup title={t("settings.model")}>
             {(preset?.models.length ?? 0) > 0 ? (
               <OptRow>
@@ -275,88 +300,118 @@ export function SettingsScreen({
           <SettingsCard title={t("settings.image")}>
           <div className="flex flex-col gap-3">
             <OptRow>
-              <OptChip selected={!image.model} onClick={() => patchImage({ model: "" })}>
+              <OptChip
+                selected={!image.providerId}
+                onClick={() => patchImage({ providerId: "", model: "" })}
+              >
                 {t("settings.imageOff")}
               </OptChip>
-              {IMAGE_MODEL_PRESETS.map((model) => (
+              {imageProviders().map((provider) => (
                 <OptChip
-                  key={model}
-                  selected={image.model === model}
-                  onClick={() => patchImage({ model })}
+                  key={provider.id}
+                  selected={image.providerId === provider.id}
+                  badge={provider.badge === "free" ? t("settings.free") : undefined}
+                  onClick={() =>
+                    patchImage({
+                      providerId: provider.id,
+                      model: provider.imageModels?.[0] ?? "",
+                      baseURL: "",
+                    })
+                  }
                 >
-                  {model}
+                  {provider.name}
                 </OptChip>
               ))}
-            </OptRow>
-            <Field>
-              <FieldInput
-                type="text"
-                spellCheck={false}
-                autoComplete="off"
-                placeholder={t("settings.imageModelPlaceholder")}
-                value={image.model}
-                onChange={(event) => patchImage({ model: event.target.value })}
-              />
-            </Field>
-            <Field>
-              <FieldInput
-                type="url"
-                inputMode="url"
-                spellCheck={false}
-                autoComplete="off"
-                placeholder={t("settings.imageBasePlaceholder")}
-                value={image.baseURL}
-                onChange={(event) => patchImage({ baseURL: event.target.value })}
-              />
-            </Field>
-            <Field>
-              <FieldInput
-                type={showKey ? "text" : "password"}
-                spellCheck={false}
-                autoComplete="off"
-                placeholder={t("settings.imageKeyPlaceholder")}
-                value={image.apiKey}
-                onChange={(event) => patchImage({ apiKey: event.target.value })}
-              />
-            </Field>
-            <OptRow>
-              {(Object.keys(IMAGE_STYLES) as Array<keyof typeof IMAGE_STYLES>).map((id) => (
-                <OptChip
-                  key={id}
-                  selected={image.styleId === id}
-                  onClick={() => patchImage({ styleId: id })}
-                >
-                  {styleName(id, t)}
-                </OptChip>
-              ))}
-            </OptRow>
-            <OptRow>
-              <OptChip selected={!image.auto} onClick={() => patchImage({ auto: false })}>
-                {t("settings.autoOff")}
-              </OptChip>
-              <OptChip selected={image.auto} onClick={() => patchImage({ auto: true })}>
-                {t("settings.autoOn")}
+              <OptChip
+                selected={image.providerId === "custom"}
+                onClick={() => patchImage({ providerId: "custom" })}
+              >
+                {t("settings.imageCustom")}
               </OptChip>
             </OptRow>
-            <SliderRow
-              label={t("settings.budget")}
-              min={1}
-              max={10}
-              value={image.budget}
-              display={t("settings.budgetValue", { count: image.budget })}
-              onChange={(value) => patchImage({ budget: value })}
-            />
-            <SliderRow
-              label={t("settings.threshold")}
-              min={0}
-              max={10}
-              value={image.threshold}
-              display={String(image.threshold)}
-              onChange={(value) => patchImage({ threshold: value })}
-            />
-            <p className="m-0 text-[12.5px] leading-relaxed text-ink-2">
-              {t("settings.imageHelp")}
-            </p>
+            {image.providerId === "custom" ? (
+              <Field>
+                <FieldInput
+                  type="text"
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder={t("settings.imageModelPlaceholder")}
+                  value={image.model}
+                  onChange={(event) => patchImage({ model: event.target.value })}
+                />
+              </Field>
+            ) : null}
+            {image.providerId === "custom" ? (
+              <Field>
+                <FieldInput
+                  type="url"
+                  inputMode="url"
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder={t("settings.imageBasePlaceholder")}
+                  value={image.baseURL}
+                  onChange={(event) => patchImage({ baseURL: event.target.value })}
+                />
+              </Field>
+            ) : null}
+            {/* 生图密钥单列：同一家也可以填单独的 Key，跨提供商时必须填 */}
+            {image.providerId ? (
+              <Field>
+                <FieldInput
+                  type={showKey ? "text" : "password"}
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder={t("settings.imageKeyPlaceholder")}
+                  value={image.apiKey}
+                  onChange={(event) => patchImage({ apiKey: event.target.value })}
+                />
+              </Field>
+            ) : null}
+            {imageKeyJunk > 0 ? (
+              <p className="m-0 text-[12.5px] leading-relaxed">
+                <VaultWarn>{t("settings.keyJunk", { count: imageKeyJunk })}</VaultWarn>
+              </p>
+            ) : null}
+            {/* 未启用时不摆风格和自动设置，省得看着像已经能用 */}
+            {image.providerId ? (
+              <>
+                <OptRow>
+                  {(Object.keys(IMAGE_STYLES) as Array<keyof typeof IMAGE_STYLES>).map((id) => (
+                    <OptChip
+                      key={id}
+                      selected={image.styleId === id}
+                      onClick={() => patchImage({ styleId: id })}
+                    >
+                      {styleName(id, t)}
+                    </OptChip>
+                  ))}
+                </OptRow>
+                <OptRow>
+                  <OptChip selected={!image.auto} onClick={() => patchImage({ auto: false })}>
+                    {t("settings.autoOff")}
+                  </OptChip>
+                  <OptChip selected={image.auto} onClick={() => patchImage({ auto: true })}>
+                    {t("settings.autoOn")}
+                  </OptChip>
+                </OptRow>
+                <SliderRow
+                  label={t("settings.budget")}
+                  min={1}
+                  max={10}
+                  value={image.budget}
+                  display={t("settings.budgetValue", { count: image.budget })}
+                  onChange={(value) => patchImage({ budget: value })}
+                />
+                <SliderRow
+                  label={t("settings.threshold")}
+                  min={0}
+                  max={10}
+                  value={image.threshold}
+                  display={String(image.threshold)}
+                  onChange={(value) => patchImage({ threshold: value })}
+                />
+              </>
+            ) : null}
           </div>
           </SettingsCard>
 

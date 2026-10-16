@@ -15,7 +15,9 @@ import {
   setupVault,
   unlockVault,
   type VaultStatus as VaultState,
+  type VaultKdfParams,
 } from "@/lib/vault";
+import { getDeploymentVaultKdf } from "@/lib/vault/config";
 import {
   REMEMBER_OPTIONS,
   getRememberPref,
@@ -38,16 +40,27 @@ export function VaultGate({
   status,
   attemptsLeft,
   notice,
+  onImportArchive,
 }: {
   status: VaultState;
   attemptsLeft: number;
   notice: string | null;
+  onImportArchive?: (
+    file: File,
+    passphrase: string,
+    params: VaultKdfParams,
+    rememberMs: number,
+  ) => Promise<{ sessions: number; cards: number }>;
 }) {
   const [value, setValue] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [announceOpen, setAnnounceOpen] = useState(false);
+  const [archiveFile, setArchiveFile] = useState<File | null>(null);
+  const [archiveManualKdf, setArchiveManualKdf] = useState(false);
+  const [archiveSalt, setArchiveSalt] = useState("");
+  const [archiveIterations, setArchiveIterations] = useState("600000");
   const { t } = useI18n();
   const rememberMs = useSyncExternalStore(
     subscribeRememberPref,
@@ -62,7 +75,37 @@ export function VaultGate({
 
   const isSetup = status === "uninitialized";
 
+  async function importArchiveFromGate() {
+    if (!archiveFile || !onImportArchive || !value) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const deployment = getDeploymentVaultKdf();
+      const params: VaultKdfParams = {
+        salt: archiveManualKdf ? archiveSalt.trim() : deployment.salt,
+        iterations: Number.parseInt(archiveManualKdf ? archiveIterations : String(deployment.iterations), 10),
+      };
+      if (!params.salt) throw new Error(t("vault.archiveSaltRequired"));
+      if (!Number.isSafeInteger(params.iterations) || params.iterations <= 0) {
+        throw new Error(t("vault.archiveIterationsInvalid"));
+      }
+      const result = await onImportArchive(archiveFile, value, params, rememberMs);
+      setArchiveFile(null);
+      setValue("");
+      setError(t("vault.archiveImported", result));
+    } catch (caught) {
+      setArchiveManualKdf(true);
+      setError(explainError(caught, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submit() {
+    if (isSetup && archiveFile && onImportArchive) {
+      await importArchiveFromGate();
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -124,7 +167,7 @@ export function VaultGate({
             />
           </div>
 
-          {isSetup ? (
+          {isSetup && !archiveFile ? (
             <input
               type="password"
               autoComplete="new-password"
@@ -136,16 +179,71 @@ export function VaultGate({
             />
           ) : null}
 
-          <PillButton
-            variant="primary"
-            block
-            disabled={busy || !value || (isSetup && !confirm)}
-            onClick={() => void submit()}
-          >
-            {busy ? t("vault.deriving") : isSetup ? t("vault.setup") : t("vault.unlock")}
-          </PillButton>
+            <PillButton
+              variant="primary"
+              block
+              disabled={busy || !value || (isSetup && !archiveFile && !confirm)}
+              onClick={() => void submit()}
+            >
+            {busy
+              ? t("vault.deriving")
+              : archiveFile
+                ? t("vault.importArchive")
+                : isSetup
+                  ? t("vault.setup")
+                  : t("vault.unlock")}
+            </PillButton>
 
           <RememberToggle ms={rememberMs} label={t("vault.remember")} />
+
+          {isSetup && onImportArchive ? (
+            <div className="mt-2 border-t border-line pt-3">
+              <input
+                id="vault-archive-file"
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(event) => {
+                  setArchiveFile(event.target.files?.[0] ?? null);
+                  setArchiveManualKdf(false);
+                  event.target.value = "";
+                }}
+              />
+              <label
+                htmlFor="vault-archive-file"
+                className="block cursor-pointer rounded-pill border border-line bg-surface px-4 py-2.5 text-center text-[13px] text-ink-2 hover:border-line-strong hover:text-ink"
+              >
+                {archiveFile ? archiveFile.name : t("vault.chooseArchive")}
+              </label>
+              {archiveFile ? (
+                <>
+                  <p className="mt-2 mb-2 text-center text-[12px] leading-relaxed text-ink-3">
+                    {archiveManualKdf ? t("vault.archiveKdfHelp") : t("vault.archiveDefaultKdf")}
+                  </p>
+                  {archiveManualKdf ? (
+                    <div className="flex flex-col gap-2">
+                      <input
+                        type="text"
+                        inputMode="text"
+                        placeholder={t("vault.archiveSalt")}
+                        value={archiveSalt}
+                        onChange={(event) => setArchiveSalt(event.target.value)}
+                        className="w-full rounded-pill border border-line bg-surface px-4 py-2.5 text-[13px] text-ink outline-none placeholder:text-ink-3 focus:border-line-strong"
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        placeholder={t("vault.archiveIterations")}
+                        value={archiveIterations}
+                        onChange={(event) => setArchiveIterations(event.target.value)}
+                        className="w-full rounded-pill border border-line bg-surface px-4 py-2.5 text-[13px] text-ink outline-none placeholder:text-ink-3 focus:border-line-strong"
+                      />
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          ) : null}
 
           {error ? (
             <p className="m-0 text-center text-[12.5px] leading-relaxed text-danger">

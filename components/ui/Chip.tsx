@@ -50,10 +50,11 @@ export function CapsuleButton({
 export function OptChip({
   selected = false,
   disabled = false,
+  badge,
   className,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { selected?: boolean }) {
-  return (
+}: ButtonHTMLAttributes<HTMLButtonElement> & { selected?: boolean; badge?: ReactNode }) {
+  const button = (
     <button
       type="button"
       aria-pressed={selected}
@@ -68,6 +69,15 @@ export function OptChip({
       )}
       {...rest}
     />
+  );
+  if (!badge) return button;
+  return (
+    <span className="relative inline-flex">
+      {button}
+      <span className="pointer-events-none absolute -top-1.5 right-1.5 rounded-[3px] bg-danger px-1 py-px text-[9px] leading-none font-bold tracking-wide text-danger-ink">
+        {badge}
+      </span>
+    </span>
   );
 }
 
@@ -118,7 +128,7 @@ export function Tag({
   return (
     <span
       className={cn(
-        "whitespace-nowrap rounded-pill border border-line px-[9px] py-[1.5px] text-[11px] text-ink-2",
+        "whitespace-nowrap rounded-pill border-0 bg-surface-3 px-[9px] py-[1.5px] text-[11px] text-ink-2",
         className,
       )}
       {...rest}

@@ -30,6 +30,7 @@ export {
   Prose,
   NarratorProse,
   NarratorBlock,
+  ActionBlock,
   ChapterMark,
   DialogueBlock,
   PlayerBubble,
@@ -39,6 +40,7 @@ export {
   ChatScroll,
   ChatColumn,
   SuggestRow,
+  SuggestDivider,
 } from "./Message";
 export { Composer } from "./Composer";
 export { LockScreen } from "./LockScreen";

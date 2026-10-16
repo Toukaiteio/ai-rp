@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBlocks } from "./blocks";
+import { blocksToRaw, dialogueContinues, parseBlocks } from "./blocks";
 
 describe("消息块解析", () => {
   it("拆分旁白和人物发言，并提取人物名", () => {
@@ -23,6 +23,30 @@ describe("消息块解析", () => {
       { kind: "narr", text: "她想了想，眉头轻轻皱起来……", who: undefined },
       { kind: "dlg", text: "我有一根差不多的。", who: "Fuka Shikuzaki" },
     ]);
+  });
+
+  it("旁白隔开的同一角色要重新报名字，动作块隔开则接着写", () => {
+    const narrSplit = parseBlocks(
+      '<dlg who="Fuka">第一句。</dlg><narr>她低下头。</narr><dlg who="Fuka">第二句。</dlg>',
+    );
+    expect(dialogueContinues(narrSplit, 2, "Fuka")).toBe(false);
+
+    const actSplit = parseBlocks(
+      '<dlg who="Fuka">第一句。</dlg><act who="Fuka">她顿了顿。</act><dlg who="Fuka">第二句。</dlg>',
+    );
+    expect(dialogueContinues(actSplit, 2, "Fuka")).toBe(true);
+    expect(dialogueContinues(actSplit, 0, "Fuka")).toBe(false);
+  });
+
+  it("解析角色动作块，并在回写时保留 act 标签", () => {
+    const blocks = parseBlocks('<act who="林晚晴">她皱了皱眉。</act>\n<dlg who="林晚晴">我不记得。</dlg>');
+    expect(blocks).toEqual([
+      { kind: "act", text: "她皱了皱眉。", who: "林晚晴" },
+      { kind: "dlg", text: "我不记得。", who: "林晚晴" },
+    ]);
+    expect(blocksToRaw(blocks)).toBe(
+      '<act who="林晚晴">她皱了皱眉。</act>\n<dlg who="林晚晴">我不记得。</dlg>',
+    );
   });
 
   it("兼容大小写标签和单引号 who", () => {

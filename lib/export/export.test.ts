@@ -77,12 +77,13 @@ describe("选中的 swipe 与 OOC、旁白", () => {
     expect(stripOoc("留下 ((不要导出)) 这句")).toBe("留下  这句");
   });
 
-  it("对白和旁白用不同的排版 class", () => {
+  it("对白、动作和旁白用不同的排版 class", () => {
     const html = renderChapterHtml(
       [
         {
           role: "assistant",
-          content: "<narr>雨。</narr>\n<dlg who=\"林晚晴\">坐。</dlg>",
+          content:
+            "<narr>雨。</narr>\n<act who=\"林晚晴\">她皱了皱眉。</act>\n<dlg who=\"林晚晴\">坐。</dlg>",
         },
         { role: "user", content: "好。" },
       ],
@@ -91,6 +92,7 @@ describe("选中的 swipe 与 OOC、旁白", () => {
     );
     expect(html).toContain('class="narr"');
     expect(html).toContain('class="dlg"');
+    expect(html).toContain('class="act"');
     expect(html).toContain('class="player"');
     expect(html.indexOf('class="narr"')).toBeLessThan(html.indexOf('class="dlg"'));
   });

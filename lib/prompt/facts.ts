@@ -3,6 +3,12 @@ import type { KeyFacts } from "./types";
 const MAX_CHARACTERS = 20;
 const MAX_PLACES = 20;
 const MAX_FLAGS = 40;
+const MAX_FACT_KEY = 24;
+const MAX_FACT_VALUE = 60;
+
+function clipFact(value: string, max: number): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, max);
+}
 
 /** 模型偶尔漏掉闭合标签。这里连没闭合的那一段也一起收走，别让 JSON 混进摘要正文。 */
 const FACTS_BLOCK = /<facts>\s*([\s\S]*?)\s*(?:<\/facts>|$)/i;
@@ -16,8 +22,8 @@ function stringMap(value: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, item] of Object.entries(value)) {
     if (typeof item !== "string") continue;
-    const name = key.trim();
-    const state = item.trim();
+    const name = clipFact(key, MAX_FACT_KEY);
+    const state = clipFact(item, MAX_FACT_VALUE);
     if (!name || !state) continue;
     out[name] = state;
   }
@@ -28,10 +34,10 @@ function flagMap(value: unknown): Record<string, boolean | string> {
   if (!isRecord(value)) return {};
   const out: Record<string, boolean | string> = {};
   for (const [key, item] of Object.entries(value)) {
-    const name = key.trim();
+    const name = clipFact(key, MAX_FACT_KEY);
     if (!name) continue;
     if (typeof item === "boolean") out[name] = item;
-    else if (typeof item === "string" && item.trim()) out[name] = item.trim();
+    else if (typeof item === "string" && item.trim()) out[name] = clipFact(item, MAX_FACT_VALUE);
   }
   return out;
 }

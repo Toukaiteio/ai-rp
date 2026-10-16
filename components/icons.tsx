@@ -224,3 +224,33 @@ export function IconUnlock(props: IconProps) {
     </Icon>
   );
 }
+
+/** 返回：左箭头。放在页头标题左侧，比文字胶囊更省地方 */
+export function IconBack(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <line x1="19" y1="12" x2="5" y2="12" />
+      <polyline points="12 19 5 12 12 5" />
+    </Icon>
+  );
+}
+
+/** 复制：叠放的两个圆角框，前框压后框一角。放玩家气泡下面，和编辑并排 */
+export function IconCopy(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="8.5" y="8.5" width="12" height="12" rx="2.5" />
+      <path d="M15.5 5.5v-1a1 1 0 0 0-1-1h-10a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h1" />
+    </Icon>
+  );
+}
+
+/** 编辑：斜放的铅笔。放玩家气泡下面，和复制并排 */
+export function IconEdit(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M17 3.5l3.5 3.5L8 19.5l-5 1.5 1.5-5L17 3.5z" />
+      <path d="M14.5 6l3.5 3.5" />
+    </Icon>
+  );
+}

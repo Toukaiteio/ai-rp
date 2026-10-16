@@ -20,8 +20,10 @@ import {
   resetBackendCache,
   type BackendKind,
 } from "@/lib/storage/backend";
+import type { VaultKdfParams } from "./config";
 
 export * from "./crypto";
+export type { VaultKdfParams } from "./config";
 export { registerVaultData } from "./registry";
 
 /** 加密头。只有盐和校验值，密钥的任何一个字节都不在这里。 */
@@ -132,6 +134,12 @@ export function getVaultKey(): CryptoKey | null {
   return activeKey;
 }
 
+/** KDF metadata of the current local vault, for the user's export note. */
+export function getVaultKdfParams(): VaultKdfParams | null {
+  const header = readHeader();
+  return header ? { salt: header.salt, iterations: header.iterations } : null;
+}
+
 export function requireVaultKey(): CryptoKey {
   if (!activeKey) throw new VaultError("尚未解锁", "locked", "locked");
   return activeKey;
@@ -231,6 +239,7 @@ export async function setupVault(
   passphrase: string,
   confirm: string,
   rememberMs = 0,
+  params?: VaultKdfParams,
 ): Promise<void> {
   if (readHeader()) {
     throw new VaultError("本机已经设过密钥，请输入密钥解锁", "has_vault", "has_vault");
@@ -253,13 +262,14 @@ export async function setupVault(
   dropLegacyPlaintext();
   await clearStoredData();
 
-  const salt = randomSalt();
-  const key = await deriveKey(passphrase, fromBase64(toBase64(salt)), PBKDF2_ITERATIONS);
+  const salt = params ? fromBase64(params.salt) : randomSalt();
+  const iterations = params?.iterations ?? PBKDF2_ITERATIONS;
+  const key = await deriveKey(passphrase, fromBase64(toBase64(salt)), iterations);
   writeHeader({
     v: VAULT_VERSION,
     salt: toBase64(salt),
     verifier: await createVerifier(key),
-    iterations: PBKDF2_ITERATIONS,
+    iterations,
     attempts: 0,
   });
 
@@ -465,7 +475,25 @@ export async function exportArchive(payload: unknown): Promise<string> {
  * 绝不静默吞掉——静默失败会让人以为导入成功，然后发现数据没了。
  */
 export async function importArchive(text: string): Promise<{ payload: unknown; exportedAt: number }> {
-  const key = requireVaultKey();
+  return decryptArchive(text, requireVaultKey());
+}
+
+/** Import an archive before the local vault exists, using explicit KDF metadata. */
+export async function importArchiveWithPassphrase(
+  text: string,
+  passphrase: string,
+  params: VaultKdfParams,
+): Promise<{ payload: unknown; exportedAt: number }> {
+  let key: CryptoKey;
+  try {
+    key = await deriveKey(passphrase, fromBase64(params.salt), params.iterations);
+  } catch {
+    throw new VaultError("无法使用这组盐和迭代次数解密存档", "bad_passphrase", "archive_key");
+  }
+  return decryptArchive(text, key);
+}
+
+async function decryptArchive(text: string, key: CryptoKey): Promise<{ payload: unknown; exportedAt: number }> {
   let envelope: unknown;
   try {
     envelope = JSON.parse(text);

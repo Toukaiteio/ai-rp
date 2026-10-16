@@ -14,14 +14,44 @@
         { "id": "glm-5.3-flash", "vision": true },
         { "id": "step-5-preview", "vision": true }
       ],
+      "hideEndpoint": true,
       "keyUrl": "https://router.dys.asia/",
       "docUrl": "https://router.dys.asia/"
+    },
+    {
+      "id": "agnes",
+      "name": "Agnes AI",
+      "baseURL": "https://apihub.agnes-ai.com/v1",
+      "models": [
+        { "id": "agnes-3.0-flash", "vision": true },
+        { "id": "agnes-2.5-flash", "vision": true }
+      ],
+      "imageModels": ["agnes-image-2.5-flash"],
+      "hideEndpoint": true,
+      "hideModel": true,
+      "badge": "free",
+      "keyUrl": "https://platform.agnes-ai.com/settings/apiKeys",
+      "docUrl": "https://platform.agnes-ai.com/settings/apiKeys"
+    },
+    {
+      "id": "dots",
+      "name": "Dots Studio",
+      "baseURL": "https://note3-prev-api.askdiandian.com/v1",
+      "models": [{ "id": "dots3-note-prev", "vision": true }],
+      "hideEndpoint": true,
+      "hideModel": true,
+      "badge": "free",
+      "keyUrl": "https://dots.ai/platform/apikeys",
+      "docUrl": "https://dots.ai/platform/apikeys"
     },
     {
       "id": "openai",
       "name": "OpenAI",
       "baseURL": "https://api.openai.com/v1",
-      "models": ["gpt-5-mini", "gpt-5"],
+      "models": [{ "id": "gpt-6-luna", "vision": true }],
+      "imageModels": ["gpt-image-2.5"],
+      "hideEndpoint": true,
+      "hideModel": true,
       "keyUrl": "https://platform.openai.com/api-keys",
       "docUrl": "https://platform.openai.com/docs/api-reference/chat"
     },

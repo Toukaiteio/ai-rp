@@ -6,6 +6,7 @@ import { Dialog } from "@/components/ui";
 import { cn } from "@/components/ui/cn";
 import {
   ANNOUNCEMENTS,
+  dismissAnnouncement,
   getDismissedServerSnapshot,
   getDismissedSnapshot,
   loadDismissed,
@@ -91,6 +92,12 @@ export function AnnouncementDialog({
   onClose: () => void;
 }) {
   const { t } = useI18n();
+
+  /* 打开就算看过了：小圆点跟着消掉。公告本身仍留在列表里，不是「不再提示」。 */
+  useEffect(() => {
+    if (!open) return;
+    for (const item of ANNOUNCEMENTS) dismissAnnouncement(item.id);
+  }, [open]);
 
   return (
     <Dialog open={open} onClose={onClose} closeLabel={t("common.close")}>

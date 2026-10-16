@@ -5,6 +5,8 @@
  * 换卡源只改这一个文件：实现 normalize + 两个地址构造函数即可。
  */
 
+import type { CharacterCardData } from "./types";
+
 export interface OnlineCardSource {
   id: string;
   name: string;
@@ -120,4 +122,50 @@ export function onlineCardPageUrl(path: string): string | null {
   const trimmed = path.trim();
   if (!PATH_PATTERN.test(trimmed)) return null;
   return `${ONLINE_SOURCE.siteUrl}characters/${trimmed}`;
+}
+
+/**
+ * 头像的中转地址。
+ *
+ * 头像原本是浏览器直连卡源取的，但直连经常被网络挡住或被防盗链拦下，
+ * 列表能出来、头像全是首字母。改成走本项目自己的服务端转一道，
+ * 浏览器只跟同源说话，能不能取到交给服务端。
+ */
+export function avatarProxyUrl(url: string): string {
+  return `/api/cards/avatar?url=${encodeURIComponent(url)}`;
+}
+
+/**
+ * 中转目标。只放行卡源自己的图片主机，协议限 https，
+ * 否则这个接口就成了任意 URL 代理。
+ */
+export function avatarTarget(raw: string): URL | null {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return null;
+    if (!ONLINE_SOURCE.fileHosts.includes(url.hostname)) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+/** 卡源把立绘固定放在 /avatars/<作者/卡名>/avatar.webp。 */
+export function onlineCardAvatarUrl(path: string): string | null {
+  const trimmed = path.trim();
+  if (!PATH_PATTERN.test(trimmed)) return null;
+  return `https://avatars.charhub.io/avatars/${trimmed}/avatar.webp`;
+}
+
+/**
+ * 从卡里拼出立绘地址。
+ *
+ * 卡本体不存图片，只留了卡源的出处（extensions.chub.full_path），
+ * 立绘按固定规律由它拼出来。不是从卡源来的卡拼不出，返回 null，
+ * 界面退回按名字生成的首字母头像。
+ */
+export function cardPortraitUrl(data: CharacterCardData): string | null {
+  const chub = data.extensions?.chub;
+  if (!isRecord(chub) || typeof chub.full_path !== "string") return null;
+  return onlineCardAvatarUrl(chub.full_path);
 }

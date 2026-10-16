@@ -13,6 +13,7 @@ import {
   type ChatErrorInfo,
 } from "@/lib/providers";
 import type { ChatMessage } from "@/lib/prompt/types";
+import { cleanApiKey } from "@/lib/providers/apikey";
 
 export const maxDuration = 300;
 
@@ -26,14 +27,15 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+/** 头值只能是 ISO-8859-1，高位字节统一按「没填」处理，别丢给 SDK。 */
 function readKey(request: Request, header: string): string | null {
   const raw = request.headers.get(header);
   if (!raw) return null;
   if (header === "authorization") {
     const match = /^Bearer\s+(.+)$/i.exec(raw.trim());
-    return match ? match[1].trim() : null;
+    return match ? cleanApiKey(match[1]).value || null : null;
   }
-  return raw.trim() || null;
+  return cleanApiKey(raw).value || null;
 }
 
 function jsonError(info: ChatErrorInfo) {
@@ -54,6 +56,8 @@ async function readText(
     apiKey,
     baseURL,
     timeoutMs: UPSTREAM_TIMEOUT_MS,
+    // 生图链路里的对话请求也不重试。429 再退避几次，界面会一直停在生成中。
+    maxRetries: 0,
   });
   const events = await provider.open({
     messages,
@@ -141,7 +145,10 @@ export async function POST(request: Request): Promise<Response> {
     return jsonError({ status: 401, code: "missing_key", message: "缺少生图 API Key" });
   }
 
-  const resolvedImage = resolveBaseURL(imageProvider, asString(raw.imageBaseURL) || asString(raw.baseURL));
+  // 生图模型和对话不是同一家时，不能把对话的自定义地址套过去。
+  const requestedImageBase =
+    asString(raw.imageBaseURL) || (imageProvider === providerId ? asString(raw.baseURL) : undefined);
+  const resolvedImage = resolveBaseURL(imageProvider, requestedImageBase);
   if ("error" in resolvedImage) {
     return jsonError({ status: 400, code: "bad_base_url", message: resolvedImage.error });
   }
@@ -157,7 +164,13 @@ export async function POST(request: Request): Promise<Response> {
       chatKey,
       chatBase,
       model,
-      buildPromptWriterMessages({ name, appearance, scene, styleId }),
+      buildPromptWriterMessages({
+        name,
+        appearance,
+        scene,
+        styleId,
+        portrait: raw.portrait === true,
+      }),
       controller.signal,
       300,
     );

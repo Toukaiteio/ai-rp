@@ -126,10 +126,15 @@ export function createLocalSessionStore(): SessionStore {
 
 /** 存档导入用：直接写入，不经过 store。 */
 export async function replaceSessions(list: ChatSession[]): Promise<void> {
+  // 先更新内存镜像，再等待磁盘写入。角色架刷新时可能马上挂载 ChatScreen，
+  // 它必须能在这一刻读到导入的会话，而不是先创建一个空的新会话。
+  sessions.clear();
+  for (const session of list) sessions.set(session.id, session);
+  loaded = true;
+  notify();
   for (const session of list) {
     await writeSlot("data", `${PREFIX}${session.id}`, session);
   }
-  await load();
 }
 
 async function clearSessions(): Promise<void> {

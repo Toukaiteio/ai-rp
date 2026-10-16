@@ -43,8 +43,33 @@ export function buildPromptWriterMessages(input: {
   appearance: string;
   scene: string;
   styleId?: string;
+  /** 角色头像：只要头肩和一张干净底，不要带场景。 */
+  portrait?: boolean;
 }): ChatMessage[] {
   const style = stylePrompt(input.styleId);
+  if (input.portrait) {
+    return [
+      {
+        role: "system",
+        content: [
+          "You write one English image prompt for a single character portrait.",
+          "Head and shoulders, facing the viewer, plain muted background.",
+          "Include the appearance exactly as given and the fixed art style.",
+          "Do not invent a different face, age, or outfit.",
+          "No speech bubbles, no captions, no text, no extra people.",
+          "Output only the prompt, one paragraph, under 500 characters.",
+        ].join("\n"),
+      },
+      {
+        role: "user",
+        content: [
+          `Character: ${input.name}`,
+          `Appearance (must be reflected): ${input.appearance || "not specified"}`,
+          `Art style (use this, do not replace it): ${style}`,
+        ].join("\n"),
+      },
+    ];
+  }
   return [
     {
       role: "system",

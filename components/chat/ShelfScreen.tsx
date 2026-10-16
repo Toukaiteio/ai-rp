@@ -2,20 +2,20 @@
 
 import { useRef, useState } from "react";
 import {
-  BackPill,
   CharacterCard,
   IconButton,
   ImportCard,
   ScreenHead,
   Tag,
 } from "@/components/ui";
-import { IconDownload, IconTrash } from "@/components/icons";
+import { IconBack, IconDownload, IconTrash } from "@/components/icons";
 import {
   downloadCard,
   isPlayableCard,
   readCardFile,
   type CardEntry,
 } from "@/lib/cards";
+import { cardPortraitUrl } from "@/lib/cards/online";
 import { addImportedCard, removeImportedCard } from "@/lib/storage/cards";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
@@ -75,12 +75,14 @@ export function ShelfScreen({
                 </span>
               </span>
             }
-            action={
-              <span className="flex items-center gap-2">
-                <AnnouncementBell onClick={() => setAnnounceOpen(true)} />
-                {onBack ? <BackPill onClick={onBack}>{t("shelf.back")}</BackPill> : null}
-              </span>
+            before={
+              onBack ? (
+                <IconButton aria-label={t("shelf.back")} title={t("shelf.back")} onClick={onBack}>
+                  <IconBack />
+                </IconButton>
+              ) : undefined
             }
+            action={<AnnouncementBell onClick={() => setAnnounceOpen(true)} />}
           />
 
           {error ? (
@@ -107,7 +109,7 @@ export function ShelfScreen({
             return (
               <CharacterCard
                 key={entry.id}
-                portrait={<Avatar name={entry.card.data.name} />}
+                portrait={<Avatar name={entry.card.data.name} src={cardPortraitUrl(entry.card.data)} />}
                 name={entry.card.data.name}
                 description={firstSentence(entry.card.data.description)}
                 tags={
@@ -122,11 +124,13 @@ export function ShelfScreen({
                 currentLabel={t("common.current")}
                 startLabel={t("common.start")}
                 onStart={playable ? () => onSelect(entry.id) : undefined}
+                onReturn={entry.id === currentCardId ? onBack : undefined}
+                returnLabel={t("shelf.returnToChat", { name: entry.card.data.name })}
                 actions={
                   <>
                     <IconButton
                       aria-label={t("shelf.exportCard", { name: entry.card.data.name })}
-                      className="size-8"
+                      className="size-8 bg-surface-2/85 backdrop-blur-sm"
                       onClick={() => downloadCard(entry.card)}
                     >
                       <IconDownload className="size-4" />
@@ -134,7 +138,7 @@ export function ShelfScreen({
                     {entry.source === "imported" ? (
                       <IconButton
                         aria-label={t("shelf.deleteCard", { name: entry.card.data.name })}
-                        className="size-8 text-danger hover:text-danger-hover"
+                        className="size-8 bg-surface-2/85 text-danger backdrop-blur-sm hover:text-danger-hover"
                         onClick={() => void removeImportedCard(entry.id)}
                       >
                         <IconTrash className="size-4" />

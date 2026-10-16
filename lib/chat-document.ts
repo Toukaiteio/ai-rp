@@ -32,7 +32,7 @@ function clipText(raw: string): string {
 
 /** 文档里的块标记不能把玩家消息拆开。 */
 function neutralize(text: string): string {
-  return text.replace(/<\/?(narr|dlg|scene|player)\b/gi, (tag) => tag.replace("<", "＜"));
+  return text.replace(/<\/?(narr|act|dlg|scene|player)\b/gi, (tag) => tag.replace("<", "＜"));
 }
 
 export function normalizeDocument(value: unknown): ChatDocument | undefined {

@@ -44,9 +44,17 @@
   --bubble: #ededed;
   --bubble-ink: #161616;
 
+  /* 动作块 —— 全站唯一一处有意保留的色相，其余一律走中性灰。
+     角色自己的动作与心理活动必须和旁白分开：旁白是灰的、无缩进感的细线，
+     动作走淡黄。只用在正文文字和左缘那条细线上，不做填充、不做背景，
+     免得读起来像另一种消息气泡。 */
+  --act: #e8dca0;
+  --act-line: #5c5433;
+
   /* 遮罩与图片上的压字 */
   --veil: rgba(0, 0, 0, 0.55);
   --overlay: rgba(0, 0, 0, 0.68);
+  --overlay-strong: rgba(0, 0, 0, 0.8); /* 立绘压字最深的底 */
   --overlay-ink: #ffffff;
 
   /* 字体 —— 界面用无衬线，正文用衬线，两套分工就是操作与阅读的边界 */
@@ -87,6 +95,9 @@
 
   --color-bubble: var(--bubble);
   --color-bubble-ink: var(--bubble-ink);
+
+  --color-act: var(--act);
+  --color-act-line: var(--act-line);
 
   --color-veil: var(--veil);
   --color-overlay: var(--overlay);
@@ -239,17 +250,36 @@
     }
   }
 
-  /* 角色卡默认只露名字与标签。窄屏没有悬停，简介就留在卡片里。
-     这两个块自己管 display：卡片上不能再挂 flex 这类工具类，
-     否则 utilities 层会盖掉这里的 none。 */
-  .card-info-inline {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+  /* 立绘铺满整张卡，标题与标签压在它的下半部：
+     垫一层由下往上的黑，压字才看得清，上缘淡出让画面透出来。 */
+  .card-scrim {
+    background: linear-gradient(
+      to top,
+      var(--overlay-strong) 0%,
+      color-mix(in srgb, var(--overlay) 62%, transparent) 72%,
+      transparent 100%
+    );
   }
 
-  .card-info-hover {
-    display: none;
+  /* 详情从名字下面撑开。用网格行的 0fr → 1fr 做高度动画，
+     本身不带底色，直接落在卡片的那层压字底上。 */
+  .card-info {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 240ms ease;
+  }
+
+  .card-info > * {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* 详情正文：默认四行，悬停放宽到八行。空间有限，不必全放出来 */
+  .card-info-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   /* 标签排成一行不换行，多了就裁掉，不把卡片撑开 */
@@ -276,25 +306,24 @@
      名字过长时同一个动作把它横向推到底：容器查询单位拿得到可见宽度，
      短名字算出来正好是 0，不会乱动。 */
   @media (hover: hover) and (min-width: 768px) {
-    .card-info-inline {
-      display: none;
-    }
-
-    .card-info-hover {
-      display: flex;
-      visibility: hidden;
+    /* 窄屏没有悬停，详情常驻；有指针时默认收起 */
+    .card-info {
+      grid-template-rows: 0fr;
       opacity: 0;
-      pointer-events: none;
       transition:
-        opacity 200ms ease,
-        visibility 200ms;
+        grid-template-rows 240ms ease,
+        opacity 200ms ease;
     }
 
-    .group:hover .card-info-hover,
-    .group:focus-within .card-info-hover {
-      visibility: visible;
+    .group:hover .card-info,
+    .group:focus-within .card-info {
+      grid-template-rows: 1fr;
       opacity: 1;
-      pointer-events: auto;
+    }
+
+    .group:hover .card-info-text,
+    .group:focus-within .card-info-text {
+      -webkit-line-clamp: 8;
     }
 
     .card-name > span {
@@ -325,7 +354,7 @@
   }
 
   .card-name > span,
-  .card-info-hover {
+  .card-info {
     transition-duration: 1ms;
   }
 

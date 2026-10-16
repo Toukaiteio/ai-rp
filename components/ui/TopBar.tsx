@@ -49,7 +49,12 @@ export function TopBar({
     memoryUsed == null ? null : Math.min(100, Math.max(0, Math.round(memoryUsed)));
 
   return (
-    <div className={cn("flex shrink-0 items-center gap-1.5 bg-transparent px-3 py-3 md:gap-3 md:px-4", className)}>
+    <div
+      className={cn(
+        "flex shrink-0 items-center gap-1.5 bg-black/25 px-3 py-3 md:gap-3 md:px-4",
+        className,
+      )}
+    >
       <button
         type="button"
         onClick={onWho}
@@ -98,8 +103,9 @@ function MemoryButton({
   label: string;
   onClick?: () => void;
 }) {
-  /* 和其他 IconButton 同一档：40px 的圆，描边落在外缘，图标 19px。 */
-  const radius = 19;
+  /* 40px 的按钮里留一圈。线宽 2.5，半径往里收，避免描边画出按钮。 */
+  const radius = 18;
+  const stroke = 2.5;
   const circumference = 2 * Math.PI * radius;
   const filled = percent == null ? 0 : (percent / 100) * circumference;
 
@@ -115,7 +121,7 @@ function MemoryButton({
         className="pointer-events-none absolute inset-0 size-10 -rotate-90 overflow-visible"
         aria-hidden="true"
       >
-        <circle cx="20" cy="20" r={radius} fill="none" stroke="var(--line)" strokeWidth="1.5" />
+        <circle cx="20" cy="20" r={radius} fill="none" stroke="var(--line)" strokeWidth={stroke} />
         {percent != null && percent > 0 ? (
           <circle
             cx="20"
@@ -123,7 +129,7 @@ function MemoryButton({
             r={radius}
             fill="none"
             stroke="var(--ink)"
-            strokeWidth="1.5"
+            strokeWidth={stroke}
             strokeLinecap="round"
             strokeDasharray={`${filled} ${circumference - filled}`}
           />

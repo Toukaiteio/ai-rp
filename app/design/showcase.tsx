@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   ActPill,
+  ActionBlock,
   BackPill,
   Badge,
   Bar,
@@ -41,6 +42,7 @@ import {
   Sheet,
   SliderRow,
   SuggestChip,
+  SuggestDivider,
   SuggestRow,
   Tag,
   Toast,
@@ -53,6 +55,7 @@ import {
   MemoryLayer,
 } from "@/components/ui";
 import {
+  IconBack,
   IconBook,
   IconCheck,
   IconEye,
@@ -178,6 +181,11 @@ export function Showcase() {
             #161616
           </code>
           ，不引入蓝、金、紫色相；高饱和色只保留给删除、重置这类破坏性操作。
+          唯一一处例外是动作块的淡黄
+          <code className="mx-1 rounded-sm bg-surface-2 px-1.5 py-0.5 text-[13px] text-ink">
+            --act
+          </code>
+          ：它和旁白只差明暗与斜体，看久了容易混，所以用色相把两者拉开。
         </p>
       </header>
 
@@ -201,6 +209,7 @@ export function Showcase() {
             <Swatch name="强调" token="--accent" />
             <Swatch name="选中" token="--selected" />
             <Swatch name="气泡" token="--bubble" />
+            <Swatch name="动作" token="--act" />
           </div>
           <div className="flex flex-wrap gap-4">
             <Swatch name="危险" token="--danger" />
@@ -396,7 +405,7 @@ export function Showcase() {
 
       <Section
         title="消息块"
-        note="旁白即正文：不加头像、不加名牌、不用消息背景，与角色对白共用同一文字栏。"
+        note="旁白即正文：不加头像、不加名牌、不用消息背景，与角色对白共用同一文字栏。动作块同形不同色，淡黄把角色的动作和旁白区分开。"
       >
         <Demo className="p-0">
           <ChatScroll className="max-h-none">
@@ -416,6 +425,9 @@ export function Showcase() {
                   哟，稀客。三年了，饭钱还没还，就敢来蹭雨？先擦擦，感冒了可没人给你熬药。
                 </p>
               </DialogueBlock>
+              <ActionBlock>
+                <p>她嘴上不饶人，手却已经把干毛巾甩到你怀里，眼神往门外扫了一眼。</p>
+              </ActionBlock>
               <PlayerBubble>老板娘，来杯热姜茶。</PlayerBubble>
               <NarratorBlock>
                 <p>
@@ -433,8 +445,16 @@ export function Showcase() {
                   <ActPill>生成当前场景 CG</ActPill>
                 </MessageActions>
               </DialogueBlock>
+              <div className="ml-12 flex flex-col gap-2.5">
+                <SuggestDivider label={z("chat.suggestLabel")} />
+                <SuggestRow className="!w-auto !px-0 !py-0">
+                  <SuggestChip>不介意，你慢慢来</SuggestChip>
+                  <SuggestChip>帮你把笔帽捡回来了</SuggestChip>
+                  <SuggestChip>你好像很紧张，没事的</SuggestChip>
+                </SuggestRow>
+              </div>
               <CgCard
-                caption="场景 CG · 由 gpt-image-1 生成"
+                caption="场景 CG · 由 gpt-image-2.5 生成"
                 icon={<IconImage className="size-[13px]" />}
               >
                 <div className="grid aspect-[16/10] w-full place-items-center bg-surface-3 text-sm text-ink-3">
@@ -704,7 +724,12 @@ export function Showcase() {
               <div className="rounded-lg border border-line p-4">
                 <ScreenHead
                   title="角色架"
-                  subtitle="预设角色卡，点「开始」直接进对话"
+                  subtitle="标题左侧是返回箭头，右侧是铃铛，和对话页顶栏一样贴两端"
+                  before={
+                    <IconButton aria-label={z("shelf.back")}>
+                      <IconBack />
+                    </IconButton>
+                  }
                   action={<BackPill>{z("shelf.back")}</BackPill>}
                 />
               </div>

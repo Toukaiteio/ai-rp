@@ -4,6 +4,7 @@ import {
   exportArchive,
   getVaultSnapshot,
   importArchive,
+  importArchiveWithPassphrase,
   listSlots,
   MAX_ATTEMPTS,
   readSlot,
@@ -66,6 +67,17 @@ async function freshSetup(passphrase = PASSPHRASE) {
 }
 
 describe("加密原语", () => {
+  it("未初始化时可用指定盐和迭代次数解密存档", async () => {
+    const params = { salt: toBase64(new TextEncoder().encode("archive-salt-1234")), iterations: 120_000 };
+    await wipeVaultData();
+    await setupVault(PASSPHRASE, PASSPHRASE, 0, params);
+    const text = await exportArchive({ sessions: [{ id: "s1" }] });
+
+    await wipeVaultData();
+    const imported = await importArchiveWithPassphrase(text, PASSPHRASE, params);
+    expect(imported.payload).toEqual({ sessions: [{ id: "s1" }] });
+  });
+
   it("同样明文两次加密得到不同密文，解密回到原值", async () => {
     await freshSetup();
     await writeSlot("data", "k", { secret: "sk-live-1234" });

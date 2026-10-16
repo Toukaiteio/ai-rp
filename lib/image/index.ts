@@ -1,6 +1,5 @@
 export {
   IMAGE_STYLES,
-  IMAGE_MODEL_PRESETS,
   DEFAULT_IMAGE_STYLE,
   stylePrompt,
   styleLabel,

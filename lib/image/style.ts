@@ -25,6 +25,3 @@ export function styleLabel(id: string | undefined): string {
   if (id && id in IMAGE_STYLES) return IMAGE_STYLES[id as ImageStyleId].label;
   return IMAGE_STYLES[DEFAULT_IMAGE_STYLE].label;
 }
-
-/** 设置页里的常用模型名。真正生效的是用户填的那一个，空着就等于没配。 */
-export const IMAGE_MODEL_PRESETS = ["gpt-image-1", "dall-e-3", "dall-e-2"] as const;

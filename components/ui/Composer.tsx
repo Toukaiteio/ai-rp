@@ -1,7 +1,7 @@
 "use client";
 
 import { Paperclip } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { IconSendUp } from "../icons";
 import { cn } from "./cn";
@@ -37,19 +37,22 @@ export function Composer({
 }) {
   const { t } = useI18n();
   const ref = useRef<HTMLTextAreaElement>(null);
-  const [grow, setGrow] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
   /** 每次聚焦加一，用来重挂提示节点，把动画从头放一遍 */
   const [alertTick, setAlertTick] = useState(0);
   const ready = (value.trim().length > 0 || hasExtra) && !sendDisabled;
 
-  /* 多行时圆角从胶囊退成 28，避免文字贴到圆角切线上 */
-  useEffect(() => {
+  /* 撑到内容高度，再让 CSS 的 max-height 收住（手机三行、桌面四行）。
+     用 layout effect 先测量再绘制，避免输入变成多行时闪一下。圆角直接写入
+     DOM，不为此增加一次 React 渲染。 */
+  useLayoutEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    const box = boxRef.current;
+    if (!el || !box) return;
     el.style.height = "auto";
-    const next = Math.min(el.scrollHeight, 110);
-    el.style.height = `${next}px`;
-    setGrow(next > 44);
+    const height = el.scrollHeight;
+    el.style.height = `${height}px`;
+    box.style.borderRadius = height > 44 ? "24px" : "9999px";
   }, [value]);
 
   function submit() {
@@ -60,9 +63,11 @@ export function Composer({
   return (
     <div className={cn("w-full", className)}>
       <div
+        ref={boxRef}
         className={cn(
-          "mx-auto flex max-w-[660px] items-end gap-2 border border-line bg-surface-2 p-1.5 transition-[border-radius]",
-          grow ? "rounded-frame" : "rounded-pill",
+          "mx-auto flex max-w-[660px] items-end gap-2 overflow-hidden rounded-pill border border-line bg-surface-2 p-1.5",
+          "transition-[border-radius] duration-[250ms] ease-[cubic-bezier(.22,1,.36,1)]",
+          "motion-reduce:transition-none",
         )}
       >
         <button
@@ -90,7 +95,12 @@ export function Composer({
               submit();
             }
           }}
-          className="max-h-[110px] min-w-0 flex-1 resize-none border-0 bg-transparent px-1.5 py-[9px] text-[15.5px] leading-normal text-ink outline-none placeholder:text-ink-3"
+          className={cn(
+            // 手机三行、桌面四行，超过就在框内滚动
+            "max-h-[88px] min-h-[42px] min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1.5 py-[9px] text-[15.5px] leading-normal text-ink outline-none placeholder:text-ink-3 md:max-h-[112px]",
+            // 空框时只有 placeholder，别让它跟着换行：单行截断，长了打省略号
+            value.length === 0 && "overflow-hidden text-ellipsis whitespace-nowrap",
+          )}
         />
 
         <button

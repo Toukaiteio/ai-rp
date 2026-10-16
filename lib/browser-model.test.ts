@@ -11,6 +11,7 @@ function config(partial: Partial<ProviderConfig>): ProviderConfig {
     temperature: 0.9,
     vision: false,
     image: {
+      providerId: "",
       model: "",
       baseURL: "",
       apiKey: "",
