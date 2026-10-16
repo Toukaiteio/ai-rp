@@ -5,7 +5,13 @@ import { IconCheck, IconGlobe, IconSearch, IconX } from "@/components/icons";
 import { Field, FieldAction, FieldInput, PillButton } from "@/components/ui";
 import { cn } from "@/components/ui/cn";
 import { parseCharacterCard } from "@/lib/cards";
-import { ONLINE_SOURCE, type OnlineCardItem } from "@/lib/cards/online";
+import {
+  normalizeOnlineSearchResponse,
+  onlineSearchUrl,
+  ONLINE_SOURCE,
+  type OnlineCardsPayload,
+  type OnlineCardItem,
+} from "@/lib/cards/online";
 import {
   getUnfiltered,
   getUnfilteredServerSnapshot,
@@ -54,24 +60,15 @@ function listKey(text: string, tags: string[], includeAdult: boolean): string {
   return `${text}#${tags.join(",")}#${includeAdult ? "1" : "0"}#1`;
 }
 
-interface CardsPayload {
-  source: { id: string; name: string; siteUrl: string };
-  query: string;
-  page: number;
-  total: number;
-  fetchedAt: number;
-  items: OnlineCardItem[];
-}
-
 type Status = "idle" | "loading" | "ready" | "error";
 
 interface CacheRecord {
   at: number;
   key: string;
-  payload: CardsPayload;
+  payload: OnlineCardsPayload;
 }
 
-function readCache(key: string): CardsPayload | null {
+function readCache(key: string): OnlineCardsPayload | null {
   try {
     const stored = window.localStorage.getItem(CLIENT_CACHE_KEY);
     if (!stored) return null;
@@ -83,12 +80,12 @@ function readCache(key: string): CardsPayload | null {
   }
 }
 
-function writeCache(key: string, payload: CardsPayload): void {
+function writeCache(key: string, payload: OnlineCardsPayload): void {
   try {
     const record: CacheRecord = { at: Date.now(), key, payload };
     window.localStorage.setItem(CLIENT_CACHE_KEY, JSON.stringify(record));
   } catch {
-    // 存不下就每次展开都问一次服务端，服务端那边还有 5 小时缓存兜着
+    // 存不下就每次展开都重新从浏览器请求卡源
   }
 }
 
@@ -116,7 +113,7 @@ export function OnlineCards({ onAdded }: { onAdded?: () => void }) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [payload, setPayload] = useState<CardsPayload | null>(null);
+  const [payload, setPayload] = useState<OnlineCardsPayload | null>(null);
   const [query, setQuery] = useState("");
   const [applied, setApplied] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -147,22 +144,39 @@ export function OnlineCards({ onAdded }: { onAdded?: () => void }) {
 
     setStatus("loading");
     setError(null);
-    const params = new URLSearchParams({ q: nextQuery, page: "1" });
-    if (nextTags.length > 0) params.set("tags", nextTags.join(","));
-    if (adult) params.set("adult", "1");
     try {
-      const response = await fetch(`/api/cards?${params.toString()}`);
-      const body = (await response.json()) as CardsPayload & { error?: { message?: string } };
+      let response: Response;
+      try {
+        response = await fetch(onlineSearchUrl(nextQuery, 1, adult, nextTags));
+      } catch {
+        throw new Error(`${t("online.fetchFail")}：网络连接失败`);
+      }
       if (!response.ok) {
-        throw new Error(body.error?.message ?? t("online.fetchFail"));
+        throw new Error(`${t("online.fetchFail")}（HTTP ${response.status}）`);
+      }
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        throw new Error(`${t("online.fetchFail")}：卡源返回格式异常`);
+      }
+      let nextPayload: OnlineCardsPayload;
+      try {
+        nextPayload = normalizeOnlineSearchResponse(body, nextQuery, 1);
+      } catch {
+        throw new Error(`${t("online.fetchFail")}：卡源返回格式异常`);
       }
       loadedKeyRef.current = key;
-      writeCache(key, body);
-      setPayload(body);
+      writeCache(key, nextPayload);
+      setPayload(nextPayload);
       setStatus("ready");
     } catch (caught) {
       setStatus("error");
-      setError(caught instanceof Error ? caught.message : t("online.fetchFail"));
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : `${t("online.fetchFail")}：网络连接失败`,
+      );
     }
   }
 

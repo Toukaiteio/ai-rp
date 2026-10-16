@@ -5,8 +5,10 @@ import {
   avatarTarget,
   cardPortraitUrl,
   normalizeOnlineCard,
+  normalizeOnlineSearchResponse,
   onlineCardPageUrl,
   onlineCardPngUrl,
+  onlineSearchUrl,
 } from "./online";
 import type { CharacterCardData } from "./types";
 
@@ -22,6 +24,34 @@ const NODE = {
 };
 
 describe("在线卡源归一化", () => {
+  it("搜索 URL 固定指向 Chub 并保留搜索参数", () => {
+    const url = new URL(onlineSearchUrl("魔法", 2, true, ["Fantasy", "RPG"]));
+    expect(url.origin + url.pathname).toBe("https://api.chub.ai/search");
+    expect(url.searchParams.get("namespace")).toBe("characters");
+    expect(url.searchParams.get("first")).toBe("24");
+    expect(url.searchParams.get("page")).toBe("2");
+    expect(url.searchParams.get("nsfw")).toBe("true");
+    expect(url.searchParams.get("search")).toBe("魔法");
+    expect(url.searchParams.getAll("tags")).toEqual(["Fantasy", "RPG"]);
+  });
+
+  it("搜索响应先用 normalizeOnlineCard 清洗节点", () => {
+    const payload = normalizeOnlineSearchResponse(
+      { data: { count: 2, nodes: [NODE, { ...NODE, fullPath: "../越权" }] } },
+      "",
+      1,
+    );
+    expect(payload.total).toBe(2);
+    expect(payload.items).toHaveLength(1);
+    expect(payload.items[0]?.path).toBe(NODE.fullPath);
+  });
+
+  it("搜索响应缺少节点数组时报告格式异常", () => {
+    expect(() => normalizeOnlineSearchResponse({ data: {} }, "", 1)).toThrow(
+      "invalid_search_response",
+    );
+  });
+
   it("节点收敛成列表项", () => {
     const item = normalizeOnlineCard(NODE);
     expect(item).not.toBeNull();

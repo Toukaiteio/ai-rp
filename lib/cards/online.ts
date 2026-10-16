@@ -39,6 +39,36 @@ export interface OnlineCardItem {
   pageUrl: string;
 }
 
+export interface OnlineCardsPayload {
+  source: { id: string; name: string; siteUrl: string };
+  query: string;
+  page: number;
+  total: number;
+  fetchedAt: number;
+  items: OnlineCardItem[];
+}
+
+export const ONLINE_PAGE_SIZE = 24;
+
+/**
+ * 浏览器直连的搜索地址。参数只会附加到固定的 Chub API 地址，调用方不能传入代理目标。
+ */
+export function onlineSearchUrl(
+  query: string,
+  page: number,
+  includeAdult: boolean,
+  tags: string[],
+): string {
+  const url = new URL(ONLINE_SOURCE.searchUrl);
+  url.searchParams.set("namespace", "characters");
+  url.searchParams.set("first", String(ONLINE_PAGE_SIZE));
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("nsfw", includeAdult ? "true" : "false");
+  if (query) url.searchParams.set("search", query);
+  for (const tag of tags) url.searchParams.append("tags", tag);
+  return url.toString();
+}
+
 /**
  * fullPath 直接进 URL，必须卡死形状。
  * 一段「作者/卡名」，卡源上两边都可能带大写，所以允许大小写；
@@ -107,6 +137,34 @@ export function normalizeOnlineCard(node: unknown): OnlineCardItem | null {
     stars: typeof node.starCount === "number" && node.starCount > 0 ? Math.floor(node.starCount) : 0,
     avatarUrl: safeFileUrl(node.avatar_url, path),
     pageUrl: `${ONLINE_SOURCE.siteUrl}characters/${path}`,
+  };
+}
+
+/** Chub 搜索响应 → 列表数据。响应结构异常时抛错，不把空列表伪装成成功。 */
+export function normalizeOnlineSearchResponse(
+  body: unknown,
+  query: string,
+  page: number,
+): OnlineCardsPayload {
+  if (!isRecord(body) || !isRecord(body.data) || !Array.isArray(body.data.nodes)) {
+    throw new Error("invalid_search_response");
+  }
+
+  const items = body.data.nodes
+    .map(normalizeOnlineCard)
+    .filter((item): item is OnlineCardItem => item !== null);
+
+  return {
+    source: {
+      id: ONLINE_SOURCE.id,
+      name: ONLINE_SOURCE.name,
+      siteUrl: ONLINE_SOURCE.siteUrl,
+    },
+    query,
+    page,
+    total: typeof body.data.count === "number" ? body.data.count : items.length,
+    fetchedAt: Date.now(),
+    items,
   };
 }
 
