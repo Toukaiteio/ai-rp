@@ -19,6 +19,15 @@ const MAX_PAGE = 20;
 /** 缓存条目上限，避免长跑实例把内存吃满 */
 const MAX_CACHE_ENTRIES = 40;
 
+/** Chub 的 Cloudflare 规则会拒绝非浏览器 User-Agent（比如默认的 ai-rp）。 */
+const UPSTREAM_HEADERS = {
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.9",
+  Referer: "https://chub.ai/",
+  Origin: "https://chub.ai",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+};
+
 interface CardsPayload {
   source: { id: string; name: string; siteUrl: string };
   query: string;
@@ -68,7 +77,7 @@ export async function GET(request: Request): Promise<Response> {
   let payload: CardsPayload;
   try {
     const response = await fetch(upstream, {
-      headers: { Accept: "application/json", "User-Agent": "ai-rp" },
+      headers: UPSTREAM_HEADERS,
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!response.ok) {

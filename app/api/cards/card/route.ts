@@ -15,6 +15,14 @@ const MAX_PNG_BYTES = 12 * 1024 * 1024;
 const CACHE_TTL_MS = 5 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 30;
 
+/** Chub 的 Cloudflare 规则会拒绝非浏览器 User-Agent（比如默认的 ai-rp）。 */
+const UPSTREAM_HEADERS = {
+  Accept: "image/png,image/*;q=0.8,*/*;q=0.5",
+  Referer: "https://chub.ai/",
+  Origin: "https://chub.ai",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+};
+
 const cache = new Map<string, { at: number; card: unknown }>();
 
 function fail(status: number, code: string, message: string): Response {
@@ -36,7 +44,7 @@ export async function GET(request: Request): Promise<Response> {
   let bytes: Uint8Array;
   try {
     const response = await fetch(pngUrl, {
-      headers: { "User-Agent": "ai-rp" },
+      headers: UPSTREAM_HEADERS,
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!response.ok) {
