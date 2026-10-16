@@ -122,6 +122,7 @@ export const zh = {
   "shelf.import": "导入角色卡 JSON",
   "shelf.importFail": "导入失败：{error}",
   "shelf.returnToChat": "回到与{name}的对话",
+  "shelf.chubRegionUnavailable": "Chub 当前国家/地区不可用，在线角色卡入口已隐藏。",
 
   "online.title": "在线角色卡",
   "online.disclaimerShort": "内容来源于网络，本项目不对其负责",

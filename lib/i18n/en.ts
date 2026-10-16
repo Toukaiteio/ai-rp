@@ -125,6 +125,7 @@ export const en: Record<MessageKey, string> = {
 
   "shelf.importFail": "Import failed: {error}",
   "shelf.returnToChat": "Return to the chat with {name}",
+  "shelf.chubRegionUnavailable": "Chub is not available in your country or region. Online cards are hidden.",
 
   "online.title": "Online cards",
   "online.disclaimerShort": "Sourced from the network. This project is not responsible for the content",
