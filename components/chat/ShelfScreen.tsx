@@ -50,6 +50,7 @@ export function ShelfScreen({
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [chubRegionRestricted, setChubRegionRestricted] = useState(false);
+  const [chubAvailabilityChecked, setChubAvailabilityChecked] = useState(false);
   const [announceOpen, setAnnounceOpen] = useState(false);
   const { t } = useI18n();
 
@@ -62,12 +63,14 @@ export function ShelfScreen({
     })
       .then(async (response) => {
         const responseText = await response.text();
-        if (active && isChubRegionRestriction(response.status, responseText)) {
-          setChubRegionRestricted(true);
+        if (active) {
+          setChubRegionRestricted(isChubRegionRestriction(response.status, responseText));
+          setChubAvailabilityChecked(true);
         }
       })
       .catch(() => {
         // 探测失败不等于地区限制，在线入口仍照常显示。
+        if (active) setChubAvailabilityChecked(true);
       });
 
     return () => {
@@ -199,7 +202,9 @@ export function ShelfScreen({
           }}
         />
 
-        {!chubRegionRestricted ? <OnlineCards onAdded={onCardsChanged} /> : null}
+        {chubAvailabilityChecked && !chubRegionRestricted ? (
+          <OnlineCards onAdded={onCardsChanged} />
+        ) : null}
       </div>
       </div>
 
