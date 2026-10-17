@@ -205,7 +205,10 @@ export function assemble(input: AssembleInput): AssembleResult {
   });
 
   if (card.mes_example?.trim()) {
-    prefix.push({ role: "system", content: `对话示例：\n${apply(card.mes_example)}` });
+    prefix.push({
+      role: "system",
+      content: `角色语言参考（只参考说话方式、措辞和节奏，不照抄事件或句子）：\n${apply(card.mes_example)}`,
+    });
   }
 
   if (persona?.trim()) {

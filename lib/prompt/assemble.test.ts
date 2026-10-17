@@ -126,6 +126,15 @@ describe("组装顺序与字节稳定", () => {
     expect(withoutHit.messages.map((m) => m.content).join("\n")).not.toContain("灶上温着姜茶。");
   });
 
+  it("把对话示例限定为语言参考，而不是要照抄的剧情", () => {
+    const result = run({
+      card: { ...card, mes_example: "<START>林晚晴：少来这套。" },
+    });
+    const example = result.messages.find((message) => message.content.includes("少来这套"));
+    expect(example?.content).toContain("角色语言参考");
+    expect(example?.content).toContain("不照抄事件或句子");
+  });
+
   it("改卡改变 cacheKey，概率未参与时 seed 不改变 cacheKey", () => {
     const base = run();
     const changed = run({ card: { ...card, description: `${card.description}改了一点。` } });

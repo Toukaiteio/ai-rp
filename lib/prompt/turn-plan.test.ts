@@ -36,6 +36,7 @@ describe("导演计划", () => {
     const fenced = "```json\n" + JSON.stringify(plan) + "\n```";
     expect(parseTurnPlan(fenced)).toEqual(plan);
     expect(formatTurnPlan(plan)).toContain("不要逐字照抄");
+    expect(formatTurnPlan(plan)).toContain("不是需要逐项执行的脚本");
   });
 
   it("拒绝坏 JSON、缺字段和不合法的 beat/tool call", () => {
