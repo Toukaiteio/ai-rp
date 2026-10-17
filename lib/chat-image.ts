@@ -21,7 +21,7 @@ export async function readChatImage(file: File): Promise<string> {
   return jpeg;
 }
 
-function blobToDataUrl(file: File): Promise<string> {
+function blobToDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
@@ -51,6 +51,30 @@ export async function shrinkPortrait(src: string): Promise<string> {
   if (!context) throw new Error("no-canvas");
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/jpeg", 0.72);
+}
+
+/** 把生图结果固化为本机可保存的 JPEG，避免上游签名 URL 过期。 */
+export async function persistGeneratedImage(src: string): Promise<string> {
+  const source = src.startsWith("data:image/") ? src : await fetchImageDataUrl(src);
+  const image = await loadImage(source);
+  const scale = Math.min(1, MAX_EDGE / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("no-canvas");
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const jpeg = canvas.toDataURL("image/jpeg", 0.82);
+  if (jpeg.length > MAX_DATA_URL) throw new Error("too-large");
+  return jpeg;
+}
+
+async function fetchImageDataUrl(src: string): Promise<string> {
+  const response = await fetch(src);
+  if (!response.ok) throw new Error("image-fetch");
+  const blob = await response.blob();
+  if (!blob.type.startsWith("image/")) throw new Error("not-image");
+  return blobToDataUrl(blob);
 }
 
 /** 只接受浏览器压出来的 data URL，拒绝别的地址，免得把任意 URL 转给上游。 */

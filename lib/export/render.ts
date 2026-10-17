@@ -38,6 +38,20 @@ export const CHAPTER_CSS = [
   ".cg{display:block;max-width:100%;height:auto;margin:1em auto;}",
 ].join("");
 
+export function renderTitlePageHtml(input: {
+  title: string;
+  author: string;
+  scenario?: string;
+}): string {
+  const scenario = input.scenario?.trim();
+  return [
+    `<section class="title-page"><h1>${escapeHtml(input.title)}</h1>`,
+    `<p class="author">${escapeHtml(input.author)}</p>`,
+    scenario ? `<p class="scenario">${escapeHtml(scenario)}</p>` : "",
+    "</section>",
+  ].join("");
+}
+
 function blocksOf(message: ExportMessage, options: RenderOptions): MessageBlock[] {
   const raw = options.includeOoc ? message.content : stripOoc(message.content);
   if (!raw) return [];
@@ -69,7 +83,7 @@ export function renderChapterHtml(
   options: RenderOptions,
   images: Map<string, string>,
 ): string {
-  const parts: string[] = [`<style type="text/css">${CHAPTER_CSS}</style>`];
+  const parts: string[] = [];
 
   for (const message of messages) {
     if (message.role === "user") {

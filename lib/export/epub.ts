@@ -1,12 +1,14 @@
 import EpubBuilder from "jepub/dist/jepub.es.js";
+import JSZip from "jszip";
 import { selectedSwipe, splitChapters, type ExportMessage } from "./chapters";
 import { compressImage, renderNameCover } from "./image";
-import { renderChapterHtml, type RenderOptions } from "./render";
+import { CHAPTER_CSS, renderChapterHtml, renderTitlePageHtml, type RenderOptions } from "./render";
 
 export interface EpubInput {
   title: string;
   author: string;
   description?: string;
+  scenario?: string;
   messages: Array<{
     role: "user" | "assistant";
     content: string;
@@ -41,6 +43,7 @@ export async function buildEpub(input: EpubInput): Promise<Blob> {
     description: input.description || input.title,
   });
   book.date(new Date());
+  book.add("简介", renderTitlePageHtml({ title: input.title, author: input.author, scenario: input.scenario }));
 
   const imageNames = new Map<string, string>();
   let imageIndex = 0;
@@ -75,7 +78,25 @@ export async function buildEpub(input: EpubInput): Promise<Blob> {
   if (!(result instanceof Blob)) {
     throw new Error("EPUB 生成失败");
   }
-  return result;
+  return injectChapterStyles(result);
+}
+
+/** jepub 的 add() 接收 body 片段，因此把样式移入每个 XHTML 的 head。 */
+async function injectChapterStyles(source: Blob): Promise<Blob> {
+  const zip = await JSZip.loadAsync(source);
+  const style = `<style type="text/css">${CHAPTER_CSS}</style>`;
+  const files = Object.keys(zip.files).filter((name) => /\.(?:html|xhtml)$/i.test(name));
+  for (const name of files) {
+    const file = zip.file(name);
+    if (!file) continue;
+    const html = await file.async("string");
+    if (html.includes(style)) continue;
+    const next = /<head\b[^>]*>/i.test(html)
+      ? html.replace(/<head\b[^>]*>/i, (tag) => `${tag}${style}`)
+      : html;
+    zip.file(name, next);
+  }
+  return zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
 }
 
 export function epubFileName(title: string): string {

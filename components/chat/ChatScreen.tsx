@@ -75,7 +75,7 @@ import {
 } from "@/lib/image";
 import { decodeSseBuffer, readSseText } from "@/lib/wire";
 import { useI18n } from "@/lib/i18n/use-i18n";
-import { readChatImage, shrinkPortrait } from "@/lib/chat-image";
+import { persistGeneratedImage, readChatImage, shrinkPortrait } from "@/lib/chat-image";
 import { embedDocument, normalizeDocument, readChatDocument, type ChatDocument } from "@/lib/chat-document";
 import { BROWSER_PROVIDER_ID, describeImage, probeBrowserModel, streamBrowserChat } from "@/lib/browser-model";
 import { applyMacros, assemble, planBudget } from "@/lib/prompt";
@@ -1149,10 +1149,11 @@ export function ChatScreen({
       if (!payload.src || !payload.prompt) {
         throw { status: 502, code: "empty_image", message: t("chat.imageEmpty") };
       }
+      const storedSrc = await persistGeneratedImage(payload.src);
       const cg: StoredCg = {
         id: createId(),
         prompt: payload.prompt,
-        src: payload.src,
+        src: storedSrc,
         sceneKey: sceneKey(turn.content),
         source,
         turn: turnRef.current,
@@ -1394,6 +1395,7 @@ export function ChatScreen({
         title: card.name,
         author: card.creator?.trim() || userName,
         description: card.scenario.trim().slice(0, 180),
+        scenario: card.scenario,
         options: {
           includeNarration,
           includeOoc,

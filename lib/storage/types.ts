@@ -2,7 +2,7 @@ import type { ChatMessage } from "@/lib/prompt/types";
 
 export type StoredRole = Extract<ChatMessage["role"], "user" | "assistant">;
 
-/** 挂在某一条回复上的场景 CG。图片本身是 data URL 或上游临时地址。 */
+/** 挂在某一条回复上的场景 CG。src 由生成后固化为本机 data URL。 */
 export interface StoredCg {
   id: string;
   prompt: string;

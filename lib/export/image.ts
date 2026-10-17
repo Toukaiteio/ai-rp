@@ -25,6 +25,7 @@ function canvasBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | 
 async function drawFitted(src: string, edge: number): Promise<HTMLCanvasElement | null> {
   const image = new Image();
   image.decoding = "async";
+  image.crossOrigin = "anonymous";
   const loaded = await new Promise<boolean>((resolve) => {
     image.onload = () => resolve(true);
     image.onerror = () => resolve(false);
@@ -38,7 +39,11 @@ async function drawFitted(src: string, edge: number): Promise<HTMLCanvasElement 
   canvas.height = size.height;
   const context = canvas.getContext("2d");
   if (!context) return null;
-  context.drawImage(image, 0, 0, size.width, size.height);
+  try {
+    context.drawImage(image, 0, 0, size.width, size.height);
+  } catch {
+    return null;
+  }
   return canvas;
 }
 

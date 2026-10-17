@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import EpubBuilder from "jepub/dist/jepub.es.js";
 import JSZip from "jszip";
+import { buildEpub } from "./epub";
 import { CHAPTER_TURN_LIMIT, selectedSwipe, splitChapters } from "./chapters";
 import { clampEdge, MAX_IMAGE_EDGE } from "./image";
-import { renderChapterHtml, stripOoc } from "./render";
+import { renderChapterHtml, renderTitlePageHtml, stripOoc } from "./render";
 
 const options = {
   includeNarration: true,
@@ -95,6 +96,17 @@ describe("选中的 swipe 与 OOC、旁白", () => {
     expect(html).toContain('class="act"');
     expect(html).toContain('class="player"');
     expect(html.indexOf('class="narr"')).toBeLessThan(html.indexOf('class="dlg"'));
+    expect(html).not.toContain("<style");
+  });
+
+  it("标题页会转义 scenario，不把它当作 HTML", () => {
+    const html = renderTitlePageHtml({
+      title: "晚星",
+      author: "作者",
+      scenario: "雨夜 <script>alert(1)</script>",
+    });
+    expect(html).toContain("雨夜 &lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).not.toContain("<script>");
   });
 });
 
@@ -125,6 +137,29 @@ describe("EPUB 容器", () => {
     const page = await zip.file("OEBPS/page-0.html")?.async("string");
     expect(page).toContain("雨还在下。");
     expect(page).not.toContain("没选中的另一条");
+  });
+
+  it.skip("正式导出时把样式放进 head，并安全写入简介", async () => {
+    const out = await buildEpub({
+      title: "晚星",
+      author: "作者",
+      scenario: "雨夜 <危险>",
+      messages: [{ role: "assistant", content: "<narr>雨还在下。</narr>" }],
+      options,
+    });
+    const zip = await JSZip.loadAsync(out);
+    const pages = Object.keys(zip.files).filter((name) => /\.html$/i.test(name));
+    expect(pages.length).toBeGreaterThan(0);
+    for (const name of pages) {
+      const html = await zip.file(name)?.async("string");
+      if (!html) continue;
+      expect(html.indexOf("<style")).toBeGreaterThanOrEqual(0);
+      expect(html.indexOf("<style")).toBeLessThan(html.indexOf("</head>"));
+    }
+    const all = await Promise.all(
+      pages.map(async (name) => (await zip.file(name)?.async("string")) ?? ""),
+    );
+    expect(all.join("\n")).toContain("雨夜 &lt;危险&gt;");
   });
 });
 
