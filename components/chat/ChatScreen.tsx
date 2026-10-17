@@ -41,9 +41,11 @@ import { cn } from "@/components/ui/cn";
 import { hashSeed } from "@/lib/seed";
 import { dialogueContinues, parseBlocks, stripPseudoToolTags, type MessageBlock } from "@/lib/blocks";
 import { buildSuggestionMessages, parseSuggestions } from "@/lib/suggest";
+import { DICE_TOOL } from "@/lib/dice";
 import {
   applyChatTool,
   emptyJournal,
+  MEMORY_TOOLS,
   normalizeJournal,
   putPortrait,
   type Journal,
@@ -54,7 +56,7 @@ import { openingGreetings } from "@/lib/cards/greetings";
 import type { CharacterCardData } from "@/lib/cards/types";
 import type { ChatMessage } from "@/lib/prompt/types";
 import type { KeyFacts, RollingSummary } from "@/lib/prompt/types";
-import { presetChat } from "@/lib/providers/config";
+import { findProvider, presetChat } from "@/lib/providers/config";
 import {
   canSend,
   imageProviderId,
@@ -73,12 +75,13 @@ import {
   sceneText,
   scoreAllows,
 } from "@/lib/image";
-import { decodeSseBuffer, readSseText } from "@/lib/wire";
+import { decodeSseBuffer, readSseText, type WireFrame } from "@/lib/wire";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { persistGeneratedImage, readChatImage, shrinkPortrait } from "@/lib/chat-image";
 import { embedDocument, normalizeDocument, readChatDocument, type ChatDocument } from "@/lib/chat-document";
 import { BROWSER_PROVIDER_ID, describeImage, probeBrowserModel, streamBrowserChat } from "@/lib/browser-model";
-import { applyMacros, assemble, planBudget } from "@/lib/prompt";
+import { browserChatEndpoint, streamBrowserOpenAI } from "@/lib/browser-openai";
+import { applyMacros, assemble, buildDirectorMessages, formatTurnPlan, parseTurnPlan, planBudget } from "@/lib/prompt";
 import { cardPortraitUrl } from "@/lib/cards/online";
 import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
 import { Avatar } from "./Avatar";
@@ -805,6 +808,59 @@ export function ChatScreen({
       ...userTurnsAsMessages(userTurn),
     ];
 
+    // 远程模型优先从浏览器直连。只有 CORS、网络或上游协议失败时，才回退到 /api/chat。
+    // 组装器是纯函数，因此可以安全地在浏览器运行；服务端路径仍保留作后备。
+    let directMessages: ChatMessage[] | null = null;
+    let directEndpoint = "";
+    if (!local) {
+      const preset = findProvider(config.providerId);
+      const baseURL = config.providerId === "custom" ? config.baseURL : preset?.baseURL ?? "";
+      try {
+        directEndpoint = browserChatEndpoint(baseURL);
+        const assembled = assemble({
+          card: {
+            name: card.name,
+            description: card.description,
+            personality: card.personality,
+            scenario: card.scenario,
+            system_prompt: card.system_prompt,
+            mes_example: card.mes_example,
+            post_history_instructions: card.post_history_instructions,
+          },
+          lorebook: card.character_book ? { entries: card.character_book.entries } : undefined,
+          history,
+          seed,
+          turn: turnRef.current,
+          summary: summaryRef.current ?? undefined,
+          facts: factsRef.current,
+          journal: journalRef.current,
+          style,
+          userName,
+          budget: planBudget(16_000, 1024),
+        });
+        directMessages = assembled.messages;
+        let planText = "";
+        await streamBrowserOpenAI({
+          endpoint: directEndpoint,
+          apiKey: cleanApiKey(config.apiKey).value,
+          model: chatRoute.model,
+          messages: buildDirectorMessages(assembled.messages),
+          temperature: 0.2,
+          maxTokens: 420,
+          signal: controller.signal,
+          onEvent: (event) => {
+            if (event.type === "delta") {
+              planText += event.text;
+            }
+          },
+        });
+        const plan = parseTurnPlan(planText);
+        if (plan) directMessages = [...assembled.messages, { role: "system", content: formatTurnPlan(plan) }];
+      } catch {
+        directMessages = null;
+      }
+    }
+
     setTurns((prev) => [
       ...prev,
       userTurn,
@@ -858,6 +914,46 @@ export function ChatScreen({
       }
       for (let round = 0; local ? round < 0 : round < 2; round += 1) {
         const calls: PendingTool[] = [];
+        const handleEvent = (frame: WireFrame) => {
+          if (frame === "[DONE]") return;
+          if (frame.type === "delta") {
+            replyText += frame.text;
+            setTurns((prev) =>
+              prev.map((turn) =>
+                turn.id === assistantId ? { ...turn, content: turn.content + frame.text } : turn,
+              ),
+            );
+          } else if (frame.type === "tool") {
+            absorbToolCall(calls, frame);
+          } else if (frame.type === "meta") {
+            setMemory(Math.round((frame.used / Math.max(frame.max, 1)) * 100));
+            needsSummarizeRef.current = frame.needsSummarize;
+          } else if (frame.type === "error") {
+            setError({ status: 502, code: "stream", message: frame.message });
+          }
+        };
+
+        if (directMessages && directEndpoint) {
+          try {
+            await streamBrowserOpenAI({
+              endpoint: directEndpoint,
+              apiKey: cleanApiKey(config.apiKey).value,
+              model: chatRoute.model,
+              messages: directMessages,
+              temperature: config.temperature,
+              maxTokens: 1024,
+              tools: allowTools ? [...MEMORY_TOOLS, DICE_TOOL] : undefined,
+              image: outboundImage,
+              signal: controller.signal,
+              onEvent: (event) => handleEvent(event),
+            });
+          } catch (caught) {
+            // 只在还没有收到正文时回退，避免把已显示的半段回复重复一遍。
+            if (replyText) throw caught;
+            directMessages = null;
+            continue;
+          }
+        } else {
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: {
@@ -932,27 +1028,8 @@ export function ChatScreen({
           const { frames, rest } = decodeSseBuffer(buffer);
           buffer = rest;
 
-          for (const frame of frames) {
-            if (frame === "[DONE]") continue;
-
-            if (frame.type === "delta") {
-              replyText += frame.text;
-              setTurns((prev) =>
-                prev.map((turn) =>
-                  turn.id === assistantId
-                    ? { ...turn, content: turn.content + frame.text }
-                    : turn,
-                ),
-              );
-            } else if (frame.type === "tool") {
-              absorbToolCall(calls, frame);
-            } else if (frame.type === "meta") {
-              setMemory(Math.round((frame.used / Math.max(frame.max, 1)) * 100));
-              needsSummarizeRef.current = frame.needsSummarize;
-            } else if (frame.type === "error") {
-              setError({ status: 502, code: "stream", message: frame.message });
-            }
-          }
+          for (const frame of frames) handleEvent(frame);
+        }
         }
 
         const named = calls.filter((call) => call.name);
@@ -977,6 +1054,9 @@ export function ChatScreen({
         for (const created of freshCharacters) {
           void ensurePortrait(created.name, created.detail);
         }
+        // 工具结果的下一轮继续走服务端后备路径，保持现有 toolTrace 语义，
+        // 避免把不完整的原生 tool message 协议伪装成普通历史。
+        directMessages = null;
         void saveCardMemory({
           cardId,
           summary: summaryRef.current,
