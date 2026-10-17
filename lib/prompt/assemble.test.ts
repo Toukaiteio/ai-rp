@@ -104,9 +104,9 @@ describe("组装顺序与字节稳定", () => {
     expect(flat).not.toContain("<player>");
     expect(flat).toContain("嘴上赶人，手上添茶。");
     expect(flat).toContain("欠下饭钱");
-    expect(flat).toContain("不是写给读者看的完整答案");
+    expect(flat).toContain("角色先是处在这个当下的人");
     expect(flat).toContain("不要为了凑字数扩写");
-    expect(flat).toContain("毫无依据的比喻");
+    expect(flat).toContain("装饰性的比喻");
   });
 
   it("关键词世界书进进出出，不改前缀指纹", () => {

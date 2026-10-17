@@ -337,6 +337,7 @@ function ChatComposer({
   hintAlerts,
   hint,
   streaming,
+  sendDisabled,
 }: {
   hasExtra: boolean;
   onPlus: () => void;
@@ -346,6 +347,7 @@ function ChatComposer({
   hintAlerts: boolean;
   hint?: ReactNode;
   streaming: boolean;
+  sendDisabled: boolean;
 }) {
   const [draft, setDraft] = useState("");
 
@@ -365,6 +367,7 @@ function ChatComposer({
       hintAlerts={hintAlerts}
       hint={hint}
       streaming={streaming}
+      sendDisabled={sendDisabled}
     />
   );
 }
@@ -470,6 +473,7 @@ export function ChatScreen({
   }, [config.providerId, config.model, config.image.model, config.image.baseURL, config.apiKey, config.image.apiKey]);
   /** 长期记忆是否已经灌进来。没灌完就发请求会丢掉前面的剧情。 */
   const memoryReadyRef = useRef(false);
+  const [memoryReady, setMemoryReady] = useState(false);
 
   /** 这张卡的立绘。卡里带着出处才拼得出来，拼不出来就退回首字母 */
   const portraitUrl = useMemo(() => cardPortraitUrl(card), [card]);
@@ -609,6 +613,8 @@ export function ChatScreen({
   useEffect(() => {
     let cancelled = false;
     const store = getSessionStore();
+    memoryReadyRef.current = false;
+    sessionRef.current = null;
 
     void (async () => {
       // 长期记忆必须先到位，否则第一轮的提示词里没有上次的剧情
@@ -619,8 +625,6 @@ export function ChatScreen({
       journalRef.current = normalizeJournal(memory.journal);
       setPortraits(journalRef.current.portraits ?? {});
       turnRef.current = memory.turn;
-      memoryReadyRef.current = true;
-
       const sessions = await store.list();
       if (cancelled) return;
 
@@ -670,6 +674,8 @@ export function ChatScreen({
           budget: planBudget(16_000, 1024),
         });
         setMemory(Math.round((assembled.budget.used / Math.max(assembled.budget.max, 1)) * 100));
+        memoryReadyRef.current = true;
+        setMemoryReady(true);
         return;
       }
 
@@ -680,6 +686,8 @@ export function ChatScreen({
       });
       sessionRef.current = created;
       await store.save(created);
+      memoryReadyRef.current = true;
+      setMemoryReady(true);
     })();
 
     return () => {
@@ -1302,7 +1310,7 @@ export function ChatScreen({
 
   /** 清空这场对话和滚动记忆，只留当前开场白。 */
   function resetSession() {
-    if (streaming) return;
+    if (streaming || !memoryReadyRef.current) return;
     const next: Turn[] = [
       { id: "opening", role: "assistant", content: greetings[greetingIndex] ?? card.first_mes },
     ];
@@ -1321,7 +1329,7 @@ export function ChatScreen({
 
   function send(text: string): boolean {
     const userMessage = text.trim();
-    if ((!userMessage && !attachment) || streaming) return false;
+    if ((!userMessage && !attachment) || streaming || !memoryReadyRef.current) return false;
     const image = attachment?.kind === "image" ? attachment.src : undefined;
     const document =
       attachment?.kind === "document"
@@ -1359,7 +1367,7 @@ export function ChatScreen({
 
   /** 开场白换一条：在 first_mes 与 alternate_greetings 之间轮换。 */
   function cycleGreeting() {
-    if (greetings.length <= 1) return;
+    if (greetings.length <= 1 || !memoryReadyRef.current) return;
     const next = (greetingIndex + 1) % greetings.length;
     setGreetingIndex(next);
     const nextTurns: Turn[] = [
@@ -1370,7 +1378,7 @@ export function ChatScreen({
   }
 
   function regenerate() {
-    if (streaming) return;
+    if (streaming || !memoryReadyRef.current) return;
     if (turns.length <= 1) {
       cycleGreeting();
       return;
@@ -1847,6 +1855,7 @@ export function ChatScreen({
             ) : null
           }
           streaming={streaming}
+          sendDisabled={!memoryReady}
         />
         {/* AI 生成的出处与责任，常驻在输入框下方，不关也不消失 */}
         <p className="mx-auto mt-2 max-w-[660px] text-center text-[11.5px] leading-relaxed text-ink-3">
