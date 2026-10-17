@@ -39,7 +39,7 @@ import {
 import { IconCheck, IconCopy, IconEdit, IconImage } from "@/components/icons";
 import { cn } from "@/components/ui/cn";
 import { hashSeed } from "@/lib/seed";
-import { dialogueContinues, parseBlocks, type MessageBlock } from "@/lib/blocks";
+import { dialogueContinues, parseBlocks, stripPseudoToolTags, type MessageBlock } from "@/lib/blocks";
 import { buildSuggestionMessages, parseSuggestions } from "@/lib/suggest";
 import {
   applyChatTool,
@@ -193,7 +193,9 @@ function playerText(content: string): string {
  * 服务端的 normalizeUserContent 会在组装时抹掉标记。
  */
 function historyContent(turn: Turn): string {
-  if (turn.role !== "user") return turn.content;
+  // 模型偶尔把函数调用写成 XML 标签。原样存进历史，下一轮它就会在自己
+  // 上一轮的输出里看见这种写法，从而有样学样。喂回去之前先剥掉。
+  if (turn.role === "assistant") return stripPseudoToolTags(turn.content);
   const text = embedDocument(turn.content, turn.document);
   if (!turn.imageNote) return text;
   return `${text}\n\n【图片】\n${turn.imageNote}`;
@@ -327,16 +329,20 @@ function ChatComposer({
   hasExtra,
   onPlus,
   onSend,
+  onStop,
   placeholder,
   hintAlerts,
   hint,
+  streaming,
 }: {
   hasExtra: boolean;
   onPlus: () => void;
   onSend: (text: string) => boolean;
+  onStop: () => void;
   placeholder: string;
   hintAlerts: boolean;
   hint?: ReactNode;
+  streaming: boolean;
 }) {
   const [draft, setDraft] = useState("");
 
@@ -349,11 +355,13 @@ function ChatComposer({
       value={draft}
       onChange={setDraft}
       onSend={submit}
+      onStop={onStop}
       hasExtra={hasExtra}
       onPlus={onPlus}
       placeholder={placeholder}
       hintAlerts={hintAlerts}
       hint={hint}
+      streaming={streaming}
     />
   );
 }
@@ -1746,23 +1754,17 @@ export function ChatScreen({
           hasExtra={!!attachment}
           onPlus={() => imageInputRef.current?.click()}
           onSend={send}
+          onStop={() => abortRef.current?.abort()}
           placeholder={t("chat.sayTo", { name: card.name })}
           hintAlerts={!ready}
           hint={
-            streaming ? (
-              <button
-                type="button"
-                onClick={() => abortRef.current?.abort()}
-                className="underline"
-              >
-                {t("chat.stop")}
-              </button>
-            ) : !ready ? (
+            !ready ? (
               <button type="button" onClick={onOpenSettings} className="underline">
                 {t("chat.needKey")}
               </button>
             ) : null
           }
+          streaming={streaming}
         />
         {/* AI 生成的出处与责任，常驻在输入框下方，不关也不消失 */}
         <p className="mx-auto mt-2 max-w-[660px] text-center text-[11.5px] leading-relaxed text-ink-3">

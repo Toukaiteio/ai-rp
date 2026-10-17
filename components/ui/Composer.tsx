@@ -3,15 +3,17 @@
 import { Paperclip } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/lib/i18n/use-i18n";
-import { IconSendUp } from "../icons";
+import { IconSendUp, IconStop } from "../icons";
 import { cn } from "./cn";
 
 /* 输入胶囊：只有一层，发送键常驻右端。
-   无输入时是灰圆，有输入立刻变成强调色，状态变化本身就是引导。 */
+   无输入时是灰圆，有输入立刻变成强调色，状态变化本身就是引导。
+   生成中没有第二块地方放「停止」：同一个键换成停止图标，点它中断。 */
 export function Composer({
   value,
   onChange,
   onSend,
+  onStop,
   onPlus,
   placeholder,
   hint,
@@ -19,11 +21,14 @@ export function Composer({
   plusDisabled = false,
   sendDisabled = false,
   hasExtra = false,
+  streaming = false,
   className,
 }: {
   value: string;
   onChange: (value: string) => void;
   onSend?: () => void;
+  /** 生成中点了停止键。此时发送键就是停止键 */
+  onStop?: () => void;
   onPlus?: () => void;
   placeholder?: string;
   hint?: ReactNode;
@@ -33,6 +38,8 @@ export function Composer({
   sendDisabled?: boolean;
   /** 没有文字但有附图时也允许发送 */
   hasExtra?: boolean;
+  /** 正在生成。发送键变成停止键，Enter 也不再发送 */
+  streaming?: boolean;
   className?: string;
 }) {
   const { t } = useI18n();
@@ -40,7 +47,7 @@ export function Composer({
   const boxRef = useRef<HTMLDivElement>(null);
   /** 每次聚焦加一，用来重挂提示节点，把动画从头放一遍 */
   const [alertTick, setAlertTick] = useState(0);
-  const ready = (value.trim().length > 0 || hasExtra) && !sendDisabled;
+  const ready = (value.trim().length > 0 || hasExtra) && !sendDisabled && !streaming;
 
   /* 撑到内容高度，再让 CSS 的 max-height 收住（手机三行、桌面四行）。
      用 layout effect 先测量再绘制，避免输入变成多行时闪一下。圆角直接写入
@@ -105,17 +112,21 @@ export function Composer({
 
         <button
           type="button"
-          aria-label={t("composer.send")}
-          onClick={submit}
-          disabled={!ready}
+          aria-label={streaming ? t("composer.stop") : t("composer.send")}
+          onClick={streaming ? onStop : submit}
+          disabled={!streaming && !ready}
           className={cn(
             "grid size-[42px] shrink-0 place-items-center rounded-pill border-0 transition-[background-color,color,transform]",
-            ready
+            streaming || ready
               ? "bg-accent text-accent-ink hover:bg-accent-hover active:scale-[.93]"
               : "bg-line text-ink-2",
           )}
         >
-          <IconSendUp className="size-5" />
+          {streaming ? (
+            <IconStop className="size-5" />
+          ) : (
+            <IconSendUp className="size-5" />
+          )}
         </button>
       </div>
 

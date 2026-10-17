@@ -1,6 +1,6 @@
 # ai-rp
 
-极简的 Serverless AI 角色扮演游戏。AI 扮演角色，顺带充当旁白。部署目标是 Vercel。
+极简的 Serverless AI 角色扮演游戏。AI 是故事的讲述者，转述角色与世界，不扮演具体角色。部署目标是 Vercel。
 
 当前进度：聊天链路已接真实提供商（OpenAI Chat Completions 协议，BYOK）。服务端组装器、三层记忆、世界书、增量摘要、本机加密、场景 CG、EPUB 导出都已完成。生成 CG 的自动评分默认关闭。没有 EPUB 导入。
 
@@ -72,7 +72,7 @@ lib/
     types.ts
   prompt/               提示词组装，纯函数，在服务端跑
     index.ts            assemble()：顺序固定，字节级稳定
-    system.ts           角色扮演核心规则、四类块协议、两种文风
+    system.ts           讲述者定位与核心规则、四类块协议、两种文风
     worldbook.ts        世界书匹配
     summarize.ts        增量摘要
     facts.ts            结构化关键事实

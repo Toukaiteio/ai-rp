@@ -242,7 +242,7 @@ export function formatJournal(journal: Journal | undefined): string {
     "本机记忆目录（IndexedDB，只在这台设备）：";
   const outro = [
     "核对细节用 read_memory，名字不确定用 search_memory，要看全目录再用 list_memory。",
-    "新出现的人物、地点，或值得长期记住的事，调用 remember_character、remember_place、remember_event。只记已经发生的，不要把每一句都写进去。",
+    "新出现的人物、地点，或值得长期记住的事，用 remember_character、remember_place、remember_event 这几个函数记下。它们是函数调用，不是回复里的标签，也不要在正文里写函数名或参数。只记已经发生的，不要把每一句都写进去。",
     "记下时用 where 写所在或发生的地点名，用 ref 写相关的人或事，条目靠这两个字段互相指到。同名再写就是更新。写错或不再有用的，调用 forget_memory 删掉。",
     "攻击、检定、伤害或任何随机点数，调用 roll_dice，并按它返回的点数写。不要自己编点数，也不要向玩家提起这些工具。",
   ].join("\n");
@@ -278,7 +278,7 @@ export function formatJournal(journal: Journal | undefined): string {
 export function formatToolTrace(trace: ToolTrace[]): string {
   if (trace.length === 0) return "";
   const lines = trace.map((item) => `- ${item.name}：${item.result}`);
-  return `你刚才调用了本机工具，结果如下：\n${lines.join("\n")}\n请据此继续扮演。掷骰的点数以结果为准，不要改。不要提及工具。`;
+  return `你刚才调用了本机工具，结果如下：\n${lines.join("\n")}\n请据此继续讲。掷骰的点数以结果为准，不要改。不要提及工具。`;
 }
 
 function readArgs(raw: string): Record<string, unknown> {

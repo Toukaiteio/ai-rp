@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
-import { IconBook, IconBrain, IconHistory, IconSliders } from "../icons";
+import { IconBook, IconBrain, IconGear, IconHistory } from "../icons";
 import { IconButton } from "./Button";
 import { cn } from "./cn";
 
-/* 顶栏本身没有底色、没有边框，只浮着左右两块：
+/* 顶栏浮在内容上，只垫一层渐暗的底：顶端最不透明（80% 黑），
+   越往下越透，底边全透明融进内容。页面底色 #161616 本来就接近全黑，
+   25% 压上去只剩 #111111，看不出来，才取这个分量。
    左边一个大胶囊（头像、名字、标签），右边四个圆按钮。
    记忆是大脑图标，外圈进度表示上下文占用的百分比。 */
 export function TopBar({
@@ -51,7 +53,7 @@ export function TopBar({
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center gap-1.5 bg-black/25 px-3 py-3 md:gap-3 md:px-4",
+        "flex shrink-0 items-center gap-1.5 bg-linear-to-b from-black/80 to-transparent px-3 py-3 md:gap-3 md:px-4",
         className,
       )}
     >
@@ -85,7 +87,7 @@ export function TopBar({
           <IconBook />
         </IconButton>
         <IconButton onClick={onSettings} aria-label={settingsLabel}>
-          <IconSliders />
+          <IconGear />
         </IconButton>
         {extra}
       </div>

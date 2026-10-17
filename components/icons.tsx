@@ -1,4 +1,4 @@
-import { Brain } from "lucide-react";
+import { Brain, Settings } from "lucide-react";
 import type { ReactNode, SVGProps } from "react";
 
 type IconProps = Omit<SVGProps<SVGSVGElement>, "children" | "strokeWidth"> & {
@@ -30,15 +30,9 @@ function Icon({
   );
 }
 
-export function IconSliders(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <line x1="4" y1="7" x2="20" y2="7" />
-      <circle cx="9" cy="7" r="2.2" fill="var(--surface)" />
-      <line x1="4" y1="17" x2="20" y2="17" />
-      <circle cx="15" cy="17" r="2.2" fill="var(--surface)" />
-    </Icon>
-  );
+/** 设置：齿轮。用 Lucide 的 Settings，不自己画 */
+export function IconGear({ className = "size-[19px]", ...rest }: IconProps) {
+  return <Settings className={className} strokeWidth={1.8} aria-hidden="true" {...rest} />;
 }
 
 export function IconHistory(props: IconProps) {
@@ -88,6 +82,15 @@ export function IconSendUp(props: IconProps) {
       <line x1="12" y1="19" x2="12" y2="5" />
       <polyline points="5 12 12 5 19 12" />
     </Icon>
+  );
+}
+
+/** 停止：实心圆角方块。生成中时发送键变成它，点一下中断这一轮 */
+export function IconStop({ className = "size-[19px]", ...rest }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className} {...rest}>
+      <rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor" />
+    </svg>
   );
 }
 

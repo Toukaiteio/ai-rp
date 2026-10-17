@@ -20,6 +20,7 @@ export const zh = {
   "composer.more": "更多功能",
   "composer.upload": "上传图片或文档",
   "composer.send": "发送",
+  "composer.stop": "停止",
 
   "announce.bell": "公告",
   "announce.bellUnread": "公告，{count} 条未读",
@@ -77,7 +78,6 @@ export const zh = {
   "chat.save": "保存",
   "chat.openSettings": "打开连接设置",
   "chat.sayTo": "发送消息给 {name}",
-  "chat.stop": "生成中，点击停止",
   "chat.needKey": "尚未配置 API 密钥，前往连接设置",
   "chat.suggestLabel": "你可以这样回",
   "chat.aiNotice": "本对话内容由 AI 生成，使用者须自行判断并承担相应责任",

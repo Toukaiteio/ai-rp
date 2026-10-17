@@ -11,6 +11,36 @@ const BLOCK_TAG = /<\s*(\/?)\s*(narr|act|dlg|scene|player)\b([^>]*)>/gi;
 const WHO_ATTRIBUTE = /\bwho\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
 
 /**
+ * 模型没走工具通道时，会把函数调用写成 XML 标签：
+ *   <remember_character">Fuka Shikuzaki\n同班同学。\n你\n图书馆</remember_character>
+ * 这不是消息块，是它对「结构化输出」的模仿（输出契约通篇在教它用标签），
+ * 而且常常是畸形的——属性引号只写一半，字段顺序也乱。
+ *
+ * 它包着的内容是模型想象的参数，不是剧情，给玩家看只会以为是角色在念乱码。
+ * 所以成对的整段剥掉，落单的标签剥掉标签本身，剩下的正文照常渲染。
+ * 不试图把内容解析成真记忆：字段都分不清，解析出错数据比没有更糟。
+ */
+const PSEUDO_TOOL_NAMES =
+  "remember_character|remember_place|remember_event|roll_dice|list_memory|read_memory|search_memory|forget_memory";
+const PSEUDO_TOOL_BLOCK = new RegExp(
+  `<\\s*(?:${PSEUDO_TOOL_NAMES})\\b[^>]*>[\\s\\S]*?<\\s*\\/\\s*(?:${PSEUDO_TOOL_NAMES})\\s*>`,
+  "gi",
+);
+/** 没写闭合标签的：连它到下一个真消息块（或结尾）之间的内容一起剥掉。 */
+const PSEUDO_TOOL_UNCLOSED = new RegExp(
+  `<\\s*(?:${PSEUDO_TOOL_NAMES})\\b[^>]*>[\\s\\S]*?(?=<\\s*(?:narr|act|dlg|scene|player)\\b|$)`,
+  "gi",
+);
+const PSEUDO_TOOL_TAG = new RegExp(`<\\s*\\/?\\s*(?:${PSEUDO_TOOL_NAMES})\\b[^>]*>`, "gi");
+
+export function stripPseudoToolTags(raw: string): string {
+  return raw
+    .replace(PSEUDO_TOOL_BLOCK, "")
+    .replace(PSEUDO_TOOL_UNCLOSED, "")
+    .replace(PSEUDO_TOOL_TAG, "");
+}
+
+/**
  * 把模型输出拆成块。
  *
  * 流式场景下最后一个块常常还没闭合，所以未闭合的开标签也按对应块渲染，
@@ -20,6 +50,7 @@ const WHO_ATTRIBUTE = /\bwho\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
 export function parseBlocks(raw: string): MessageBlock[] {
   const blocks: MessageBlock[] = [];
   if (!raw) return blocks;
+  raw = stripPseudoToolTags(raw);
 
   let last = 0;
   let open: { kind: BlockKind; who?: string; textStart: number } | null = null;
