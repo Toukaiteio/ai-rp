@@ -192,6 +192,19 @@ export function TypingCursor() {
   return <span className="cursor-blink" aria-hidden="true" />;
 }
 
+/* 只显示一个需要等待的异步阶段，不扩展成卡片或阶段列表。 */
+export function TaskBrief({
+  title,
+}: {
+  title: string;
+}) {
+  return (
+    <div className="stage-status truncate text-[12px] leading-5 text-ink-2">
+      {title}
+    </div>
+  );
+}
+
 /* 对话滚动区：唯一可滚动的地方，上下留白由内层列控制。
    ref 透传出去给自动滚动用，onScroll 用来判断玩家有没有往回翻。 */
 export function ChatScroll({

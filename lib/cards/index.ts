@@ -14,6 +14,7 @@ export {
   normalizeOnlineCard,
   onlineCardPageUrl,
   onlineCardPngUrl,
+  cardPortraitUrl,
 } from "./online";
 
 import type { CharacterCardData } from "./types";
@@ -22,4 +23,3 @@ import type { CharacterCardData } from "./types";
 export function isPlayableCard(data: CharacterCardData): boolean {
   return data.first_mes.trim().length > 0;
 }
-

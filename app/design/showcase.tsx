@@ -111,7 +111,8 @@ function Demo({
 }
 
 /* 色卡直接引用令牌，不写字面色值。
-   半透明令牌（遮罩、压字底）叠在浅色上才看得见，否则和底色一样是黑的。 */
+   半透明令牌（遮罩、压字底）要垫一层明暗相间的格子才看得出透明度，
+   格子取 ink-3 与 background，两套主题下都有对比。 */
 function Swatch({
   name,
   token,
@@ -128,7 +129,7 @@ function Swatch({
         className="size-[52px] rounded-pill border border-line"
         style={{
           background: overLight
-            ? `linear-gradient(${value}, ${value}), var(--ink)`
+            ? `linear-gradient(${value}, ${value}), repeating-conic-gradient(var(--ink-3) 0% 25%, var(--background) 0% 50%) 0 0 / 12px 12px`
             : value,
         }}
       />
@@ -176,12 +177,12 @@ export function Showcase() {
           <code className="mx-1 rounded-sm bg-surface-2 px-1.5 py-0.5 text-[13px] text-ink">
             app/globals.css
           </code>
-          的令牌层，组件内不出现字面色值。底色为中性深灰
+          的令牌层，组件内不出现字面色值。默认是中性深灰
           <code className="mx-1 rounded-sm bg-surface-2 px-1.5 py-0.5 text-[13px] text-ink">
             #161616
           </code>
-          ，不引入蓝、金、紫色相；高饱和色只保留给删除、重置这类破坏性操作。
-          唯一一处例外是动作块的淡黄
+          ，可在连接设置里切到浅色：两套取值都只写在令牌层，画面结构不变，也都不引入蓝、金、紫色相；
+          高饱和色只保留给删除、重置这类破坏性操作。唯一一处例外是动作块的黄
           <code className="mx-1 rounded-sm bg-surface-2 px-1.5 py-0.5 text-[13px] text-ink">
             --act
           </code>
@@ -191,7 +192,7 @@ export function Showcase() {
 
       <Section
         title="设计令牌"
-        note="中性灰阶承担全部底色与文字。强调色是浅灰而不是彩色，同一时刻只出现一处。"
+        note="中性灰阶承担全部底色与文字。强调色是中性高对比色而不是彩色，同一时刻只出现一处。切换 data-theme 时色卡会跟着变。"
       >
         <Demo>
           <div className="mb-6 flex flex-wrap gap-4">
@@ -225,7 +226,11 @@ export function Showcase() {
             <code className="mx-1 rounded-sm bg-surface-2 px-1.5 py-0.5 text-[12px] text-ink">
               :root
             </code>
-            这一层。
+            与
+            <code className="mx-1 rounded-sm bg-surface-2 px-1.5 py-0.5 text-[12px] text-ink">
+              :root[data-theme=&quot;light&quot;]
+            </code>
+            这两层。
           </p>
         </Demo>
       </Section>

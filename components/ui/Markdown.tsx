@@ -31,7 +31,7 @@ export function MarkdownText({
   className,
 }: {
   text: string;
-  /** bubble 用在玩家的浅色气泡里，代码底改成浅墨，避免深色块把字吞掉 */
+  /** bubble 用在玩家的气泡里，代码底取气泡文字的浅色，深浅两套主题都分得开 */
   tone?: "ink" | "bubble";
   className?: string;
 }) {
@@ -46,7 +46,7 @@ export function MarkdownText({
         "[&_a]:underline [&_a]:underline-offset-2",
         "[&_blockquote]:my-2 [&_blockquote]:border-l [&_blockquote]:border-current [&_blockquote]:pl-3 [&_blockquote]:opacity-80",
         tone === "bubble"
-          ? "[&_code]:bg-ink/10 [&_pre]:bg-ink/10"
+          ? "[&_code]:bg-bubble-ink/15 [&_pre]:bg-bubble-ink/15"
           : "[&_code]:bg-surface-2 [&_pre]:bg-surface-2",
         "[&_code]:rounded-sm [&_code]:px-1 [&_code]:font-sans [&_code]:text-[0.9em]",
         "[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:font-sans [&_pre]:text-[13px] [&_pre]:leading-relaxed",

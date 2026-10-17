@@ -3,9 +3,8 @@ import { IconBook, IconBrain, IconGear, IconHistory } from "../icons";
 import { IconButton } from "./Button";
 import { cn } from "./cn";
 
-/* 顶栏浮在内容上，只垫一层渐暗的底：顶端最不透明（80% 黑），
-   越往下越透，底边全透明融进内容。页面底色 #161616 本来就接近全黑，
-   25% 压上去只剩 #111111，看不出来，才取这个分量。
+/* 顶栏浮在内容上，只垫一层渐隐的底：顶端最不透明，越往下越透，底边全透明融进内容。
+   渐隐色取 --bar-scrim：深色是半透明黑，浅色是半透明的页面底色，两套都不写死。
    左边一个大胶囊（头像、名字、标签），右边四个圆按钮。
    记忆是大脑图标，外圈进度表示上下文占用的百分比。 */
 export function TopBar({
@@ -53,7 +52,7 @@ export function TopBar({
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center gap-1.5 bg-linear-to-b from-black/80 to-transparent px-3 py-3 md:gap-3 md:px-4",
+        "flex shrink-0 items-center gap-1.5 bg-[linear-gradient(to_bottom,var(--bar-scrim),transparent)] px-3 py-3 md:gap-3 md:px-4",
         className,
       )}
     >

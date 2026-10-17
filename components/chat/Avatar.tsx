@@ -13,10 +13,17 @@ export function Avatar({ name, src }: { name: string; src?: string | null }) {
   const [failed, setFailed] = useState(false);
 
   if (src && !failed) {
+    const isData = src.startsWith("data:");
+    let isExternal = false;
+    try {
+      isExternal = new URL(src).protocol === "https:" && !src.includes("avatars.charhub.io") && !src.includes("avatars.chub.ai");
+    } catch {
+      // invalid URLs use the fallback avatar
+    }
     return (
       /* eslint-disable-next-line @next/next/no-img-element */
       <img
-        src={src.startsWith("data:") ? src : avatarProxyUrl(src)}
+        src={isData || isExternal ? src : avatarProxyUrl(src)}
         alt=""
         loading="lazy"
         referrerPolicy="no-referrer"

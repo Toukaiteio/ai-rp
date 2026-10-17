@@ -4,7 +4,8 @@
    设计令牌（Design Tokens）
    全站颜色、圆角、阴影、字体只在这里定义一次。
    组件内不出现任何字面色值，一律引用令牌，换肤只改这一层。
-   底色基调：中性深灰 #161616，不使用蓝、金、紫等色相。
+   默认深色，底色基调中性深灰 #161616；浅色是同一套令牌的另一组取值，
+   由 <html data-theme="light"> 切换。两套都不使用蓝、金、紫等色相。
    ========================================================================== */
 :root {
   color-scheme: dark;
@@ -21,7 +22,8 @@
   --ink-2: #a3a3a3; /* 次级文字 */
   --ink-3: #6e6e6e; /* 弱化文字、占位符 */
 
-  /* 强调色 —— 中性浅色。同一时刻只出现一处，靠亮度取胜，不靠色相 */
+  /* 强调色 —— 中性高对比色，深色下取浅、浅色下取深。
+     同一时刻只出现一处，靠亮度取胜，不靠色相 */
   --accent: #ededed;
   --accent-hover: #ffffff;
   --accent-ink: #161616; /* 强调填充上的文字 */
@@ -40,28 +42,88 @@
   --ok: #3fb950;
   --ok-soft: #16251a;
 
-  /* 玩家气泡 —— 整屏最亮的一块，明确「这是我说的话」 */
+  /* 玩家气泡 —— 整屏对比最强的一块，明确「这是我说的话」。
+     深色下最亮，浅色下反过来最暗，不跟着底色一起淡下去。 */
   --bubble: #ededed;
   --bubble-ink: #161616;
 
   /* 动作块 —— 全站唯一一处有意保留的色相，其余一律走中性灰。
      角色自己的动作与心理活动必须和旁白分开：旁白是灰的、无缩进感的细线，
-     动作走淡黄。只用在正文文字和左缘那条细线上，不做填充、不做背景，
-     免得读起来像另一种消息气泡。 */
+     动作走黄。只用在正文文字和左缘那条细线上，不做填充、不做背景，
+     免得读起来像另一种消息气泡。浅色下换成深黄，保证在白底上读得清。 */
   --act: #e8dca0;
   --act-line: #5c5433;
 
-  /* 遮罩与图片上的压字 */
+  /* 遮罩与图片上的压字。遮罩盖的是页面，跟随主题；
+     压字底永远在图片上，两套主题都保持黑，白字才立得住。 */
   --veil: rgba(0, 0, 0, 0.55);
   --overlay: rgba(0, 0, 0, 0.68);
   --overlay-strong: rgba(0, 0, 0, 0.8); /* 立绘压字最深的底 */
   --overlay-ink: #ffffff;
+
+  /* 顶栏浮在内容上时垫的渐隐底：从页面底色压下去，底边全透明 */
+  --bar-scrim: rgba(0, 0, 0, 0.8);
+
+  /* 阴影 —— 深色下靠重阴影托起浮层，浅色下压得太重会像脏了一块 */
+  --shadow-frame: 0 24px 60px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-raised: 0 1px 3px rgba(0, 0, 0, 0.4);
 
   /* 字体 —— 界面用无衬线，正文用衬线，两套分工就是操作与阅读的边界 */
   --font-ui: var(--font-geist-sans), "Noto Sans SC", "PingFang SC",
     "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
   --font-prose: "Noto Serif SC", "Songti SC", "STSong", "SimSun", ui-serif,
     Georgia, serif;
+}
+
+/* 浅色模式 —— 只换取值，不换语义。
+   灰阶整体倒过来：页面是浅灰，浮层用纯白，越往里越暗一档；
+   强调色随之由浅转深，选中态靠更深的文字而不是更亮的填充；
+   玩家气泡、动作块、遮罩都按「在白底上仍然一眼分得开」重新取值。 */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --background: #f5f5f3;
+  --surface: #ffffff;
+  --surface-2: #f0f0ee;
+  --surface-3: #e6e6e3;
+  --line: #e1e1de;
+  --line-strong: #c5c5c0;
+
+  --ink: #1b1b1a;
+  --ink-2: #5b5b57;
+  --ink-3: #8b8b86;
+
+  --accent: #1b1b1a;
+  --accent-hover: #000000;
+  --accent-ink: #ffffff;
+
+  --selected: #ececea;
+  --selected-line: #8f8f8a;
+  --selected-ink: #000000;
+
+  --danger: #c62f36;
+  --danger-hover: #a8242a;
+  --danger-ink: #ffffff;
+  --danger-soft: #fbe9ea;
+
+  --ok: #1a7f37;
+  --ok-soft: #e6f4ea;
+
+  --bubble: #202020;
+  --bubble-ink: #f7f7f5;
+
+  --act: #7a5a12;
+  --act-line: #d9c98f;
+
+  /* 浅色下的遮罩要轻一些，压太重会把整页压成灰泥 */
+  --veil: rgba(20, 20, 18, 0.38);
+
+  --bar-scrim: rgba(245, 245, 243, 0.9);
+
+  --shadow-frame: 0 24px 60px rgba(28, 28, 26, 0.14), 0 2px 8px rgba(28, 28, 26, 0.08);
+  --shadow-pop: 0 12px 32px rgba(28, 28, 26, 0.16);
+  --shadow-raised: 0 1px 3px rgba(28, 28, 26, 0.12);
 }
 
 /* 令牌映射为 Tailwind 工具类：bg-surface / text-ink-2 / border-line … */
@@ -107,7 +169,7 @@
   --font-serif: var(--font-prose);
 }
 
-/* 圆角与阴影 —— 全站只有这几档，杜绝随手取值 */
+/* 圆角 —— 全站只有这几档，杜绝随手取值 */
 @theme {
   --radius-pill: 999px;
   --radius-frame: 28px;
@@ -115,10 +177,22 @@
   --radius-lg: 20px;
   --radius-md: 14px;
   --radius-sm: 10px;
+}
 
-  --shadow-frame: 0 24px 60px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5);
-  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.55);
-  --shadow-raised: 0 1px 3px rgba(0, 0, 0, 0.4);
+/* 阴影单独成类：值要跟着主题走，不能像圆角那样在构建时定死。
+   三个名字和原来一样，调用方不用改。 */
+@layer utilities {
+  .shadow-frame {
+    box-shadow: var(--shadow-frame);
+  }
+
+  .shadow-pop {
+    box-shadow: var(--shadow-pop);
+  }
+
+  .shadow-raised {
+    box-shadow: var(--shadow-raised);
+  }
 }
 
 @layer base {
@@ -178,6 +252,21 @@
     vertical-align: -2px;
     margin-left: 4px;
     animation: token-blink 1s steps(1) infinite;
+  }
+
+  .stage-status {
+    animation: stage-status-in 160ms ease-out;
+  }
+
+  @keyframes stage-status-in {
+    from {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   @keyframes token-blink {

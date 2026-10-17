@@ -15,6 +15,8 @@ import {
 import { getSessionStore } from "@/lib/storage";
 import {
   buildArchiveWithCards,
+  buildKdfSidecar,
+  kdfSidecarName,
   readArchiveFile,
   readArchivePayloadWithPassphrase,
   restoreArchivePayload,
@@ -37,15 +39,17 @@ import {
   type VaultKdfParams,
 } from "@/lib/vault";
 import { explainError, loadLocale } from "@/lib/i18n";
+import { loadTheme } from "@/lib/theme";
 import { loadUnfiltered } from "@/lib/cards/unfiltered";
 import { watchRememberedSession } from "@/lib/vault/remember";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { ChatScreen } from "./ChatScreen";
 import { SettingsScreen } from "./SettingsScreen";
 import { ShelfScreen } from "./ShelfScreen";
+import { CharacterEditor } from "./CharacterEditor";
 import { VaultGate } from "./VaultGate";
 
-type Screen = "chat" | "shelf" | "settings";
+type Screen = "chat" | "shelf" | "settings" | "editor";
 
 /** 导出成文本文件。纯浏览器行为，不经过服务端。 */
 function downloadText(text: string, filename: string): void {
@@ -74,6 +78,7 @@ export function AppShell() {
   const [screen, setScreen] = useState<Screen>("chat");
   /** 没有默认卡：进来先进角色架，挑一张或在线拉一张再开聊 */
   const [cardId, setCardId] = useState<string | null>(null);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [edited, setEdited] = useState<ProviderConfig | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [archiveRestoring, setArchiveRestoring] = useState(false);
@@ -99,6 +104,7 @@ export function AppShell() {
 
   useEffect(() => {
     loadLocale();
+    loadTheme();
     loadUnfiltered();
     void probeVault();
   }, []);
@@ -137,11 +143,21 @@ export function AppShell() {
         const store = getSessionStore();
         const sessions = await store.list();
         const text = await buildArchiveWithCards(sessions, imported);
-        downloadText(text, `ai-rp-archive-${new Date().toISOString().slice(0, 10)}.json`);
+        const archiveName = `ai-rp-archive-${new Date().toISOString().slice(0, 10)}.json`;
+        downloadText(text, archiveName);
         const kdf = getVaultKdfParams();
         if (kdf) {
+          /* 存档整包是密文，盐和迭代次数不在里面。换设备时没有它们就解不开，
+             所以同名再落一个明文旁文件。浏览器会把同一拍里的第二个下载当弹窗
+             拦掉，错开一拍再发。 */
+          const sidecarName = kdfSidecarName(archiveName);
+          window.setTimeout(() => downloadText(buildKdfSidecar(kdf), sidecarName), 250);
           setArchiveNote(
-            t("shell.exportedWithKdf", { salt: kdf.salt, iterations: kdf.iterations }),
+            t("shell.exportedWithKdf", {
+              file: sidecarName,
+              salt: kdf.salt,
+              iterations: kdf.iterations,
+            }),
           );
         }
       } catch (caught) {
@@ -206,6 +222,21 @@ export function AppShell() {
     );
   }
 
+  if (screen === "editor") {
+    const editingRecord = editingCardId ? imported.find((record) => record.id === editingCardId) : undefined;
+    return (
+      <CharacterEditor
+        record={editingRecord}
+        onCancel={() => setScreen("shelf")}
+        onSaved={(id) => {
+          setCardId((currentId) => currentId ?? id);
+          setEditingCardId(null);
+          setScreen("shelf");
+        }}
+      />
+    );
+  }
+
   // 一张卡都没有时没有对话可显示，只能留在角色架。
   // 玩家正在挑卡，所以新卡到位后也留在角色架，想聊就点卡片上的「开始」。
   if (!current) {
@@ -218,6 +249,10 @@ export function AppShell() {
           setScreen("chat");
         }}
         onCardsChanged={() => setScreen("shelf")}
+        onCreate={() => {
+          setEditingCardId(null);
+          setScreen("editor");
+        }}
       />
     );
   }
@@ -247,6 +282,14 @@ export function AppShell() {
           }}
           onBack={() => setScreen("chat")}
           onCardsChanged={() => setScreen("shelf")}
+          onCreate={() => {
+            setEditingCardId(null);
+            setScreen("editor");
+          }}
+          onEdit={(id) => {
+            setEditingCardId(id);
+            setScreen("editor");
+          }}
         />
       ) : null}
 

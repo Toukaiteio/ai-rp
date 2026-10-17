@@ -8,7 +8,8 @@ import {
   ScreenHead,
   Tag,
 } from "@/components/ui";
-import { IconBack, IconDownload, IconTrash } from "@/components/icons";
+import { CreateCard } from "@/components/ui/CharacterCard";
+import { IconBack, IconDownload, IconEdit, IconTrash } from "@/components/icons";
 import {
   downloadCard,
   isPlayableCard,
@@ -39,6 +40,8 @@ export function ShelfScreen({
   onSelect,
   onBack,
   onCardsChanged,
+  onCreate,
+  onEdit,
 }: {
   cards: CardEntry[];
   currentCardId: string;
@@ -46,6 +49,8 @@ export function ShelfScreen({
   onBack?: () => void;
   /** 新卡到位。用来把「本来没有卡、被迫留在角色架」的状态续上 */
   onCardsChanged?: () => void;
+  onCreate?: () => void;
+  onEdit?: (cardId: string) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -134,12 +139,6 @@ export function ShelfScreen({
             </p>
           ) : null}
 
-        {error ? (
-          <div className="mb-4 rounded-md bg-danger-soft px-4 py-2.5 text-[13px] text-danger">
-            {error}
-          </div>
-        ) : null}
-
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map((entry) => {
             const playable = isPlayableCard(entry.card.data);
@@ -174,6 +173,15 @@ export function ShelfScreen({
                     </IconButton>
                     {entry.source === "imported" ? (
                       <IconButton
+                        aria-label={t("card.editCard", { name: entry.card.data.name })}
+                        className="size-8 bg-surface-2/85 backdrop-blur-sm"
+                        onClick={() => onEdit?.(entry.id)}
+                      >
+                        <IconEdit className="size-4" />
+                      </IconButton>
+                    ) : null}
+                    {entry.source === "imported" ? (
+                      <IconButton
                         aria-label={t("shelf.deleteCard", { name: entry.card.data.name })}
                         className="size-8 bg-surface-2/85 text-danger backdrop-blur-sm hover:text-danger-hover"
                         onClick={() => void removeImportedCard(entry.id)}
@@ -188,6 +196,7 @@ export function ShelfScreen({
           })}
 
           <ImportCard label={t("card.import")} onClick={() => fileRef.current?.click()} />
+          {onCreate ? <CreateCard label={t("card.create")} onClick={onCreate} /> : null}
         </div>
 
         <input

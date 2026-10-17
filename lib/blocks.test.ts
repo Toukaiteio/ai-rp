@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { blocksToRaw, dialogueContinues, parseBlocks, stripPseudoToolTags } from "./blocks";
+import {
+  blocksToRaw,
+  dialogueContinues,
+  parseBlocks,
+  stripPseudoToolTags,
+} from "./blocks";
 
 describe("消息块解析", () => {
   it("拆分旁白和人物发言，并提取人物名", () => {

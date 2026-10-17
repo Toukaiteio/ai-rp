@@ -29,6 +29,7 @@ import {
   PlayerBubble,
   SceneEvent,
   Sheet,
+  TaskBrief,
   SuggestChip,
   SuggestDivider,
   SuggestRow,
@@ -39,7 +40,12 @@ import {
 import { IconCheck, IconCopy, IconEdit, IconImage } from "@/components/icons";
 import { cn } from "@/components/ui/cn";
 import { hashSeed } from "@/lib/seed";
-import { dialogueContinues, parseBlocks, stripPseudoToolTags, type MessageBlock } from "@/lib/blocks";
+import {
+  dialogueContinues,
+  parseBlocks,
+  stripPseudoToolTags,
+  type MessageBlock,
+} from "@/lib/blocks";
 import { buildSuggestionMessages, parseSuggestions } from "@/lib/suggest";
 import { DICE_TOOL } from "@/lib/dice";
 import {
@@ -130,6 +136,8 @@ interface PendingTool {
   name: string;
   arguments: string;
 }
+
+type GenerationStage = "attachment" | "plan" | "write";
 
 interface TocItem {
   id: string;
@@ -225,6 +233,7 @@ function AssistantTurn({
   portraitUrl,
   portraits,
   actions,
+  stage,
 }: {
   content: string;
   streaming: boolean;
@@ -234,8 +243,21 @@ function AssistantTurn({
   /** 生成出来的配角头像，按 who 的名字取 */
   portraits?: Record<string, string>;
   actions?: ReactNode;
+  stage?: GenerationStage;
 }) {
   const { t } = useI18n();
+  const stageInfo = {
+    attachment: {
+      title: t("chat.stage.attachment.title"),
+    },
+    plan: {
+      title: t("chat.stage.plan.title"),
+    },
+    write: {
+      title: t("chat.stage.write.title"),
+    },
+  } satisfies Record<GenerationStage, { title: string }>;
+  const stageText = stage ? stageInfo[stage] : null;
   // 解析和续接判断都按 content 缓存：输入时整个界面会重渲染，
   // 不能让每一回合都把整段重新解析一遍。
   const blocks: MessageBlock[] = useMemo(() => parseBlocks(content), [content]);
@@ -248,16 +270,22 @@ function AssistantTurn({
   if (blocks.length === 0) {
     return (
       <NarratorBlock>
-        <p className="text-ink-3">
-          {streaming ? t("chat.thinking") : t("chat.empty")}
-          {streaming ? <TypingCursor /> : null}
-        </p>
+        {streaming && stageText ? (
+          <TaskBrief key={stage} title={stageText.title} />
+        ) : (
+          <p className="text-ink-3">{t("chat.empty")}</p>
+        )}
       </NarratorBlock>
     );
   }
 
   return (
     <div className="flex flex-col gap-2.5">
+      {streaming && stageText ? (
+        <div className="ml-12">
+          <TaskBrief key={stage} title={stageText.title} />
+        </div>
+      ) : null}
       {blocks.map((block, index) => {
         const isLast = index === blocks.length - 1;
         const cursor = streaming && isLast ? <TypingCursor /> : null;
@@ -406,6 +434,7 @@ export function ChatScreen({
   ]);
   const [composerReset, setComposerReset] = useState(0);
   const [streaming, setStreaming] = useState(false);
+  const [generationStage, setGenerationStage] = useState<GenerationStage | null>(null);
   const [error, setError] = useState<ChatError | null>(null);
   const [memory, setMemory] = useState<number | null>(null);
   const [cgBusy, setCgBusy] = useState<string | null>(null);
@@ -761,11 +790,29 @@ export function ChatScreen({
   ) {
     setError(null);
     needsSummarizeRef.current = false;
+    setGenerationStage(null);
     setStreaming(true);
     setSuggestions([]);
 
     const controller = new AbortController();
     abortRef.current = controller;
+
+    // 先把玩家这一轮和空的 assistant 占位画出来，再做图片识别、导演规划
+    // 或网络请求。否则这些 await 期间界面仍停在上一条回复下面，玩家会以为
+    // 点击没有生效；流式光标也会暂时挂在上一条回复末尾。
+    const userTurn: Turn = {
+      id: createId(),
+      role: "user",
+      content: markPlayer(userMessage),
+      ...(image ? { image } : {}),
+      ...(document ? { document } : {}),
+    };
+    const assistantId = createId();
+    setTurns((prev) => [
+      ...prev,
+      userTurn,
+      { id: assistantId, role: "assistant", content: "" },
+    ]);
 
     const local = usesBrowserModel(config, browserReady);
     if (process.env.NODE_ENV === "development") {
@@ -787,6 +834,7 @@ export function ChatScreen({
     let imageNote = "";
     let outboundImage = image;
     if (image && !seesImages) {
+      setGenerationStage("attachment");
       outboundImage = undefined;
       if (browserReady) {
         try {
@@ -795,21 +843,19 @@ export function ChatScreen({
           if (caught instanceof Error && caught.name === "AbortError") {
             setStreaming(false);
             abortRef.current = null;
+            setTurns(baseTurns);
             return;
           }
         }
       }
     }
 
-    const userTurn: Turn = {
-      id: createId(),
-      role: "user",
-      content: markPlayer(userMessage),
-      ...(image ? { image } : {}),
-      ...(imageNote ? { imageNote } : {}),
-      ...(document ? { document } : {}),
-    };
-    const assistantId = createId();
+    if (imageNote) {
+      userTurn.imageNote = imageNote;
+      setTurns((prev) =>
+        prev.map((turn) => (turn.id === userTurn.id ? { ...turn, imageNote } : turn)),
+      );
+    }
 
     const history: ChatMessage[] = [
       ...baseTurns.map((turn) => ({ role: turn.role, content: historyContent(turn) })),
@@ -821,6 +867,7 @@ export function ChatScreen({
     let directMessages: ChatMessage[] | null = null;
     let directEndpoint = "";
     if (!local) {
+      setGenerationStage("plan");
       const preset = findProvider(config.providerId);
       const baseURL = config.providerId === "custom" ? config.baseURL : preset?.baseURL ?? "";
       try {
@@ -869,12 +916,6 @@ export function ChatScreen({
       }
     }
 
-    setTurns((prev) => [
-      ...prev,
-      userTurn,
-      { id: assistantId, role: "assistant", content: "" },
-    ]);
-
     let replyText = "";
     let toolTrace: ToolTrace[] = [];
     let allowTools = true;
@@ -890,6 +931,7 @@ export function ChatScreen({
 
     try {
       if (local) {
+        setGenerationStage("write");
         const assembled = assemble({
           card: {
             name: card.name,
@@ -942,6 +984,7 @@ export function ChatScreen({
         };
 
         if (directMessages && directEndpoint) {
+          setGenerationStage("write");
           try {
             await streamBrowserOpenAI({
               endpoint: directEndpoint,
@@ -962,6 +1005,7 @@ export function ChatScreen({
             continue;
           }
         } else {
+        setGenerationStage("write");
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: {
@@ -1065,6 +1109,7 @@ export function ChatScreen({
         // 工具结果的下一轮继续走服务端后备路径，保持现有 toolTrace 语义，
         // 避免把不完整的原生 tool message 协议伪装成普通历史。
         directMessages = null;
+        setGenerationStage("write");
         void saveCardMemory({
           cardId,
           summary: summaryRef.current,
@@ -1750,6 +1795,7 @@ export function ChatScreen({
                 <AssistantTurn
                   content={turn.content}
                   streaming={streaming && isLastTurn}
+                  stage={streaming && isLastTurn ? generationStage ?? undefined : undefined}
                   cardName={card.name}
                   portraitUrl={portraitUrl}
                   portraits={portraits}
@@ -2046,7 +2092,7 @@ function TocStrip({
         onClick={onClose}
         aria-label={closeLabel}
         aria-hidden={!open}
-        className="fixed inset-0 -z-10 border-0 bg-black/55 p-0 transition-opacity duration-200 motion-reduce:transition-none md:hidden"
+        className="fixed inset-0 -z-10 border-0 bg-veil p-0 transition-opacity duration-200 motion-reduce:transition-none md:hidden"
         style={{ opacity: open ? 1 : 0, pointerEvents: open ? "auto" : "none" }}
       />
     </div>

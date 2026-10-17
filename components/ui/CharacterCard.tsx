@@ -40,8 +40,13 @@ export function CharacterCard({
 }) {
   const info = (
     <>
-      <p className="card-info-text m-0 text-[12px] leading-relaxed text-ink-2">{description}</p>
-      {turns ? <span className="mt-1 block truncate text-[11.5px] text-ink-3">{turns}</span> : null}
+      {/* 压字底永远是深色，浅色主题下这里的文字也不能跟着变深 */}
+      <p className="card-info-text m-0 text-[12px] leading-relaxed text-overlay-ink/80">
+        {description}
+      </p>
+      {turns ? (
+        <span className="mt-1 block truncate text-[11.5px] text-overlay-ink/60">{turns}</span>
+      ) : null}
     </>
   );
 
@@ -66,7 +71,7 @@ export function CharacterCard({
       {/* 标题与标签压在卡片下半部，垫一层由下往上的黑保证可读。
           绝对定位钉在下缘：详情展开时只朝上吃立绘的区域，卡片尺寸不变 */}
       <div className="card-scrim absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 px-3.5 pt-3 pb-3.5">
-        <div className="card-name font-serif text-[15.5px] leading-tight font-black text-ink">
+        <div className="card-name font-serif text-[15.5px] leading-tight font-black text-overlay-ink">
           <span>{name}</span>
         </div>
         {tags ? <div className="card-tags">{tags}</div> : null}
@@ -116,6 +121,28 @@ export function ImportCard({
       <span className="grid size-[52px] place-items-center rounded-pill border-[1.5px] border-line text-2xl font-normal text-ink">
         +
       </span>
+      {label}
+    </button>
+  );
+}
+
+/** 新建角色卡：实线卡面，与外部文件导入保持区分。 */
+export function CreateCard({
+  label,
+  className,
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { label: ReactNode }) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-card border border-line bg-surface p-5 text-[14.5px] text-ink",
+        "transition-colors hover:border-line-strong hover:bg-surface-2",
+        className,
+      )}
+      {...rest}
+    >
+      <span className="grid size-[52px] place-items-center rounded-pill bg-accent text-2xl font-normal text-accent-ink">+</span>
       {label}
     </button>
   );

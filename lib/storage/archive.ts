@@ -3,7 +3,7 @@ import { normalizeJournal } from "@/lib/memory/journal";
 import { loadCardMemory, listCardMemories, replaceCardMemories, replaceSessions, type CardMemory } from "./local";
 import { replaceImportedCards, type ImportedCardRecord } from "./cards";
 import type { ChatSession } from "./types";
-import { exportArchive, importArchive, importArchiveWithPassphrase, VaultError } from "@/lib/vault";
+import { exportArchive, importArchive, importArchiveWithPassphrase, VaultError, type VaultKdfParams } from "@/lib/vault";
 
 /**
  * 存档导出 / 导入。整包用用户设定的密钥加密，文件里没有明文。
@@ -31,6 +31,27 @@ export function packMemories(list: CardMemory[]): CardMemory[] {
 }
 
 const MAX_FILE_BYTES = 32 * 1024 * 1024;
+
+/**
+ * 恢复参数旁文件的后缀。存档整包是密文，里面不带盐和迭代次数，
+ * 换设备时没有这两个值就解不开，所以导出时另发一份明文。
+ * 盐和迭代次数都不是秘密：盐是随机字节，迭代次数是公开参数，
+ * 两者都拿不到密钥，也推不出密钥。
+ */
+export const KDF_SIDECAR_SUFFIX = ".kdf.json";
+
+/** 旁文件和存档同名，只换后缀。 */
+export function kdfSidecarName(archiveName: string): string {
+  const stem = archiveName.toLowerCase().endsWith(".json")
+    ? archiveName.slice(0, -".json".length)
+    : archiveName;
+  return `${stem}${KDF_SIDECAR_SUFFIX}`;
+}
+
+/** 旁文件内容：只有盐和迭代次数，不带任何密钥材料。 */
+export function buildKdfSidecar(params: VaultKdfParams): string {
+  return `${JSON.stringify({ salt: params.salt, iterations: params.iterations }, null, 2)}\n`;
+}
 
 export async function buildArchive(loadSessions: () => Promise<ChatSession[]>): Promise<string> {
   const payload: ArchivePayload = {

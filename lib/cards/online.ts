@@ -233,6 +233,18 @@ export function onlineCardAvatarUrl(path: string): string | null {
  * 界面退回按名字生成的首字母头像。
  */
 export function cardPortraitUrl(data: CharacterCardData): string | null {
+  const local = data.extensions?._local;
+  if (isRecord(local) && typeof local.portrait === "string" && local.portrait.startsWith("data:image/")) {
+    return local.portrait;
+  }
+  if (isRecord(local) && typeof local.portraitUrl === "string") {
+    try {
+      const url = new URL(local.portraitUrl);
+      if (url.protocol === "https:") return url.toString();
+    } catch {
+      // invalid custom cover URL falls through to the card source
+    }
+  }
   const chub = data.extensions?.chub;
   if (!isRecord(chub) || typeof chub.full_path !== "string") return null;
   return onlineCardAvatarUrl(chub.full_path);

@@ -37,6 +37,7 @@ export {
   SceneEvent,
   MessageActions,
   TypingCursor,
+  TaskBrief,
   ChatScroll,
   ChatColumn,
   SuggestRow,
@@ -45,5 +46,5 @@ export {
 export { Composer } from "./Composer";
 export { LockScreen } from "./LockScreen";
 export { TopBar } from "./TopBar";
-export { CharacterCard, ImportCard } from "./CharacterCard";
+export { CharacterCard, ImportCard, CreateCard } from "./CharacterCard";
 export { CgCard, CgLoading } from "./CgCard";

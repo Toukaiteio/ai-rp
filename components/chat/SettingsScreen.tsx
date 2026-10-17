@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Image as ImageIcon } from "lucide-react";
+import { ChevronDown, Image as ImageIcon, Moon, Sun } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   BackPill,
@@ -31,6 +31,7 @@ import { defaultImageSettings, type ImageSettings, type ProviderConfig } from "@
 import { cleanApiKey } from "@/lib/providers/apikey";
 import { hasMessage } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/use-i18n";
+import { useTheme } from "@/lib/use-theme";
 import type { MessageKey } from "@/lib/i18n";
 
 /* 只从 config / settings 导入，不要从 @/lib/providers 导入：
@@ -67,6 +68,7 @@ export function SettingsScreen({
   const [browserReady, setBrowserReady] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const { t, locale, setLocale } = useI18n();
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +127,20 @@ export function SettingsScreen({
               </OptChip>
               <OptChip selected={locale === "en"} onClick={() => setLocale("en")}>
                 English
+              </OptChip>
+            </OptRow>
+          </FormGroup>
+
+          {/* 主题只换令牌取值，画面结构不变；和语言一样不进加密存储 */}
+          <FormGroup title={t("settings.appearance")}>
+            <OptRow>
+              <OptChip selected={theme === "dark"} onClick={() => setTheme("dark")}>
+                <Moon className="size-3.5" strokeWidth={1.8} aria-hidden="true" />
+                {t("settings.themeDark")}
+              </OptChip>
+              <OptChip selected={theme === "light"} onClick={() => setTheme("light")}>
+                <Sun className="size-3.5" strokeWidth={1.8} aria-hidden="true" />
+                {t("settings.themeLight")}
               </OptChip>
             </OptRow>
           </FormGroup>
