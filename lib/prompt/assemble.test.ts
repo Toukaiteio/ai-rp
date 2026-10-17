@@ -105,8 +105,9 @@ describe("组装顺序与字节稳定", () => {
     expect(flat).toContain("嘴上赶人，手上添茶。");
     expect(flat).toContain("欠下饭钱");
     expect(flat).toContain("角色先是处在这个当下的人");
-    expect(flat).toContain("不要为了凑字数扩写");
-    expect(flat).toContain("装饰性的比喻");
+    expect(flat).toContain("act 必须白描");
+    expect(flat).toContain("禁止使用任何比喻、拟人、象征、排比、对仗、夸张或诗意形容");
+    expect(flat).toContain("act 只能写当下能被旁观者直接看见的一个短动作");
   });
 
   it("关键词世界书进进出出，不改前缀指纹", () => {
