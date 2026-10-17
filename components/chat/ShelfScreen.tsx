@@ -64,7 +64,16 @@ export function ShelfScreen({
   const { t } = useI18n();
 
   const tags = useMemo(
-    () => Array.from(new Set(cards.flatMap((entry) => entry.card.data.tags ?? []))).sort(),
+    () => {
+      const unique = new Map<string, string>();
+      for (const entry of cards) {
+        for (const rawTag of entry.card.data.tags ?? []) {
+          const tag = rawTag.trim();
+          if (tag && !unique.has(tag.toLocaleLowerCase())) unique.set(tag.toLocaleLowerCase(), tag);
+        }
+      }
+      return [...unique.values()].sort((left, right) => left.localeCompare(right));
+    },
     [cards],
   );
   const filteredCards = useMemo(() => {
@@ -76,10 +85,23 @@ export function ShelfScreen({
         [data.name, data.description, ...(data.tags ?? [])].some((value) =>
           value.toLocaleLowerCase().includes(keyword),
         );
-      const matchesTag = !activeTag || data.tags?.includes(activeTag);
+      const matchesTag =
+        !activeTag ||
+        (data.tags ?? []).some((tag) => tag.trim().toLocaleLowerCase() === activeTag.toLocaleLowerCase());
       return matchesSearch && matchesTag;
     });
   }, [activeTag, cards, search]);
+
+  function toggleTagFromSearch(): void {
+    const keyword = search.trim().toLocaleLowerCase();
+    if (!keyword) return;
+    const matchedTag = tags.find((tag) => tag.toLocaleLowerCase() === keyword);
+    if (!matchedTag) return;
+    setActiveTag((current) =>
+      current?.toLocaleLowerCase() === matchedTag.toLocaleLowerCase() ? null : matchedTag,
+    );
+    setSearch("");
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -171,6 +193,12 @@ export function ShelfScreen({
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  toggleTagFromSearch();
+                }
+              }}
               placeholder={t("shelf.searchPlaceholder")}
               aria-label={t("shelf.searchPlaceholder")}
               className="min-w-0 flex-1 rounded-pill border border-line bg-surface px-4 py-2.5 text-[13.5px] text-ink outline-none placeholder:text-ink-3 focus:border-line-strong"
