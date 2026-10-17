@@ -67,6 +67,13 @@ export {
 } from "./summarize";
 export { mergeFacts, parseFactsPayload, sanitizeFacts } from "./facts";
 export {
+  buildDirectorMessages,
+  formatTurnPlan,
+  parseTurnPlan,
+  DIRECTOR_SYSTEM_PROMPT,
+} from "./turn-plan";
+export type { DirectorMessagesOptions, TurnBeat, TurnPlan, TurnToolCall } from "./turn-plan";
+export {
   buildSuggestionMessages,
   parseSuggestions,
   SUGGESTION_SYSTEM_PROMPT,

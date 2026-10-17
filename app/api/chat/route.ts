@@ -12,6 +12,7 @@ import {
   type KeyFacts,
   type RollingSummary,
 } from "@/lib/prompt";
+import { buildDirectorMessages, formatTurnPlan, parseTurnPlan } from "@/lib/prompt";
 import {
   getProvider,
   isInsecureBaseURL,
@@ -276,7 +277,7 @@ export async function POST(request: Request): Promise<Response> {
   const maxContext = context.maxContext ?? 16_000;
   const budget = planBudget(maxContext, RESPONSE_TOKENS);
 
-  const { messages, budget: report, cacheKey, needsSummarize } = assemble({
+  const { messages: assembledMessages, budget: report, cacheKey, needsSummarize } = assemble({
     ...context,
     budget,
   });
@@ -301,9 +302,33 @@ export async function POST(request: Request): Promise<Response> {
     timeoutMs: UPSTREAM_TIMEOUT_MS,
   });
 
+  // 先用一个很短的导演阶段规划本轮节拍，再让最终请求负责自然语言渲染。
+  // 规划失败时静默回退到原来的单阶段流程，不能因为弱模型的 JSON 失败而阻断聊天。
+  let messages = assembledMessages;
+  try {
+    const directorEvents = await provider.open({
+      messages: buildDirectorMessages(assembledMessages),
+      model: body.model,
+      temperature: 0.2,
+      maxTokens: 420,
+      signal: controller.signal,
+    });
+    let directorText = "";
+    for await (const event of directorEvents) {
+      if (controller.signal.aborted) break;
+      if (event.type === "delta") directorText += event.text;
+    }
+    const plan = parseTurnPlan(directorText);
+    if (plan) {
+      messages = [...assembledMessages, { role: "system", content: formatTurnPlan(plan) }];
+    }
+  } catch {
+    // 计划阶段只是质量增强，连接已经能用时不因它失败而让整轮失败。
+  }
+
   let events: Awaited<ReturnType<typeof provider.open>>;
   try {
-      events = await provider.open({
+    events = await provider.open({
       messages,
       model: body.model,
       temperature: body.temperature,
