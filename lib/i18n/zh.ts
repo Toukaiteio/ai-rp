@@ -5,6 +5,7 @@ export const zh = {
   "common.retry": "重试",
   "common.start": "开始",
   "common.current": "当前角色",
+  "pwa.install": "安装到设备",
 
   "card.import": "导入角色卡",
   "card.create": "新建角色卡",

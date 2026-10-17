@@ -26,6 +26,7 @@ import { useI18n } from "@/lib/i18n/use-i18n";
 import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
 import { OnlineCards } from "./OnlineCards";
 import { Avatar } from "./Avatar";
+import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
 
 /** 简介只在悬停面板里出现，留得下一段完整的设定开头。 */
 function firstSentence(text: string, limit = 120): string {
@@ -118,7 +119,12 @@ export function ShelfScreen({
                 </IconButton>
               ) : undefined
             }
-            action={<AnnouncementBell onClick={() => setAnnounceOpen(true)} />}
+            action={
+              <div className="flex items-center gap-2">
+                <PwaInstallButton />
+                <AnnouncementBell onClick={() => setAnnounceOpen(true)} />
+              </div>
+            }
           />
 
           {error ? (
@@ -139,7 +145,7 @@ export function ShelfScreen({
             </p>
           ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map((entry) => {
             const playable = isPlayableCard(entry.card.data);
             return (
@@ -195,6 +201,9 @@ export function ShelfScreen({
             );
           })}
 
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 lg:grid-cols-3">
           <ImportCard label={t("card.import")} onClick={() => fileRef.current?.click()} />
           {onCreate ? <CreateCard label={t("card.create")} onClick={onCreate} /> : null}
         </div>
@@ -202,7 +211,7 @@ export function ShelfScreen({
         <input
           ref={fileRef}
           type="file"
-          accept="application/json,.json"
+          accept="application/json,.json,image/png,.png"
           className="hidden"
           onChange={(event) => {
             void handleFile(event.target.files?.[0]);

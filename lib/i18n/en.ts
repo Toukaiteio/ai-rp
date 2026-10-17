@@ -7,6 +7,7 @@ export const en: Record<MessageKey, string> = {
   "common.retry": "Retry",
   "common.start": "Start",
   "common.current": "Current",
+  "pwa.install": "Install app",
 
   "card.import": "Import character card",
   "card.create": "New character card",

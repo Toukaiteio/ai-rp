@@ -53,12 +53,12 @@ export function CharacterCard({
   return (
     <div
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-card border border-line bg-surface-2",
+        "character-card group relative flex flex-col overflow-hidden rounded-card border border-line bg-surface-2",
         className,
       )}
     >
       {/* 立绘铺满整张卡，包括下半部被标题和标签压住的地方 */}
-      <div className="absolute inset-0">{portrait}</div>
+      <div className="card-portrait absolute inset-0">{portrait}</div>
 
       {/* 卡级操作压右上角，衬一层半透明底，压在什么画面上都看得见 */}
       {actions ? (
@@ -66,7 +66,7 @@ export function CharacterCard({
       ) : null}
 
       {/* 只负责把卡片撑到应有的高度，立绘在它下面 */}
-      <div className="aspect-[4/5] w-full shrink-0" aria-hidden="true" />
+      <div className="card-spacer aspect-[4/5] w-full shrink-0" aria-hidden="true" />
 
       {/* 标题与标签压在卡片下半部，垫一层由下往上的黑保证可读。
           绝对定位钉在下缘：详情展开时只朝上吃立绘的区域，卡片尺寸不变 */}
@@ -112,13 +112,13 @@ export function ImportCard({
     <button
       type="button"
       className={cn(
-        "flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-card border-[1.5px] border-dashed border-line bg-transparent p-5 text-[14.5px] text-ink-2",
+        "flex min-h-[112px] flex-col items-center justify-center gap-2 rounded-card border-[1.5px] border-dashed border-line bg-transparent p-3 text-[13px] text-ink-2 sm:min-h-[180px] sm:gap-3 sm:p-5 sm:text-[14.5px] lg:min-h-[220px]",
         "transition-colors hover:border-line-strong hover:text-ink",
         className,
       )}
       {...rest}
     >
-      <span className="grid size-[52px] place-items-center rounded-pill border-[1.5px] border-line text-2xl font-normal text-ink">
+      <span className="grid size-9 place-items-center rounded-pill border-[1.5px] border-line text-xl font-normal text-ink sm:size-[52px] sm:text-2xl">
         +
       </span>
       {label}
@@ -136,13 +136,13 @@ export function CreateCard({
     <button
       type="button"
       className={cn(
-        "flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-card border border-line bg-surface p-5 text-[14.5px] text-ink",
+        "flex min-h-[112px] flex-col items-center justify-center gap-2 rounded-card border border-line bg-surface p-3 text-[13px] text-ink sm:min-h-[180px] sm:gap-3 sm:p-5 sm:text-[14.5px] lg:min-h-[220px]",
         "transition-colors hover:border-line-strong hover:bg-surface-2",
         className,
       )}
       {...rest}
     >
-      <span className="grid size-[52px] place-items-center rounded-pill bg-accent text-2xl font-normal text-accent-ink">+</span>
+      <span className="grid size-9 place-items-center rounded-pill bg-accent text-xl font-normal text-accent-ink sm:size-[52px] sm:text-2xl">+</span>
       {label}
     </button>
   );
