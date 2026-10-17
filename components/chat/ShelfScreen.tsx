@@ -123,7 +123,7 @@ export function ShelfScreen({
   return (
     <div className="relative h-dvh">
       <div className="h-dvh overflow-y-auto bg-background">
-        <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mx-auto w-full max-w-[1100px] px-4 py-6 sm:px-6 sm:py-8">
           <ScreenHead
             title={
               <span className="flex items-baseline gap-2">
@@ -167,7 +167,7 @@ export function ShelfScreen({
           ) : null}
 
         {cards.length > 0 ? (
-          <div className="mb-4 flex flex-col gap-2.5 sm:flex-row">
+          <div className="mb-4 flex flex-col gap-2.5">
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -211,7 +211,7 @@ export function ShelfScreen({
           </p>
         ) : null}
 
-        <div className="grid gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3">
           {filteredCards.map((entry) => {
             const playable = isPlayableCard(entry.card.data);
             return (
@@ -274,9 +274,10 @@ export function ShelfScreen({
             );
           })}
 
-        </div>
+          {chubAvailabilityChecked && !chubRegionRestricted ? (
+            <OnlineCards compact onAdded={onCardsChanged} />
+          ) : null}
 
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 lg:grid-cols-3 xl:grid-cols-4">
           <ImportCard label={t("card.import")} onClick={() => fileRef.current?.click()} />
           {onCreate ? <CreateCard label={t("card.create")} onClick={onCreate} /> : null}
         </div>
@@ -293,9 +294,6 @@ export function ShelfScreen({
           }}
         />
 
-        {chubAvailabilityChecked && !chubRegionRestricted ? (
-          <OnlineCards onAdded={onCardsChanged} />
-        ) : null}
       </div>
       </div>
 

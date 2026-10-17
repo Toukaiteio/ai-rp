@@ -161,6 +161,7 @@ export const zh = {
   "shelf.noMatch": "没有匹配的角色卡",
 
   "online.title": "在线角色卡",
+  "online.importCard": "导入网络角色卡",
   "online.disclaimerShort": "内容来源于网络，本项目不对其负责",
   "online.disclaimer":
     "列表与文件由 {source} 提供，由上传者维护。本项目不审核、不托管、不修改相关内容，亦不对其承担责任。",
@@ -249,6 +250,7 @@ export const zh = {
   "shell.imported": "已导入 {sessions} 个会话、{cards} 张角色卡",
   "shell.exportedWithKdf": "已导出。恢复参数另存为 {file}：salt={salt}，iterations={iterations}",
   "shell.restoringArchive": "正在恢复存档……",
+  "shell.loading": "加载中……",
 } as const;
 
 export type MessageKey = keyof typeof zh;

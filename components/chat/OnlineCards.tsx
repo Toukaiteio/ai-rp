@@ -109,7 +109,7 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-export function OnlineCards({ onAdded }: { onAdded?: () => void }) {
+export function OnlineCards({ onAdded, compact = false }: { onAdded?: () => void; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -257,18 +257,24 @@ export function OnlineCards({ onAdded }: { onAdded?: () => void }) {
     !suggestions.some((tag) => tag.toLowerCase() === typedTag.toLowerCase());
 
   return (
-    <section className="mt-7">
+    <section className={compact ? "contents" : "mt-7"}>
       <button
         type="button"
         aria-expanded={open}
         onClick={toggle}
-        className="flex w-full items-center gap-3 rounded-card border border-line bg-surface px-4 py-3.5 text-left transition-colors hover:border-line-strong"
+        className={cn(
+          "flex w-full items-center gap-3 rounded-card border border-line bg-surface px-4 py-3.5 text-left transition-colors hover:border-line-strong",
+          compact &&
+            "h-full min-h-[112px] justify-center px-3 py-3 text-center sm:min-h-[180px] sm:px-5 lg:min-h-[220px]",
+        )}
       >
         <span className="grid size-[38px] shrink-0 place-items-center rounded-pill bg-surface-2 text-ink">
           <IconGlobe className="size-[18px]" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-bold text-ink">{t("online.title")}</span>
+          <span className="block text-[15px] font-bold text-ink">
+            {compact ? t("online.importCard") : t("online.title")}
+          </span>
           <span className="block text-[12.5px] text-ink-2">{t("online.disclaimerShort")}</span>
         </span>
         <span className="shrink-0 text-ink-2">
@@ -277,7 +283,10 @@ export function OnlineCards({ onAdded }: { onAdded?: () => void }) {
       </button>
 
       {open ? (
-        <div className="mt-2.5 rounded-card border border-line bg-surface px-4 pb-4 pt-3.5">
+        <div className={cn(
+          "mt-2.5 rounded-card border border-line bg-surface px-4 pb-4 pt-3.5",
+          compact && "col-span-full",
+        )}>
           <p className="m-0 mb-3 text-[12.5px] leading-[1.7] text-ink-3">
             {t("online.disclaimer", { source: sourceName })}
           </p>

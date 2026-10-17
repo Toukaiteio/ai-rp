@@ -112,7 +112,7 @@ export function ImportCard({
     <button
       type="button"
       className={cn(
-        "flex min-h-[112px] flex-col items-center justify-center gap-2 rounded-card border-[1.5px] border-dashed border-line bg-transparent p-3 text-[13px] text-ink-2 sm:min-h-[180px] sm:gap-3 sm:p-5 sm:text-[14.5px] lg:min-h-[220px]",
+        "flex h-full min-h-[112px] flex-col items-center justify-center gap-2 rounded-card border-[1.5px] border-dashed border-line bg-transparent p-3 text-[13px] text-ink-2 sm:min-h-[180px] sm:gap-3 sm:p-5 sm:text-[14.5px] lg:min-h-[220px]",
         "transition-colors hover:border-line-strong hover:text-ink",
         className,
       )}
@@ -136,7 +136,7 @@ export function CreateCard({
     <button
       type="button"
       className={cn(
-        "flex min-h-[112px] flex-col items-center justify-center gap-2 rounded-card border border-line bg-surface p-3 text-[13px] text-ink sm:min-h-[180px] sm:gap-3 sm:p-5 sm:text-[14.5px] lg:min-h-[220px]",
+        "flex h-full min-h-[112px] flex-col items-center justify-center gap-2 rounded-card border border-line bg-surface p-3 text-[13px] text-ink sm:min-h-[180px] sm:gap-3 sm:p-5 sm:text-[14.5px] lg:min-h-[220px]",
         "transition-colors hover:border-line-strong hover:bg-surface-2",
         className,
       )}

@@ -164,6 +164,7 @@ export const en: Record<MessageKey, string> = {
   "shelf.noMatch": "No matching character cards",
 
   "online.title": "Online cards",
+  "online.importCard": "Import online cards",
   "online.disclaimerShort": "Sourced from the network. This project is not responsible for the content",
   "online.disclaimer":
     "The list and the files are provided by {source} and maintained by uploaders. This project does not review, host, or edit that content, and assumes no responsibility for it.",
@@ -252,4 +253,5 @@ export const en: Record<MessageKey, string> = {
   "shell.imported": "Imported {sessions} sessions and {cards} character cards",
   "shell.exportedWithKdf": "Exported. Recovery parameters saved to {file}: salt={salt}, iterations={iterations}",
   "shell.restoringArchive": "Restoring archive…",
+  "shell.loading": "Loading…",
 };
