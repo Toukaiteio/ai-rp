@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CharacterCard,
   IconButton,
@@ -9,9 +9,10 @@ import {
   Tag,
 } from "@/components/ui";
 import { CreateCard } from "@/components/ui/CharacterCard";
-import { IconBack, IconDownload, IconEdit, IconTrash } from "@/components/icons";
+import { IconBack, IconDownload, IconEdit, IconImage, IconTrash } from "@/components/icons";
 import {
   downloadCard,
+  downloadCardPng,
   isPlayableCard,
   readCardFile,
   type CardEntry,
@@ -58,7 +59,27 @@ export function ShelfScreen({
   const [chubRegionRestricted, setChubRegionRestricted] = useState(false);
   const [chubAvailabilityChecked, setChubAvailabilityChecked] = useState(false);
   const [announceOpen, setAnnounceOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const { t } = useI18n();
+
+  const tags = useMemo(
+    () => Array.from(new Set(cards.flatMap((entry) => entry.card.data.tags ?? []))).sort(),
+    [cards],
+  );
+  const filteredCards = useMemo(() => {
+    const keyword = search.trim().toLocaleLowerCase();
+    return cards.filter((entry) => {
+      const data = entry.card.data;
+      const matchesSearch =
+        !keyword ||
+        [data.name, data.description, ...(data.tags ?? [])].some((value) =>
+          value.toLocaleLowerCase().includes(keyword),
+        );
+      const matchesTag = !activeTag || data.tags?.includes(activeTag);
+      return matchesSearch && matchesTag;
+    });
+  }, [activeTag, cards, search]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -102,7 +123,7 @@ export function ShelfScreen({
   return (
     <div className="relative h-dvh">
       <div className="h-dvh overflow-y-auto bg-background">
-        <div className="mx-auto max-w-[980px] px-6 py-8">
+        <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-8">
           <ScreenHead
             title={
               <span className="flex items-baseline gap-2">
@@ -145,8 +166,53 @@ export function ShelfScreen({
             </p>
           ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {cards.map((entry) => {
+        {cards.length > 0 ? (
+          <div className="mb-4 flex flex-col gap-2.5 sm:flex-row">
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t("shelf.searchPlaceholder")}
+              aria-label={t("shelf.searchPlaceholder")}
+              className="min-w-0 flex-1 rounded-pill border border-line bg-surface px-4 py-2.5 text-[13.5px] text-ink outline-none placeholder:text-ink-3 focus:border-line-strong"
+            />
+            <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5">
+              <button
+                type="button"
+                onClick={() => setActiveTag(null)}
+                className={`shrink-0 rounded-pill border px-3 py-1.5 text-[12px] transition-colors ${
+                  activeTag === null
+                    ? "border-selected-line bg-selected text-selected-ink"
+                    : "border-line bg-surface text-ink-2 hover:border-line-strong"
+                }`}
+              >
+                {t("shelf.allTags")}
+              </button>
+              {tags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setActiveTag((current) => (current === tag ? null : tag))}
+                  className={`shrink-0 rounded-pill border px-3 py-1.5 text-[12px] transition-colors ${
+                    activeTag === tag
+                      ? "border-selected-line bg-selected text-selected-ink"
+                      : "border-line bg-surface text-ink-2 hover:border-line-strong"
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {filteredCards.length === 0 && cards.length > 0 ? (
+          <p className="mb-4 rounded-md border border-line bg-surface px-4 py-3 text-[13px] text-ink-2">
+            {t("shelf.noMatch")}
+          </p>
+        ) : null}
+
+        <div className="grid gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filteredCards.map((entry) => {
             const playable = isPlayableCard(entry.card.data);
             return (
               <CharacterCard
@@ -177,6 +243,13 @@ export function ShelfScreen({
                     >
                       <IconDownload className="size-4" />
                     </IconButton>
+                    <IconButton
+                      aria-label={t("shelf.exportPng", { name: entry.card.data.name })}
+                      className="size-8 bg-surface-2/85 backdrop-blur-sm"
+                      onClick={() => void downloadCardPng(entry.card)}
+                    >
+                      <IconImage className="size-4" />
+                    </IconButton>
                     {entry.source === "imported" ? (
                       <IconButton
                         aria-label={t("card.editCard", { name: entry.card.data.name })}
@@ -203,7 +276,7 @@ export function ShelfScreen({
 
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 lg:grid-cols-3">
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 lg:grid-cols-3 xl:grid-cols-4">
           <ImportCard label={t("card.import")} onClick={() => fileRef.current?.click()} />
           {onCreate ? <CreateCard label={t("card.create")} onClick={onCreate} /> : null}
         </div>

@@ -6,6 +6,7 @@ export const zh = {
   "common.start": "开始",
   "common.current": "当前角色",
   "pwa.install": "安装到设备",
+  "pwa.installHelp": "请在浏览器菜单中选择“添加到主屏幕”或“安装应用”。",
 
   "card.import": "导入角色卡",
   "card.create": "新建角色卡",
@@ -149,11 +150,15 @@ export const zh = {
   "shelf.empty": "角色架为空。可从下方在线角色卡列表导入，或导入角色卡 JSON 文件。",
   "shelf.imported": "导入",
   "shelf.exportCard": "导出 {name}",
+  "shelf.exportPng": "导出 {name} 为 PNG",
   "shelf.deleteCard": "删除 {name}",
   "shelf.import": "导入角色卡 JSON",
   "shelf.importFail": "导入失败：{error}",
   "shelf.returnToChat": "回到与{name}的对话",
   "shelf.chubRegionUnavailable": "Chub 当前国家/地区不可用，在线角色卡入口已隐藏。",
+  "shelf.searchPlaceholder": "搜索角色名、简介或标签",
+  "shelf.allTags": "全部",
+  "shelf.noMatch": "没有匹配的角色卡",
 
   "online.title": "在线角色卡",
   "online.disclaimerShort": "内容来源于网络，本项目不对其负责",

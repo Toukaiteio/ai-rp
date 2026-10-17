@@ -26,6 +26,8 @@ export const metadata: Metadata = {
 
 /* 默认深色的浏览器界面色。切换主题后由 lib/theme.ts 从令牌里改这个 meta。 */
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
   themeColor: "#161616",
 };
 

@@ -38,14 +38,19 @@ import {
   Veil,
 } from "@/components/ui";
 import { IconCheck, IconCopy, IconEdit, IconImage } from "@/components/icons";
+import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
 import { cn } from "@/components/ui/cn";
 import { hashSeed } from "@/lib/seed";
 import {
   dialogueContinues,
   parseBlocks,
+  parseRawBlocks,
   stripPseudoToolTags,
   type MessageBlock,
 } from "@/lib/blocks";
+import { checkGeneration } from "@/lib/engine";
+import { devReportEnabled, recordReport, reportLog } from "@/lib/engine/dev-log";
+import { DevReportButton, DevReportPanel, logReport } from "./DevReportPanel";
 import { buildSuggestionMessages, parseSuggestions } from "@/lib/suggest";
 import { DICE_TOOL } from "@/lib/dice";
 import {
@@ -214,6 +219,34 @@ function historyContent(turn: Turn): string {
 
 function userTurnsAsMessages(turn: Turn): ChatMessage[] {
   return [{ role: "user", content: historyContent(turn) }];
+}
+
+/**
+ * 检查器眼里的「已知人名」。
+ *
+ * 来源三处：角色卡上的角色、本机记忆里记下的人、历史里已经出过场的 who。
+ * 只有这三处都不认识的名字才算「发明了新人物」——
+ * 上一轮自己造出来的人到了下一轮已经算出场过，该管的是别让他的名字和性格变来变去。
+ */
+function knownCast(turns: Turn[], cardName: string, journal: Journal): string[] {
+  const names = new Set<string>([cardName]);
+  for (const name of Object.keys(journal.characters)) names.add(name);
+  for (const turn of turns) {
+    if (turn.role !== "assistant") continue;
+    for (const block of parseRawBlocks(turn.content)) {
+      const who = block.who?.trim();
+      if (who) names.add(who);
+    }
+  }
+  return [...names];
+}
+
+/** 上一轮 assistant 的原始输出，用来判复读。 */
+function lastAssistantReply(turns: Turn[]): string {
+  for (let i = turns.length - 1; i >= 0; i -= 1) {
+    if (turns[i].role === "assistant") return turns[i].content;
+  }
+  return "";
 }
 
 /**
@@ -435,6 +468,15 @@ export function ChatScreen({
   const [composerReset, setComposerReset] = useState(0);
   const [streaming, setStreaming] = useState(false);
   const [generationStage, setGenerationStage] = useState<GenerationStage | null>(null);
+  /**
+   * Phase 0 的观测开关。开发模式默认开，也可以在 URL 上加 ?dev=1 打开，
+   * 这样对着预览部署也能看真实模型的表现。生产环境不带这个参数时全程不计算、不记录。
+   */
+  const [devEnabled, setDevEnabled] = useState(false);
+  const [devOpen, setDevOpen] = useState(false);
+  useEffect(() => {
+    setDevEnabled(devReportEnabled());
+  }, []);
   const [error, setError] = useState<ChatError | null>(null);
   const [memory, setMemory] = useState<number | null>(null);
   const [cgBusy, setCgBusy] = useState<string | null>(null);
@@ -793,6 +835,8 @@ export function ChatScreen({
     setGenerationStage(null);
     setStreaming(true);
     setSuggestions([]);
+    /** 观测用的耗时起点。整轮包括导演阶段和续写轮，和玩家体感一致。 */
+    const startedAt = performance.now();
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -1163,6 +1207,30 @@ export function ChatScreen({
       } else if (carryTurnRef.current) {
         finalTurns.push(carryTurnRef.current);
         carryTurnRef.current = null;
+      }
+
+      /*
+       * Phase 0：把这一轮跑过的检查记下来。
+       *
+       * 只判断、不改写：回复照常显示、照常存进历史。等基线稳定了，
+       * 后面的阶段才会在这里接上「可修复就自动修一次 / 不合格就不写历史」。
+       * 记录只在开发模式进行，报告里不含正文和玩家输入。
+       */
+      if (devEnabled && replyText.trim()) {
+        const report = checkGeneration({
+          raw: replyText,
+          playerInput: userMessage,
+          previousReply: lastAssistantReply(baseTurns),
+          cardName: card.name,
+          userName,
+          knownCharacters: knownCast(finalTurns, card.name, journalRef.current),
+          turn: turnRef.current + 1,
+          providerId: config.providerId,
+          model: chatRoute.model,
+          latencyMs: performance.now() - startedAt,
+        });
+        recordReport(report);
+        logReport(report, reportLog().length - 1);
       }
 
       setTurns(finalTurns);
@@ -1650,7 +1718,15 @@ export function ChatScreen({
         onHistory={() => setResetOpen(true)}
         onExport={() => setExportOpen(true)}
         onSettings={onOpenSettings}
-        extra={<AnnouncementBell onClick={() => setAnnounceOpen(true)} />}
+        extra={
+          <>
+            {devEnabled ? (
+              <DevReportButton open={devOpen} onToggle={() => setDevOpen((open) => !open)} />
+            ) : null}
+            <PwaInstallButton />
+            <AnnouncementBell onClick={() => setAnnounceOpen(true)} />
+          </>
+        }
       />
 
       <ChatScroll
@@ -1952,6 +2028,11 @@ export function ChatScreen({
 
       {/* 公告抽屉挂在屏幕根部，不套在「更多」里，否则会跟着抽屉一起定位 */}
       <AnnouncementDialog open={announceOpen} onClose={() => setAnnounceOpen(false)} />
+
+      {/* 文本引擎观测只在开发模式（或 ?dev=1）出现，数据只在内存里 */}
+      {devEnabled ? (
+        <DevReportPanel open={devOpen} onClose={() => setDevOpen(false)} />
+      ) : null}
     </div>
   );
 }

@@ -8,6 +8,7 @@ export const en: Record<MessageKey, string> = {
   "common.start": "Start",
   "common.current": "Current",
   "pwa.install": "Install app",
+  "pwa.installHelp": "Use your browser menu to choose “Add to Home Screen” or “Install app”.",
 
   "card.import": "Import character card",
   "card.create": "New character card",
@@ -151,12 +152,16 @@ export const en: Record<MessageKey, string> = {
   "shelf.empty": "The shelf is empty. Import from the online card list below, or import a character card JSON.",
   "shelf.imported": "Imported",
   "shelf.exportCard": "Export {name}",
+  "shelf.exportPng": "Export {name} as PNG",
   "shelf.deleteCard": "Delete {name}",
   "shelf.import": "Import character card JSON",
 
   "shelf.importFail": "Import failed: {error}",
   "shelf.returnToChat": "Return to the chat with {name}",
   "shelf.chubRegionUnavailable": "Chub is not available in your country or region. Online cards are hidden.",
+  "shelf.searchPlaceholder": "Search names, descriptions, or tags",
+  "shelf.allTags": "All",
+  "shelf.noMatch": "No matching character cards",
 
   "online.title": "Online cards",
   "online.disclaimerShort": "Sourced from the network. This project is not responsible for the content",
