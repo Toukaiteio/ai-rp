@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">ai-rp</title>
+  <desc id="desc">ai-rp 应用图标</desc>
+  <rect width="512" height="512" rx="112" fill="#161616"/>
+  <path d="M128 154c0-18 14-32 32-32h192c18 0 32 14 32 32v148c0 18-14 32-32 32H259l-55 57c-10 10-27 3-27-11v-46h-17c-18 0-32-14-32-32V154Z" fill="#ededed"/>
+  <circle cx="205" cy="225" r="18" fill="#161616"/>
+  <circle cx="307" cy="225" r="18" fill="#161616"/>
+  <path d="M190 277c17 18 37 27 66 27s49-9 66-27" fill="none" stroke="#161616" stroke-linecap="round" stroke-width="16"/>
+  <path d="M256 91v31" stroke="#ededed" stroke-linecap="round" stroke-width="18"/>
+  <circle cx="256" cy="74" r="13" fill="#ededed"/>
+</svg>

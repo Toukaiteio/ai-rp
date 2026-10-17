@@ -20,6 +20,12 @@ pnpm dev
 
 打开 http://localhost:3000 。首次使用点右上角齿轮进「连接设置」，选提供商、填 Key、选模型。组件总览页在 http://localhost:3000/design 。
 
+## 安装为应用（PWA）
+
+生产部署使用 HTTPS 后，支持 PWA 的浏览器会根据页面地址栏或浏览器菜单提供「安装 ai-rp」/「添加到主屏幕」。安装后会以独立窗口打开，聊天数据仍只保存在本机浏览器的加密存储中。
+
+本地开发时 `http://localhost:3000` 也可用于测试安装；首次打开后刷新一次，让 service worker 接管页面。PWA 只缓存网页壳和图标，不缓存 `/api/` 请求、API Key 或聊天内容。
+
 ```bash
 pnpm build && pnpm start   # 生产模式
 pnpm lint
