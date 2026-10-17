@@ -14,6 +14,7 @@ import {
 import { markCache, prefixFingerprint } from "./cache";
 import { formatJournal, formatToolTrace } from "@/lib/memory/journal";
 import { formatFacts, needsSummarize } from "./summarize";
+import { dialogueLanguageInstruction } from "./language";
 import {
   INJECTION_GROUPS,
   matchWorldBook,
@@ -66,6 +67,7 @@ export {
   SUMMARIZE_TARGET_TOKENS,
 } from "./summarize";
 export { mergeFacts, parseFactsPayload, sanitizeFacts } from "./facts";
+export { dialogueLanguageInstruction } from "./language";
 export {
   buildDirectorMessages,
   formatTurnPlan,
@@ -283,6 +285,8 @@ export function assemble(input: AssembleInput): AssembleResult {
     role: "system",
     content: traceNote ? `${memoryNote}\n\n${traceNote}` : memoryNote,
   });
+  // 这是随当前玩家输入变化的后置约束，放在历史之后，避免被角色卡里的外语示例盖过。
+  post.push({ role: "system", content: dialogueLanguageInstruction(history) });
 
   if (card.post_history_instructions?.trim()) {
     post.push({

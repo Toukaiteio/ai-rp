@@ -5,6 +5,7 @@ import {
   parseTurnPlan,
   type TurnPlan,
 } from "./turn-plan";
+import { dialogueLanguageInstruction } from "./language";
 
 describe("导演计划", () => {
   it("把聊天记录包装成固定的 system + user 消息", () => {
@@ -51,5 +52,17 @@ describe("导演计划", () => {
         '{"beats":[{"kind":"narr","text":"好"}],"toolCalls":[{"name":"x","arguments":[]}]}',
       ),
     ).toBeNull();
+  });
+
+  it("锁定玩家最近输入的对白语言", () => {
+    expect(
+      dialogueLanguageInstruction([
+        { role: "assistant", content: "前一轮。" },
+        { role: "user", content: "可以" },
+      ]),
+    ).toContain("简体中文");
+    expect(
+      dialogueLanguageInstruction([{ role: "user", content: "よかった" }]),
+    ).toContain("日语");
   });
 });
