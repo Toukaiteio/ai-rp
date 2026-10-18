@@ -1,4 +1,10 @@
 import type { Journal, ToolTrace } from "@/lib/memory/journal";
+import type { SceneState } from "@/lib/scene";
+import type { StoryThread } from "@/lib/story";
+import type { CharacterVoiceProfile } from "@/lib/voice";
+import type { WorldBookReport } from "./worldbook";
+import type { PromptInspector } from "./inspector";
+import type { ResponseMode } from "./mode";
 
 export type ChatRole = "system" | "user" | "assistant";
 
@@ -61,6 +67,21 @@ export interface WorldBook {
   recursiveScan?: boolean;
 }
 
+/**
+ * 世界书的三本来源（Phase 8 第二阶段）。
+ *
+ * 全局：这个部署通用的规则；
+ * 角色：跟着卡走，换卡即换；
+ * 聊天：只影响这一场，玩家临时加的设定。
+ *
+ * 分开的意义是「不要一整套世界设定强行应用到所有角色和所有小说线」。
+ */
+export interface LorebookSet {
+  global?: WorldBook;
+  card?: WorldBook;
+  chat?: WorldBook;
+}
+
 /* ------------------------------------------------------------------ 摘要 */
 
 /**
@@ -95,19 +116,23 @@ export function emptyKeyFacts(): KeyFacts {
 /** 0 = 从不，1 = 每轮，N = 每 N 轮。 */
 export type NoteFrequency = number;
 
-export type NotePosition =
-  | "after_scenario"
-  | "after_char"
-  | "in_chat";
-
+/**
+ * 作者注。只放「这一轮怎么写」，不放世界设定。
+ *
+ * 插入位置固定在聊天历史里、最后一条玩家输入之前（depth 1）。
+ * 这个位置比系统提示开头更有影响力：它离生成最近，又不会盖过玩家刚说的话。
+ */
 export interface AuthorNote {
   text: string;
   /** 默认 1 */
   frequency?: NoteFrequency;
-  /** 默认 after_scenario */
-  position?: NotePosition;
-  /** 排在聊天历史里的第几条之后（0 = 最末），仅在 position 为 in_chat 时有用 */
+  /**
+   * 插在历史倒数第几条之前。1（默认）= 最后一条之前，0 = 最后一条之后。
+   * 上限见 note.ts 的 MAX_NOTE_DEPTH。
+   */
   depth?: number;
+  /** false 时整条停用 */
+  enabled?: boolean;
 }
 
 /* ------------------------------------------------------------------ 组装输入 */
@@ -116,6 +141,11 @@ export interface AssembleInput {
   card: CharacterCardCore;
   /** 世界书。简化版只有 keys/content/constant 也能跑 */
   lorebook?: WorldBook;
+  /**
+   * 三来源世界书（Phase 8）。给了就忽略 lorebook，按优先级合并三本。
+   * 只给其中一本也可以。
+   */
+  lorebooks?: LorebookSet;
   /** 玩家扮演的角色设定，可选 */
   persona?: string;
   /** 完整历史，按时间正序。组装器自己决定丢什么 */
@@ -135,8 +165,35 @@ export interface AssembleInput {
   /** 这一轮已经执行过的函数调用结果，只在续写时带上 */
   toolTrace?: ToolTrace[];
   authorNote?: AuthorNote;
+  /** 本轮临时作者注（重新生成纠偏）。有内容时独占，压过常规作者注。 */
+  temporaryNote?: string;
   style?: StyleId;
   userName?: string;
+  /**
+   * 回合层的当前场景状态。默认用角色卡的 scenario；
+   * 有场景线时传它，让「现在在哪儿、什么时候」跟着剧情走。
+   */
+  scene?: string;
+  /**
+   * 结构化的场景状态（Phase 5）。给了就用它替掉 scene，
+   * 每个字段带上可信度，模型才知道哪些是事实、哪些只是推断。
+   */
+  sceneState?: SceneState;
+  /** 当前活跃的剧情线，一行一条。不传就从场景状态和关键事实里现算。 */
+  threads?: string[];
+  /**
+   * 完整的剧情线列表（Phase 6）。给了就按 6.3 的策略挑几条注入，
+   * 不是全部塞进去——每轮提醒模型「你还有一堆悬念」会把它逼成急着收线的写手。
+   */
+  storyThreads?: StoryThread[];
+  storySystems?: {
+    events?: boolean;
+    goals?: boolean;
+    eventAfterTurns?: number;
+    stagnantTurns?: number;
+  };
+  /** 当前回合模式。不传就按玩家输入推断。 */
+  mode?: ResponseMode;
   budget: number;
   /** 是否给前缀打缓存断点 */
   cache?: boolean;
@@ -152,8 +209,18 @@ export interface CharacterCardCore {
   system_prompt?: string;
   /** 对话示例。稳定内容，进前缀，不进历史预算 */
   mes_example?: string;
+  /**
+   * 角色声音（Phase 9）。结构化地描述她怎么说话，
+   * 组装时压成一句自然语言放进前缀，和 personality 挨着。
+   */
+  voice?: CharacterVoiceProfile;
   /** 长对话后的人设兜底，贴在历史后面，靠后才能压住漂移 */
   post_history_instructions?: string;
+  /**
+   * 这张卡的默认作者注。管「这一轮怎么写」，不放世界设定。
+   * 会话里单独设过作者注时以会话的为准。
+   */
+  author_note?: string;
 }
 
 export type StyleId = "haruhi" | "mushoku";
@@ -171,6 +238,8 @@ export interface BudgetReport {
   kept: number;
   /** 世界书注入了几条 */
   lorebookEntries: number;
+  /** 世界书的预算观测：命中多少、注入多少、被预算丢掉多少、各档各来源各几条 */
+  lorebook?: WorldBookReport;
 }
 
 export interface AssembleResult {
@@ -181,6 +250,14 @@ export interface AssembleResult {
    * 这个值就不变，可以直接当缓存版本用。
    */
   cacheKey: string;
+  /** 这一轮实际用的回合模式，方便日志和跑批对比 */
+  mode: ResponseMode;
   /** 这一次是否刚好触发了压缩阈值（由调用方决定要不要压） */
   needsSummarize: boolean;
+  /**
+   * Prompt Inspector 的数据（Phase 10）：每条消息的来源、区段、token，
+   * 以及这一轮激活了哪些世界书条目。只在开发模式下展示，
+   * 不影响发给模型的内容，也不参与前缀指纹。
+   */
+  inspector: PromptInspector;
 }

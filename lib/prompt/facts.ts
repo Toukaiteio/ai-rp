@@ -103,3 +103,58 @@ function capMerge<T>(base: Record<string, T>, patch: Record<string, T>, max: num
   }
   return out;
 }
+
+/* ------------------------------------------------------------------ 剧情线 */
+
+const MAX_THREADS = 4;
+const MAX_THREAD_CHARS = 60;
+
+/**
+ * 从关键事实里挑出「还没结束的事」，再并上场景状态里的未收线。
+ *
+ * 为什么用 flags：记忆工具只分人物、地点、事件三类，其中事件天然对应「发生过的
+ * 一件事」。项目规定「不要发明原设定里没有的」，所以这里不新造剧情线数据结构，
+ * 而是复用已有的 flags——键是事件名，值是状态字符串。
+ *
+ * 判定规则：值为 true 或空串表示「还在进行」；值形如「已…/完…/结束/解决」表示已经收尾，
+ * 不再挂到回合层里。这样模型记完一件事，把状态改成「已完成」就能让它从剧情线里消失。
+ *
+ * 场景状态里的 unresolvedThreads 是导演每轮更新的「此刻还没收的线」，
+ * 比 flags 更贴近当下，所以排在最前面。
+ */
+export function activeThreads(
+  facts: KeyFacts | undefined,
+  limit = MAX_THREADS,
+  sceneThreads: string[] = [],
+): string[] {
+  const threads: string[] = [];
+  const seen = new Set<string>();
+
+  const push = (text: string) => {
+    const clean = text.replace(/\s+/g, " ").trim().slice(0, MAX_THREAD_CHARS);
+    if (!clean) return;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    threads.push(clean);
+  };
+
+  for (const thread of sceneThreads) push(thread);
+  for (const [name, state] of Object.entries(facts?.flags ?? {})) {
+    if (!isActiveFlag(state)) continue;
+    const detail =
+      typeof state === "string" && state.trim() ? `（${clipFact(state, MAX_THREAD_CHARS)}）` : "";
+    push(`${name}${detail}`);
+  }
+
+  return threads.slice(0, limit);
+}
+
+/** 收尾词。命中就认为这条线已经结束，不再占回合层的注意力。 */
+const CLOSED_FLAG = /(?:已完|完成|结束|解决|了结|收尾|closed|done|resolved)/i;
+
+function isActiveFlag(state: boolean | string): boolean {
+  if (state === true) return true;
+  if (state === false) return false;
+  return !CLOSED_FLAG.test(state);
+}

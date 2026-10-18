@@ -1,4 +1,21 @@
 import { describeRoll } from "@/lib/dice";
+import type { MemoryLayerId } from "./layers";
+import { conflictNotice, decideWrite, type MemoryConflict } from "./rules";
+
+export type { MemoryConflict } from "./rules";
+export { MEMORY_LAYERS, describeLayers, layerOf, type MemoryLayerInfo } from "./layers";
+export {
+  REASON_LABELS,
+  applyWriteRules,
+  conflictNotice,
+  confirmCandidate,
+  decideWrite,
+  isConflict,
+  type MemoryCandidate,
+  type MemoryDecision,
+  type MemoryReason,
+  type MemoryWriteResult,
+} from "./rules";
 
 /**
  * 本机剧情记忆：人物、地点、特殊事件。
@@ -318,10 +335,65 @@ export function applyChatTool(
   name: string,
   rawArguments: string,
   turn?: number,
-): { journal: Journal; result: string } {
+): { journal: Journal; result: string; conflict?: MemoryConflict } {
   if (name === "roll_dice") return { journal, result: describeRoll(rawArguments) };
   return applyMemoryTool(journal, name, rawArguments, turn);
 }
+
+/**
+ * 把一次函数调用写进记忆，并按 7.2 / 7.3 的规则过一遍。
+ *
+ * 和 applyMemoryTool 的区别：这个函数管**长期记忆**的写入规则——
+ * 同一个名字已经有记录、而且这次写的内容和旧的不一样时，
+ * 保留旧的、返回一条冲突，而不是让最新一次输出把旧记录顶掉。
+ *
+ * 工具调用本身就是「明确写入」，所以理由那一条天然满足；
+ * 冲突仍然要挡：模型可以记新东西，但不能悄悄改已经记下的事。
+ */
+export function applyMemoryWrite(
+  journal: Journal,
+  name: string,
+  rawArguments: string,
+  turn?: number,
+): { journal: Journal; result: string; conflict?: MemoryConflict } {
+  const kind = WRITERS[name];
+  if (!kind) return applyMemoryTool(journal, name, rawArguments, turn);
+
+  const args = readArgs(rawArguments);
+  const entryName = typeof args.name === "string" ? clip(args.name, MAX_NAME) : "";
+  const detail = typeof args.detail === "string" ? clip(args.detail, MAX_DETAIL) : "";
+  if (!entryName || !detail) return applyMemoryTool(journal, name, rawArguments, turn);
+
+  const existing = bucket(normalizeJournal(journal), kind)[entryName];
+  const decision = decideWrite({
+    layer: LAYER_OF_KIND[kind],
+    key: entryName,
+    detail,
+    current: existing?.detail,
+    fromTool: true,
+  });
+
+  if (decision.conflict) {
+    const conflict: MemoryConflict = {
+      layer: LAYER_OF_KIND[kind],
+      key: entryName,
+      kept: existing?.detail ?? "",
+      proposed: detail,
+      turn: turn ?? 0,
+      reasons: decision.reasons,
+    };
+    return { journal, result: conflictNotice(conflict), conflict };
+  }
+
+  return applyMemoryTool(journal, name, rawArguments, turn);
+}
+
+/** 目录的三类对应到记忆层。风格层走角色卡，不在目录里。 */
+const LAYER_OF_KIND: Record<JournalKind, MemoryLayerId> = {
+  character: "character",
+  place: "world",
+  event: "plot",
+};
 
 /** 执行一次函数调用。返回新目录和给模型看的一句结果。 */
 export function applyMemoryTool(

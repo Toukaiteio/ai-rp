@@ -52,6 +52,16 @@ describe("预算公式", () => {
 });
 
 describe("组装顺序与字节稳定", () => {
+  it("角色卡 system_prompt 覆盖默认核心规则，但保留输出协议", () => {
+    const result = run({
+      card: { ...card, system_prompt: "自定义核心规则：{{char}}只用冷淡短句称呼{{user}}。" },
+    });
+    const flat = linesOf(result.messages).join("\n");
+    expect(flat).toContain("自定义核心规则：林晚晴只用冷淡短句称呼你。");
+    expect(flat).not.toContain("你是这个故事的讲述者");
+    expect(flat).toContain("每轮只输出下面这几种块");
+  });
+
   it("段落顺序固定，同样输入两次字节级一致", () => {
     const input: Partial<AssembleInput> = {
       style: "haruhi",
@@ -62,7 +72,7 @@ describe("组装顺序与字节稳定", () => {
         places: { 晚星旅店: "一楼" },
         flags: { 已欠账: true },
       },
-      authorNote: { text: "雨声不要停。", position: "after_scenario" },
+      authorNote: { text: "雨声不要停。" },
       lorebook: {
         entries: [
           { keys: [], content: "常驻：油灯还亮着。", constant: true, position: "before_char" },
@@ -79,6 +89,7 @@ describe("组装顺序与字节稳定", () => {
     const second = run(input);
     expect(JSON.stringify(first.messages)).toBe(JSON.stringify(second.messages));
     expect(first.cacheKey).toBe(second.cacheKey);
+    expect(first.mode).toBe(second.mode);
 
     const lines = linesOf(first.messages);
     const at = (snippet: string) => {
@@ -87,16 +98,37 @@ describe("组装顺序与字节稳定", () => {
       return index;
     };
 
+    // 稳定层：规则 → 世界书 → 角色卡 → 玩家设定 → 场景 → 风格 → 事实 → 摘要
     expect(at("不要替玩家说话")).toBeLessThan(at("常驻：油灯还亮着。"));
     expect(at("常驻：油灯还亮着。")).toBeLessThan(at("角色名：林晚晴"));
     expect(at("角色名：林晚晴")).toBeLessThan(at("玩家设定"));
-    expect(at("玩家设定")).toBeLessThan(at("当前场景"));
-    expect(at("当前场景")).toBeLessThan(at("雨声不要停。"));
-    expect(at("酒堂还有人吗")).toBeLessThan(at("场景书：六张方桌。"));
-    expect(at("雨声不要停。")).toBeLessThan(at("文风"));
+    expect(at("玩家设定")).toBeLessThan(at("当前场景：深秋雨夜，一楼酒堂。"));
+    expect(at("当前场景：深秋雨夜，一楼酒堂。")).toBeLessThan(at("文风"));
     expect(at("文风")).toBeLessThan(at("已确认的事实"));
     expect(at("已确认的事实")).toBeLessThan(at("之前的剧情"));
+
+    // 回合层：历史之后。整层是一条消息，内部顺序按字符串位置断言。
     expect(at("之前的剧情")).toBeLessThan(at("酒堂还有人吗"));
+    expect(at("酒堂还有人吗")).toBeLessThan(at("本轮状态"));
+
+    const turn = lines.find((line) => line.includes("本轮状态"));
+    expect(turn).toBeTruthy();
+    const within = (snippet: string) => {
+      const index = (turn as string).indexOf(snippet);
+      expect(index, snippet).toBeGreaterThanOrEqual(0);
+      return index;
+    };
+    expect(within("对白语言锁定")).toBeLessThan(within("本轮状态"));
+    expect(within("本轮状态")).toBeLessThan(within("本轮模式"));
+    expect(within("本轮模式")).toBeLessThan(within("这一轮请按下面的要求写"));
+
+    // 作者注插在历史里、最后一条玩家输入之前：比回合层更靠近玩家那句话
+    expect(at("雨声不要停。")).toBe(at("酒堂还有人吗") - 1);
+    expect(lines[at("雨声不要停。") + 1]).toContain("酒堂还有人吗");
+    expect(at("雨声不要停。")).toBeLessThan(at("本轮状态"));
+
+    // 关键词世界书排在回合层之前，回合层保持「离生成最近」
+    expect(at("场景书：六张方桌。")).toBeLessThan(at("本轮状态"));
 
     const flat = lines.join("\n");
     expect(flat).not.toMatch(/\d{4}-\d{2}-\d{2}/);
@@ -107,7 +139,28 @@ describe("组装顺序与字节稳定", () => {
     expect(flat).toContain("角色先是处在这个当下的人");
     expect(flat).toContain("act 必须白描");
     expect(flat).toContain("禁止使用任何比喻、拟人、象征、排比、对仗、夸张或诗意形容");
-    expect(flat).toContain("act 只能写当下能被旁观者直接看见的一个短动作");
+    expect(flat).toContain("act 只能写当下能被旁观者直接看见的一个动作");
+    expect(flat).not.toContain("最多不超过");
+  });
+
+  it("act 约束和正向示例在回合层再出现一次", () => {
+    const lines = linesOf(run().messages);
+    const turnAt = indexOf(lines, "这一轮请按下面的要求写");
+    expect(turnAt).toBeGreaterThanOrEqual(0);
+
+    const turnLayer = lines[turnAt];
+    // 只重复最容易走形的两条，不把整份协议抄一遍
+    expect(turnLayer).toContain("act 只写一个旁观者能直接看见的动作");
+    expect(turnLayer).toContain("不替玩家说话");
+    // 正向示例：少量合法样例
+    expect(turnLayer).toContain('<act who="角色名">她抬眼。</act>');
+    expect(turnLayer).toContain('<act who="角色名">她把杯子放下。</act>');
+    expect(turnLayer).toContain('<act who="角色名">她的手指停住。</act>');
+    expect(turnLayer).toContain("<narr>她看了一眼门口，没有马上接话。</narr>");
+    expect(turnLayer).toContain('<dlg who="角色名">你刚才说什么？</dlg>');
+    // 不堆错误示例
+    expect(turnLayer).not.toContain("反例");
+    expect(turnLayer).not.toContain("错误示例");
   });
 
   it("关键词世界书进进出出，不改前缀指纹", () => {
@@ -304,9 +357,85 @@ describe("世界书", () => {
   });
 });
 
+describe("回合层", () => {
+  it("当前场景默认用角色卡的 scenario，传了就用传的", () => {
+    expect(linesOf(run().messages).join("\n")).toContain("当前场景：深秋雨夜，一楼酒堂。");
+    expect(
+      linesOf(run({ scene: "第二天清晨，酒堂刚开门。" }).messages).join("\n"),
+    ).toContain("当前场景：第二天清晨，酒堂刚开门。");
+  });
+
+  it("剧情线从关键事实里挑出还没收尾的事", () => {
+    const messages = run({
+      facts: {
+        characters: {},
+        places: {},
+        flags: {
+          失窃的卷宗: true,
+          追查泥脚印: "刚问过沈砚",
+          雨夜来客: "已完成",
+        },
+      },
+    }).messages;
+    // 只看回合层：关键事实那一段照旧会列出全部 flags，剧情线只挑没收尾的
+    const turn = messages.map((message) => message.content).find((text) => text.includes("本轮状态")) ?? "";
+
+    expect(turn).toContain("未完成的剧情线");
+    expect(turn).toContain("失窃的卷宗");
+    expect(turn).toContain("追查泥脚印（刚问过沈砚）");
+    // 收尾的不再占注意力
+    expect(turn).not.toContain("雨夜来客");
+  });
+
+  it("剧情线最多四条，不把回合层撑爆", () => {
+    const flags: Record<string, boolean> = {};
+    for (let i = 0; i < 8; i += 1) flags[`线索${i}`] = true;
+    const turn =
+      linesOf(run({ facts: { characters: {}, places: {}, flags } }).messages).find((text) =>
+        text.includes("本轮状态"),
+      ) ?? "";
+    expect(turn).toContain("线索0");
+    expect(turn).not.toContain("线索5");
+  });
+
+  it("没有剧情线时不写这一行，也不注入字数要求", () => {
+    const lines = linesOf(run().messages).join("\n");
+    expect(lines).not.toContain("未完成的剧情线");
+    expect(lines).not.toContain("本轮目标篇幅");
+  });
+
+  it("模式按玩家输入推断，也可以在调用时指定", () => {
+    expect(run({ history: [{ role: "user", content: "继续" }] }).mode).toBe("continue");
+    expect(run({ history: [{ role: "user", content: "哦" }] }).mode).toBe("short");
+    expect(run({ history: [{ role: "user", content: "你昨晚去哪儿了？" }] }).mode).toBe("dialogue");
+    expect(run({ mode: "scene" }).mode).toBe("scene");
+    expect(linesOf(run({ mode: "scene" }).messages).join("\n")).toContain("场景推进");
+  });
+
+  it("回合层的模式不进入前缀，不改变缓存指纹", () => {
+    const short = run({ history: [{ role: "user", content: "哦" }] });
+    const dialogue = run({ history: [{ role: "user", content: "你昨晚去哪儿了？" }] });
+    expect(short.mode).not.toBe(dialogue.mode);
+    expect(short.cacheKey).toBe(dialogue.cacheKey);
+  });
+
+  it("作者注每轮都变，但同样不碰前缀指纹", () => {
+    const withNote = run({ authorNote: { text: "雨声不要停。" } });
+    const without = run();
+    expect(withNote.cacheKey).toBe(without.cacheKey);
+  });
+});
+
 describe("Author's Note", () => {
+  const history: ChatMessage[] = [
+    { role: "assistant", content: "开场白" },
+    { role: "user", content: "台词1" },
+    { role: "assistant", content: "台词2" },
+    { role: "user", content: "台词3" },
+  ];
+
   it("频率：0 从不，1 每轮，N 每 N 轮，第 0 轮总是有", () => {
-    const note = { text: "记住雨声。", frequency: 2, position: "after_scenario" as const };
+    const note = { text: "记住雨声。", frequency: 2 };
     expect(linesOf(run({ authorNote: { ...note, frequency: 0 }, turn: 2 }).messages).join("\n")).not.toContain(
       "记住雨声。",
     );
@@ -315,20 +444,84 @@ describe("Author's Note", () => {
     expect(linesOf(run({ authorNote: note, turn: 2 }).messages).join("\n")).toContain("记住雨声。");
   });
 
-  it("in_chat 按 depth 插进历史，0 在最末", () => {
-    const history: ChatMessage[] = [0, 1, 2, 3].map((index) => ({
-      role: "user",
-      content: `台词${index}`,
-    }));
-    const lines = linesOf(
-      run({
-        history,
-        authorNote: { text: "作者注正文", position: "in_chat", depth: 2 },
-      }).messages,
-    );
-    const noteAt = lines.indexOf("作者注正文");
-    expect(lines[noteAt + 1]).toBe("台词2");
-    expect(lines[noteAt - 1]).toBe("台词1");
+  it("默认插在最后一条玩家输入之前（历史之后，不是系统提示开头）", () => {
+    const messages = run({ history, authorNote: { text: "作者注正文" } }).messages;
+    const noteAt = messages.findIndex((message) => message.content.includes("作者注正文"));
+    expect(noteAt).toBeGreaterThan(0);
+    // 紧挨着最后一条玩家输入，且在它前面
+    expect(messages[noteAt - 1].content).toBe("台词2");
+    expect(messages[noteAt + 1].content).toBe("台词3");
+    // 不在前缀里：第一条仍然是核心规则
+    expect(messages[0].content).toContain("不要替玩家说话");
+  });
+
+  it("depth 决定插在倒数第几条之前，0 就是最后一条之后", () => {
+    const at = (depth: number) => {
+      const messages = run({ history, authorNote: { text: "作者注正文", depth } }).messages;
+      return {
+        note: messages.findIndex((message) => message.content.includes("作者注正文")),
+        // 历史第一句的位置就是前缀长度
+        historyStart: messages.findIndex((message) => message.content === "开场白"),
+      };
+    };
+    // depth 0：最后一条之后 → 前缀 + 全部四条历史
+    expect(at(0).note).toBe(at(0).historyStart + 4);
+    // depth 1：最后一条之前
+    expect(at(1).note).toBe(at(1).historyStart + 3);
+    // depth 2：再往前一条
+    expect(at(2).note).toBe(at(2).historyStart + 2);
+  });
+
+  it("depth 超出历史长度时贴到最前面，不越界", () => {
+    const messages = run({
+      history: [{ role: "user", content: "只有一句" }],
+      authorNote: { text: "作者注正文", depth: 6 },
+    }).messages;
+    const noteAt = messages.findIndex((message) => message.content.includes("作者注正文"));
+    // 前缀之后的第一条
+    expect(noteAt).toBeGreaterThan(0);
+    expect(messages[noteAt + 1].content).toBe("只有一句");
+  });
+
+  it("包装里写明它是「这一轮怎么写」，不是新设定", () => {
+    const messages = run({ history, authorNote: { text: "雨声不要停。" } }).messages;
+    const note = messages.find((message) => message.content.includes("雨声不要停。"));
+    expect(note?.content).toContain("管这一轮的节奏和写法");
+    expect(note?.content).toContain("不是新的设定或事件");
+    expect(note?.content).toContain("优先级高于上面的常规要求");
+  });
+
+  it("临时注记压过常规注记，用于重新生成纠偏", () => {
+    const messages = run({
+      history,
+      authorNote: { text: "常规注记" },
+      temporaryNote: "上一版替玩家行动了，这一轮别这样。",
+    }).messages;
+    const flat = linesOf(messages).join("\n");
+    expect(flat).toContain("上一版替玩家行动了");
+    expect(flat).not.toContain("常规注记");
+  });
+
+  it("关掉作者注就不出现，也不占预算", () => {
+    const off = run({ history, authorNote: { text: "雨声不要停。", enabled: false } });
+    expect(linesOf(off.messages).join("\n")).not.toContain("雨声不要停。");
+    expect(off.budget.blocks.note).toBe(0);
+
+    const on = run({ history, authorNote: { text: "雨声不要停。" } });
+    expect(on.budget.blocks.note).toBeGreaterThan(0);
+  });
+
+  it("作者注的 token 从历史预算里扣，不会把总预算顶爆", () => {
+    const without = run({ history });
+    const withNote = run({ history, authorNote: { text: "记住雨声。".repeat(20) } });
+    expect(withNote.budget.used).toBeLessThanOrEqual(withNote.budget.max);
+    expect(withNote.budget.blocks.history).toBeLessThanOrEqual(without.budget.blocks.history);
+  });
+
+  it("作者注不碰前缀指纹", () => {
+    const withNote = run({ history, authorNote: { text: "雨声不要停。" } });
+    const without = run({ history });
+    expect(withNote.cacheKey).toBe(without.cacheKey);
   });
 });
 

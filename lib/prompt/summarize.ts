@@ -2,6 +2,8 @@ import { parseBlocks, stripBlocks } from "@/lib/blocks";
 import { estimateTokens } from "./budget";
 import type { ChatMessage, KeyFacts, RollingSummary } from "./types";
 
+export { activeThreads } from "./facts";
+
 /** 历史超过这个 token 量才压一次，不要每轮都压。 */
 export const SUMMARIZE_THRESHOLD_TOKENS = 8000;
 /** 压完之后目标保留多少 token 的历史。压过头会让最近语境变薄。 */
@@ -29,7 +31,7 @@ export const SUMMARIZE_SYSTEM_PROMPT = [
   "- 不要续写，不要推测接下来会发生什么",
   "- 不要复述对话原文",
   "",
-  "用第三人称，客观陈述，控制在 300 字以内。只输出摘要正文，不要标题，不要前缀。",
+  "用第三人称，客观陈述。只输出摘要正文，不要标题，不要前缀。",
 ].join("\n");
 
 export interface SummarizeInput {
