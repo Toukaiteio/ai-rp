@@ -11,7 +11,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "baseline": "node --experimental-loader ./scripts/alias-loader.mjs scripts/baseline.ts",
+    "repair-check": "node --experimental-loader ./scripts/alias-loader.mjs scripts/repair-check.ts",
+    "state-check": "node --experimental-loader ./scripts/alias-loader.mjs scripts/state-check.ts",
+    "lorebook-check": "node --experimental-loader ./scripts/alias-loader.mjs scripts/lorebook-check.ts",
+    "voice-check": "node --experimental-loader ./scripts/alias-loader.mjs scripts/voice-check.ts",
+    "regenerate-check": "node --experimental-loader ./scripts/alias-loader.mjs scripts/regenerate-check.ts",
+    "test:roleplay": "node --experimental-loader ./scripts/alias-loader.mjs scripts/eval.ts",
+    "test:roleplay:live": "node --experimental-loader ./scripts/alias-loader.mjs scripts/eval.ts --live"
   },
   "dependencies": {
     "ejs": "3.1.10",

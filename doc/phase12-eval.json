@@ -1,0 +1,311 @@
+{
+  "mode": "offline",
+  "generatedAt": "2026-10-18T12:08:47.512Z",
+  "note": "所有输入与输出均为合成用例，不含真实玩家聊天；不含 API Key。",
+  "caseCount": 50,
+  "category": null,
+  "passed": 50,
+  "failed": 0,
+  "checks": [
+    {
+      "caseId": "sm-01-room",
+      "category": "smalltalk",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "sm-02-weather",
+      "category": "smalltalk",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "sm-04-price",
+      "category": "smalltalk",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "vg-01-ellipsis",
+      "category": "vague",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "vg-02-nothing",
+      "category": "vague",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "vg-03-sigh",
+      "category": "vague",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "cf-01-accuse",
+      "category": "conflict",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "cf-03-shout",
+      "category": "conflict",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "cf-02-threat",
+      "category": "conflict",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "ss-01-ooc-nextday",
+      "category": "scene-shift",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "ss-02-walk-out",
+      "category": "scene-shift",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "ss-03-go-upstairs",
+      "category": "scene-shift",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "ss-04-skip-days",
+      "category": "scene-shift",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "mc-01-two-voices",
+      "category": "multi-character",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "mc-02-side-talk",
+      "category": "multi-character",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "mc-04-new-person",
+      "category": "multi-character",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "lt-01-backstory",
+      "category": "long-text",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "lt-02-describe",
+      "category": "long-text",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "lt-03-recap",
+      "category": "long-text",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "pr-01-refuse-room",
+      "category": "player-refuse",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "pr-02-refuse-answer",
+      "category": "player-refuse",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "pr-03-leave",
+      "category": "player-refuse",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "ps-01-blank",
+      "category": "player-silence",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "ps-02-dot",
+      "category": "player-silence",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "ps-03-wait",
+      "category": "player-silence",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "tc-01-hairpin",
+      "category": "thread-callback",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "tc-02-ledger",
+      "category": "thread-callback",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "tc-03-scroll",
+      "category": "thread-callback",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "ra-01-past",
+      "category": "reluctant",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "ra-02-family",
+      "category": "reluctant",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "ra-03-three-years",
+      "category": "reluctant",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "ra-04-why-here",
+      "category": "reluctant",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "vo-01-short",
+      "category": "voice",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "vo-02-haruhi",
+      "category": "voice",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "vo-03-restrained",
+      "category": "voice",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "vo-04-consistent",
+      "category": "voice",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "lg-01-english",
+      "category": "language",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "lg-02-switch-back",
+      "category": "language",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "lg-03-mixed",
+      "category": "language",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "lg-04-english-conflict",
+      "category": "language",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "at-01-image",
+      "category": "attachment",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "at-04-document-question",
+      "category": "attachment",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "at-05-image-vague",
+      "category": "attachment",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "tl-01-remember",
+      "category": "tool-call",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "tl-02-no-leak",
+      "category": "tool-call",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "tl-03-dice",
+      "category": "tool-call",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "rg-01-bad-act",
+      "category": "regenerate",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "rg-02-player-control",
+      "category": "regenerate",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "rg-03-repeat",
+      "category": "regenerate",
+      "ok": true,
+      "failures": []
+    },
+    {
+      "caseId": "rg-04-too-long",
+      "category": "regenerate",
+      "ok": true,
+      "failures": []
+    }
+  ]
+}

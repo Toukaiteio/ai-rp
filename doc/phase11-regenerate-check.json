@@ -1,0 +1,35 @@
+{
+  "model": "deepseek-v4-flash-200k",
+  "temperature": 0.2,
+  "generatedAt": "2026-10-18T07:24:01.026Z",
+  "note": "所有输入与输出均为合成用例，不含真实玩家聊天；不含 API Key。",
+  "playerInput": "我走过去，问她看的是什么书，顺便问她手上的伤怎么样了。",
+  "correctionNote": "上一版回复未采用，请重写这一轮。\n不要复用上一版的动作表达和句式，换一个角度写。\n保持单一动作和短对白，不要一次推进太多。\n上一版是这样开头的：「<act who=\"深月风花\">她把书合上。</…」，不要再这样写。",
+  "discardedLeaked": false,
+  "versions": [
+    {
+      "label": "第一版（原始）",
+      "reply": "<act who=\"深月风花\">她把书合上。</act>\n<narr>封面朝下扣在桌面上，只露出书脊那行被磨得发白的字。窗外的风把她的刘海吹起来一角，她没去管。</narr>\n<dlg who=\"深月风花\">看什么书跟你有关系吗。</dlg>\n<dlg who=\"深月风花\">手。就那样，早好了，别老盯着。</dlg>\n<narr>她左手往袖子里缩了缩，绷带边缘从袖口露出来一小截，颜色比上周旧了些，指节的位置微微鼓起。她的视线落在窗外，停了片刻才收回来。</narr>\n<dlg who=\"深月风花\">你站这儿干嘛，挡光了。</dlg>",
+      "length": 150,
+      "dialogueCount": 3,
+      "actionCount": 1
+    },
+    {
+      "label": "第二版（带纠偏）",
+      "reply": "<act who=\"深月风花\">她把书往桌上一扣。</act>\n<narr>书脊朝上，封面被手掌压住，看不清书名。窗外的风把窗帘鼓了一下又落回去。</narr>\n<dlg who=\"深月风花\">……随便看看的，跟你没关系。</dlg>\n<narr>她说完偏了偏头，绷带那只手缩回袖口里，像是才想起来它露在外面。</narr>\n<dlg who=\"深月风花\">手没事。又没断，你盯着看什么。</dlg>\n<act who=\"深月风花\">她把手收进桌下。</act>",
+      "length": 112,
+      "dialogueCount": 2,
+      "actionCount": 2,
+      "overlapWithFirst": 0.02
+    }
+  ],
+  "control": {
+    "reply": "<act who=\"深月风花\">她把书合上。</act>\n<narr>书的封面被她手掌盖住，只看得到书页边角有点卷。风从窗户那边进来，吹动她额前的头发，她没去理。</narr>\n<dlg who=\"深月风花\">随便看看的，跟你没关系。</dlg>\n<narr>说到伤的时候，她把手往袖子里缩了缩，绷带那截露出来一小块，看着还算干净。</narr>\n<dlg who=\"深月风花\">手啊，快好了。你别老盯着看，怪瘆人的。</dlg>",
+    "overlapWithFirst": 0.1
+  },
+  "verdict": {
+    "leakFree": true,
+    "correctionHelps": true,
+    "shorter": true
+  }
+}

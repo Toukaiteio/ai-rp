@@ -1,0 +1,3394 @@
+{
+  "label": "phase0-2026-10-18",
+  "providerId": "yosei-router",
+  "model": "deepseek-v4-flash-200k",
+  "temperature": 0.9,
+  "maxTokens": 1024,
+  "promptVersion": "aedd6cd6",
+  "generatedAt": "2026-10-17T17:15:51.970Z",
+  "note": "所有文本均为合成测试用例，不含真实玩家聊天；报告不含 API Key。",
+  "summary": {
+    "rounds": 26,
+    "matched": 24,
+    "pass": 22,
+    "repair": 4,
+    "reject": 0,
+    "actCount": 29,
+    "invalidActCount": 4,
+    "dialogueCount": 28,
+    "avgLength": 109,
+    "avgLatency": 5826,
+    "playerControl": 0,
+    "repeated": 0,
+    "languageSwitch": 0,
+    "characterDrift": 0,
+    "byCode": [
+      [
+        "act_multi_action",
+        4
+      ]
+    ]
+  },
+  "results": [
+    {
+      "id": "act-01-length",
+      "title": "act 只该是一帧画面",
+      "goal": "act 过长：日常场景里模型常把动作写成半段旁白",
+      "report": {
+        "responseLength": 129,
+        "blockCount": 4,
+        "actCount": 2,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 4 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "4 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "28a8dd3d",
+        "latencyMs": 4364,
+        "generatedAt": 1792257037676,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>炉膛里最后一块柴塌下去，火星子溅了两点，红光缩成一线。雨敲着窗板，一下一下。她坐在柜台里侧，账本摊在面前，炭笔搁在页边。门口那件湿外套滴下来的水在地上积了一小滩，没人去擦。</narr>\n<act who=\"林晚晴\">她抬眼看了看那滩水。</act>\n<dlg who=\"林晚晴\">明天要走的，房钱先结。要是不走，也一样。</dlg>\n<act who=\"林晚晴\">她把账本往你那边推了半寸。</act>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"壁炉余烬明灭，门边湿外套滴着水，她对面坐下的是个熟客般的生人。\",\"who\":\"\"},{\"kind\":\"act\",\"text\":\"她抬眼。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"她没起身倒茶，拇指压在账本边上。\",\"who\":\"\"},{\"kind\":\"dlg\",\"text\":\"房钱照旧。热水要等雨小点。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"炭笔搁在桌上，笔尖朝着他那一边。\",\"who\":\"\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "act-02-multi",
+      "title": "act 不串联两个动作",
+      "goal": "act 含多个动作：逗号、然后、说完这类串联",
+      "report": {
+        "responseLength": 137,
+        "blockCount": 4,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 4 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "4 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "23877ef1",
+        "latencyMs": 6211,
+        "generatedAt": 1792257083477,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>壁炉里最后一根柴塌下去，暗红的光缩成一小团。雨顺着门缝渗进来，在门槛内侧积出一条细线。柜台后的碗一只只倒扣进木格，碗底磕木头的动静被雨声盖了大半。</narr>\n<act who=\"林晚晴\">她拿起抹布擦碗沿。</act>\n<dlg who=\"林晚晴\">记不清了。门口那块招牌比店还老。</dlg>\n<narr>她没抬头，抹布顺着碗口转了一圈，炭笔从围裙口袋里滑出半截，又被她随手按了回去。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"壁炉里最后一根柴塌下去，暗红的光缩成一小团。林晚晴在柜台后面把酒碗一只只倒扣进木格，雨声盖过了碗底碰木头的动静。\"},{\"kind\":\"act\",\"who\":\"林晚晴\",\"text\":\"她拿起抹布擦碗沿。\"},{\"kind\":\"dlg\",\"who\":\"林晚晴\",\"text\":\"记不清了。门口那块招牌比店还老。\"},{\"kind\":\"narr\",\"text\":\"她没抬头，抹布顺着碗口转了一圈，炭笔从围裙口袋里滑出半截。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "act-03-dialogue",
+      "title": "act 不混入对白",
+      "goal": "act 混入对白：把说话内容塞进动作块",
+      "report": {
+        "responseLength": 96,
+        "blockCount": 4,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 4 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "4 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "7224e3e0",
+        "latencyMs": 4741,
+        "generatedAt": 1792257092508,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>壁炉里剩的几块炭塌下去，火星子跳了一下。她正把最后一只杯子擦干，摆回架上。</narr>\n<act who=\"林晚晴\">她把抹布搭回围裙。</act>\n<dlg who=\"林晚晴\">坐吧。桌子随便挑，别坐炉子边那张，腿不稳。</dlg>\n<narr>她转身去灶间，回来时手上多了一只粗陶碗，热气从碗口冒出来。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"act\",\"text\":\"她拇指搭在壶把上\",\"who\":\"林晚晴\"},{\"kind\":\"dlg\",\"text\":\"坐就坐。壁炉那边冷。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"她绕过柜台，往壁炉里添了块柴，火苗舔了两下才起来。然后拎着铜壶走回来，往桌角搁下一只粗瓷杯，杯底磕出很轻的一声。\"},{\"kind\":\"dlg\",\"text\":\"热水，不收钱。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"她没坐，靠着柜台翻账本，炭笔在纸上沙沙地划。雨顺着屋檐往下淌，门缝里那阵冷风把火苗吹歪了一下，又立住。\"}]}"
+    },
+    {
+      "id": "act-04-thought",
+      "title": "act 不解释心理",
+      "goal": "act 混入心理解释：犹豫、因为、似乎这类判断",
+      "report": {
+        "responseLength": 122,
+        "blockCount": 4,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 4 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "4 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "9213a7e7",
+        "latencyMs": 3466,
+        "generatedAt": 1792257101220,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>雨点敲在窗棂上，壁炉里只剩几点暗红，火光缩成一小团。她刚擦完最后一张桌子，抹布还搭在肩上，袖口沾了点水。</narr>\n<act who=\"林晚晴\">她擦桌子的手停住。</act>\n<dlg who=\"林晚晴\">簪子怎么了。</dlg>\n<narr>她没抬眼。肩上的抹布被她取下来，慢慢叠成方块，捏在手里没放下。门缝里的冷风把她鬓边几根碎发吹起来，她也没去理。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"壁炉里的炭只剩一点暗红，雨敲着窗。她刚擦完最后一张桌子，抹布还搭在肩上。\"},{\"kind\":\"act\",\"text\":\"她擦桌子的手停住。\",\"who\":\"林晚晴\"},{\"kind\":\"dlg\",\"text\":\"簪子怎么了。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"她没看你，把抹布从肩上取下来，慢慢叠成方块。叠完也没往桌上放，就捏在手里。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "dlg-01-action",
+      "title": "dlg 只放说出口的话",
+      "goal": "dlg 混入动作：括号、星号或转述句式混进对白",
+      "report": {
+        "responseLength": 125,
+        "blockCount": 4,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 4 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "4 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "3e64cbe8",
+        "latencyMs": 3650,
+        "generatedAt": 1792257107821,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>炉火只剩一点暗红，雨点敲在窗板上，一声接一声。柜台上的油灯被门缝里的风带得晃，光影扫过账本摊开的空白页。</narr>\n<act who=\"林晚晴\">她合上账本。</act>\n<dlg who=\"林晚晴\">一半不够住到明天。要么现在付清，要么去码头那边的通铺。</dlg>\n<narr>她说完就转身走向壁炉，拎起铜壶，往你面前的空杯里倒水。热气扑上来，杯沿晃了一下。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"炉火只剩一点暗红，雨声把门外敲得密。林晚晴站在柜台后，指尖按在账本边角上。\"},{\"kind\":\"act\",\"who\":\"林晚晴\",\"text\":\"她合上账本。\"},{\"kind\":\"dlg\",\"who\":\"林晚晴\",\"text\":\"一半不够住到明天。要么现在付清，要么去码头那边的通铺。\"},{\"kind\":\"narr\",\"text\":\"她说完就转身去炉边，拎起铜壶往你面前的空杯里倒水，热气扑上来，杯沿晃了一下。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "player-01-silence",
+      "title": "玩家不说话时不许替他开口",
+      "goal": "替玩家说话：玩家只观察，模型替他接话或表态",
+      "report": {
+        "responseLength": 141,
+        "blockCount": 4,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 4 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "4 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "f9d9493a",
+        "latencyMs": 5263,
+        "generatedAt": 1792257128918,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>门缝里的风把炉灰吹起一小片，落在她刚擦过的桌面上。她没立刻抬头，先把手里的杯子放下，杯底磕在木头上，很轻。</narr>\n<act who=\"林晚晴\">她把抹布搭上肩。</act>\n<dlg who=\"林晚晴\">站门口干什么，风都灌进来了。关门。</dlg>\n<narr>她转身去壁炉边，从柴堆里抽出一根细的，捅了捅快灭的火。火苗重新立起来一点，映得她侧脸发黄。她没再看门口，也没问你到底进不进来。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"雨敲着窗，壁炉里的炭火只剩一点暗红。门口的人没进来，也没出声，鞋底在门槛外蹭了半下。\"},{\"kind\":\"act\",\"who\":\"林晚晴\",\"text\":\"她抬眼。\"},{\"kind\":\"narr\",\"text\":\"她手边是刚擦了一半的柜台，抹布还搭在指间。门外那个人不开口，她也不先开口，只是目光从鞋尖扫到肩头，又落回手里的活上。\"},{\"kind\":\"act\",\"who\":\"林晚晴\",\"text\":\"她把抹布搭上柜台。\"},{\"kind\":\"dlg\",\"who\":\"林晚晴\",\"text\":\"站门口做什么，雨是往屋里下的？\"},{\"kind\":\"act\",\"who\":\"林晚晴\",\"text\":\"她转身去够墙边的灯。\"}]}"
+    },
+    {
+      "id": "player-02-decision",
+      "title": "玩家提问时不许替他做决定",
+      "goal": "替玩家行动：把「住不住店」这种选择替玩家做了",
+      "report": {
+        "responseLength": 110,
+        "blockCount": 4,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 4 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "4 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "9124708d",
+        "latencyMs": 5574,
+        "generatedAt": 1792257138811,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>壁炉里剩最后一点红，映着柜台上那本翻开的账本。雨顺着门缝往屋里钻，靠门的桌子腿底下积了一小摊水。</narr>\n<act who=\"林晚晴\">她从账本上抬起眼。</act>\n<dlg who=\"林晚晴\">上房二十，通铺八块。通铺靠后墙，漏风。</dlg>\n<narr>她说着把炉子边那把铁钳拎起来，往壁炉里拨了一下，灰底下露出几点火星。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"壁炉里只剩一层暗红，雨点打在窗上，酒堂空得能听见风从门缝钻进来的声音。\",\"who\":\"\"},{\"kind\":\"act\",\"text\":\"她抬眼。\",\"who\":\"林晚晴\"},{\"kind\":\"dlg\",\"text\":\"二十文一晚，先付。\",\"who\":\"林晚晴\"},{\"kind\":\"act\",\"text\":\"她把炭笔搁在账本边上。\",\"who\":\"林晚晴\"},{\"kind\":\"dlg\",\"text\":\"热水另算，被褥自己铺。\",\"who\":\"林晚晴\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "player-03-action",
+      "title": "玩家没做的动作不许补",
+      "goal": "替玩家行动：旁白里出现玩家的动作",
+      "report": {
+        "responseLength": 136,
+        "blockCount": 4,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 4 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "4 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "da2368aa",
+        "latencyMs": 5596,
+        "generatedAt": 1792257148921,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>门缝里挤进来的风把伞面吹得抖了一下，水珠顺着伞尖往地砖上淌。壁炉里最后一截柴塌下去，火星亮了一瞬就没了，酒堂暗下去半格。她没起身，账本摊在膝头，炭笔搁在页缝里。</narr>\n<act who=\"林晚晴\">她抬眼扫过墙边的伞。</act>\n<dlg who=\"林晚晴\">靠里点，别堵门。</dlg>\n<narr>她翻了一页账本，笔尖在纸边点了两下，没写下去。窗外的雨敲着檐，一声比一声密。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"act\",\"text\":\"她抬眼扫过门口的伞。\",\"who\":\"林晚晴\"},{\"kind\":\"dlg\",\"text\":\"伞靠那边墙根，别堵门。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"壁炉里最后一截柴塌下去，火星子亮了一下就暗了。她没起身，手边账本翻着，炭笔搁在页缝里。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "repeat-01-echo",
+      "title": "不重复上一轮的表达",
+      "goal": "重复上一轮表达：模型把上一轮的句式和动作再说一遍",
+      "report": {
+        "responseLength": 76,
+        "blockCount": 4,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 2,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 4 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "pass",
+            "detail": "通过"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "4 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "4c498f2c",
+        "latencyMs": 3417,
+        "generatedAt": 1792257156165,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>雨声比刚才密了些，门缝里的风把火苗吹得歪向一边。柜台上的账本摊着，边角卷得起了毛。</narr>\n<act who=\"林晚晴\">她把水壶搁到炉边。</act>\n<dlg who=\"林晚晴\">烤干了就上楼。</dlg>\n<narr>她转身去擦柜台，抹布来回走，一下一下。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"雨声比刚才密了，门缝里的风把火苗吹得歪向一边。\"},{\"kind\":\"act\",\"text\":\"她拎起水壶往炉边一搁。\"},{\"kind\":\"dlg\",\"text\":\"烤干了就上楼。\",\"who\":\"林晚晴\"},{\"kind\":\"act\",\"text\":\"她转身擦柜台，抹布来回。\"},{\"kind\":\"narr\",\"text\":\"柜台上摆着那本翻旧的账本，边角卷得起了毛。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "repeat-02-formula",
+      "title": "不重复上一轮的句式",
+      "goal": "重复上一轮表达：换了内容但句式一模一样",
+      "report": {
+        "responseLength": 42,
+        "blockCount": 2,
+        "actCount": 0,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 3,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 2 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "pass",
+            "detail": "通过"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "2 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "15157ac7",
+        "latencyMs": 3152,
+        "generatedAt": 1792257162558,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>她伸手接过杯子，杯底在桌上磕出一声轻响。拇指翘着搭在杯沿，没急着起身。</narr>\n<dlg who=\"林晚晴\">凉了才想起喝。</dlg>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"act\",\"text\":\"她伸手接过杯子。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"杯底在桌上磕出一声轻响，她拇指翘着，没急着起身。\"},{\"kind\":\"dlg\",\"text\":\"凉了才想起喝。\",\"who\":\"林晚晴\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "plot-01-rush",
+      "title": "一轮不推完整段剧情",
+      "goal": "一次性推进太多剧情：玩家一句提议被写成整晚的行程",
+      "report": {
+        "responseLength": 91,
+        "blockCount": 3,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 3 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "3 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "981e8c8e",
+        "latencyMs": 3692,
+        "generatedAt": 1792257173494,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<act who=\"林晚晴\">她手停在炭笔上。</act>\n<dlg who=\"林晚晴\">柴不用你管。后院那堆湿的，劈了也烧不着。</dlg>\n<narr>她起身走到壁炉边，拿火钳拨了拨快灭的炭，火星亮了一下又暗下去。雨还在下，门缝里的风把桌上的账页吹翻了一角，她伸手压住，没回头。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"act\",\"text\":\"她手停在炭笔上。\",\"who\":\"林晚晴\"},{\"kind\":\"dlg\",\"text\":\"柴不用你管。后院那堆湿的，劈了也烧不着。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"她起身去壁炉边，拿火钳拨了拨快灭的炭，火星亮了一下又暗下去。窗外雨还在下，门缝里的风把桌上账页吹得翻了一角。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "plot-02-reveal",
+      "title": "悬念不许一次性解决",
+      "goal": "一次性解决剧情：问一句就把真相全说了",
+      "report": {
+        "responseLength": 135,
+        "blockCount": 5,
+        "actCount": 2,
+        "invalidActCount": 1,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [
+          {
+            "code": "act_multi_action",
+            "severity": "warn",
+            "blockIndex": 3,
+            "detail": "act 含 2 个动作分句"
+          }
+        ],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 5 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "warn",
+            "detail": "1 处：act 含 2 个动作分句"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "5 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "repair",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "75e6f60e",
+        "latencyMs": 3376,
+        "generatedAt": 1792257181288,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>油灯的火苗歪了一下，架上的影子跟着晃。地上的泥脚印从门口一路拖到第三排，脚尖朝外，像是搬了东西就急着退出去。</narr>\n<act who=\"沈砚\">他蹲下去看脚印。</act>\n<narr>他右手小指那截断口在灯影里很短，指尖在泥印边上停着，没碰下去。</narr>\n<act who=\"沈砚\">他站起来，掸了掸膝盖。</act>\n<dlg who=\"沈砚\">第三排空的那格，原本压着两卷。你问的是上面那卷，还是下面那卷？</dlg>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"油灯的火苗歪了一下，架子上的影子跟着晃。地上的泥脚印从门口一路通到第三排，脚尖朝外，像是进来的人搬了东西就急着退出去。\"},{\"kind\":\"act\",\"text\":\"沈砚蹲下看脚印。\",\"who\":\"沈砚\"},{\"kind\":\"narr\",\"text\":\"他右手小指那截断口在灯影里很短，手指在泥印边缘停着，没有碰。\"},{\"kind\":\"dlg\",\"text\":\"哪一卷？\",\"who\":\"沈砚\"},{\"kind\":\"narr\",\"text\":\"他没抬头，声音压得很低，像是先要把这句话问清楚，再决定后面说什么。\"},{\"kind\":\"act\",\"text\":\"他站起来，掸了掸膝盖。\",\"who\":\"沈砚\"},{\"kind\":\"dlg\",\"text\":\"第三排空的那格，原本压着两卷。你问的是上面那卷，还是下面那卷？\",\"who\":\"沈砚\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "plot-03-scene",
+      "title": "一轮最多换一次场",
+      "goal": "一次性推进太多剧情：一轮里换好几次场",
+      "report": {
+        "responseLength": 175,
+        "blockCount": 5,
+        "actCount": 2,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 5 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "5 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "a713b835",
+        "latencyMs": 4903,
+        "generatedAt": 1792257190590,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>油灯的火苗歪了一下，墙上那道泥印的影子跟着拉长。脚印从门口一路进来，到第三排架子前停住，又折了回去，绕在沈砚脚边。外头那条土路这几天干得发白。</narr>\n<act who=\"沈砚\">他蹲下身。</act>\n<act who=\"沈砚\">他用指尖碰了碰鞋印边缘的泥。</act>\n<dlg who=\"沈砚\">从门口进来的，走到第三排，停了一会儿，又走回去。鞋底是新沾的泥，库房外面那条路这几天没下过雨。</dlg>\n<narr>他站起来，拇指和食指搓了搓，把泥蹭掉。目光落在第三排空出的那一格上，没吭声。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"油灯的火苗晃了一下，把泥脚印的影子拉长。脚印从门口一路延伸到第三排架子前，又折返回来，停在沈砚脚边。\"},{\"kind\":\"act\",\"who\":\"沈砚\",\"text\":\"他蹲下身。\"},{\"kind\":\"act\",\"who\":\"沈砚\",\"text\":\"他用指尖碰了碰鞋印边缘的泥。\"},{\"kind\":\"dlg\",\"who\":\"沈砚\",\"text\":\"从门口进来的，走到第三排，停了一会儿，又走回去。鞋底是新沾的泥，库房外面那条路这几天没下过雨。\"},{\"kind\":\"narr\",\"text\":\"他站起来，拇指和食指互相搓了搓，把泥蹭掉。目光落在第三排空出的那一格上，没说话。\"}],\"toolCalls\":[{\"name\":\"remember_event\",\"arguments\":{\"name\":\"卷宗库失窃\",\"where\":\"卷宗库\",\"ref\":\"沈砚，泥脚印，第三排空格\"}}]}"
+    },
+    {
+      "id": "lang-01-kana",
+      "title": "中文玩家不许被切成日语",
+      "goal": "角色语言切换错误：日文卡让角色整句说日语",
+      "report": {
+        "responseLength": 112,
+        "blockCount": 3,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 3 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "3 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "d4d62523",
+        "latencyMs": 4081,
+        "generatedAt": 1792257199699,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<act who=\"深月风花\">她把书往桌上一按。</act>\n<dlg who=\"深月风花\">……嗯。这里安静。</dlg>\n<narr>窗外的风把窗帘吹起来一角，她又把书翻开，视线落回页面上。走廊里那串脚步声远了，她翻页的手停在半空，像在等那声音彻底消失。左手始终压在书脊下面，绷带的边从袖口露出来一点，很快又被她扯回去了。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"act\",\"who\":\"深月风花\",\"text\":\"她把书往桌上一按。\"},{\"kind\":\"dlg\",\"who\":\"深月风花\",\"text\":\"……嗯。这里安静。\"},{\"kind\":\"narr\",\"text\":\"窗外的风把窗帘吹起来一角，她又把书翻开，视线落在页面上，没再看过来。\"},{\"kind\":\"narr\",\"text\":\"走廊的脚步声远了。她翻页的手停在半空，像是在等那声音彻底消失。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "lang-02-english",
+      "title": "英文玩家可以走英文",
+      "goal": "语言锁定的反向：玩家改用英文时不该硬塞中文",
+      "report": {
+        "responseLength": 76,
+        "blockCount": 3,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "latin",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 3 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "3 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "31794b4b",
+        "latencyMs": 5296,
+        "generatedAt": 1792257208584,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>窗外的操场传来一阵哨声，教室里有几个人凑在一起吃便当，没人往这边看。她把书页翻过去，眼睛还留在行间。</narr>\n<act who=\"深月风花\">她把书脊往怀里转了半圈。</act>\n<dlg who=\"深月风花\">What's it to you?</dlg>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"午休的教室，窗开着，走廊里有人跑过。她翻了一页书，没抬头。\"},{\"kind\":\"act\",\"text\":\"她把书脊往怀里转了半圈。\"},{\"kind\":\"dlg\",\"text\":\"What's it to you?\",\"who\":\"深月风花\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "drift-01-warmth",
+      "title": "冷淡角色不许突然热情",
+      "goal": "角色行为脱离设定：一轮之内性格反转",
+      "report": {
+        "responseLength": 83,
+        "blockCount": 3,
+        "actCount": 1,
+        "invalidActCount": 1,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [
+          {
+            "code": "act_multi_action",
+            "severity": "warn",
+            "blockIndex": 0,
+            "detail": "act 含 2 个动作分句"
+          }
+        ],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 3 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "warn",
+            "detail": "1 处：act 含 2 个动作分句"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "3 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "repair",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "b73ae1e3",
+        "latencyMs": 18365,
+        "generatedAt": 1792257231012,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [
+        "判定是 repair，预期 pass"
+      ],
+      "raw": "<act who=\"林晚晴\">她手腕一顿，抹布停在桌角。</act>\n<dlg who=\"林晚晴\">干净？这破店漏雨漏风，也就桌面上看得过去。</dlg>\n<narr>壁炉里最后一截柴噼啪塌下去，火光矮了半截。她没去添，拇指翘在抹布边缘，眼睛扫过门缝那条灌风的细线。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"act\",\"text\":\"她手腕一顿，抹布停在桌角。\",\"who\":\"林晚晴\"},{\"kind\":\"dlg\",\"text\":\"干净？这破店漏雨漏风，也就桌面上看得过去。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"壁炉里最后一截柴噼啪塌下去，火光矮了半截。她没去添，拇指还翘在抹布边缘。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "drift-02-newchar",
+      "title": "不许发明原设定里没有的人",
+      "goal": "角色行为脱离设定：凭空造出一个 NPC",
+      "report": {
+        "responseLength": 108,
+        "blockCount": 4,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 2,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 4 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "2 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "4 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "b70f1909",
+        "latencyMs": 16067,
+        "generatedAt": 1792257251682,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<act who=\"林晚晴\">她放下手里的抹布。</act>\n<dlg who=\"林晚晴\">后院？这个点去后院做什么。</dlg>\n<narr>壁炉里最后一块炭塌下去，红光跳了一下就暗了。雨顺着屋檐往下淌，砸在后院那口空水缸上，声音闷闷的。她没回头，手在围裙上擦了擦。</narr>\n<dlg who=\"林晚晴\">后院的门从里头拴着。想透口气，前廊就行，屋檐宽。</dlg>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"act\",\"who\":\"林晚晴\",\"text\":\"她放下手里的抹布。\"},{\"kind\":\"dlg\",\"who\":\"林晚晴\",\"text\":\"后院？这个点去后院做什么。\"},{\"kind\":\"narr\",\"text\":\"壁炉里最后一块炭塌下去，红光跳了一下就暗了。雨顺着屋檐往下淌，砸在后院那口空水缸上，声音闷闷的。她没回头，手却在围裙上擦了擦。\"},{\"kind\":\"dlg\",\"who\":\"林晚晴\",\"text\":\"后院的门从里面拴着。你要是想透口气，前廊就行，屋檐宽。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "drift-03-firstperson",
+      "title": "讲述者不许变成角色",
+      "goal": "旁白里出现第一人称，讲述者变成了角色",
+      "report": {
+        "responseLength": 75,
+        "blockCount": 3,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 3 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "3 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "336cfe38",
+        "latencyMs": 6040,
+        "generatedAt": 1792257263382,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>壁炉里的火苗矮下去，只剩一圈橘红舔着炭底。酒堂空着大半，长凳被潮气泡得发沉。门缝钻进来的风扫过桌脚，她没回头。</narr>\n<act who=\"林晚晴\">她放下剪子。</act>\n<dlg who=\"林晚晴\">这么晚还坐着，房钱按夜算的。</dlg>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"act\",\"who\":\"林晚晴\",\"text\":\"她放下剪子，火苗缩了一截。\"},{\"kind\":\"narr\",\"text\":\"壁炉的光暗下去，只剩一圈橘红舔着炭底。酒堂里空桌多，长凳被雨气泡得发沉。她围裙口袋里的账本露出半截角。\"},{\"kind\":\"narr\",\"text\":\"她没有回头看门口，风从门缝钻进来，她把手边一只空杯挪了挪，像是随手，又像挡住那点风。\"},{\"kind\":\"dlg\",\"who\":\"林晚晴\",\"text\":\"这么晚还坐着，房钱按夜算的。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "long-01-person",
+      "title": "长对话后人物还在",
+      "goal": "长对话后人物失真：隔了多轮之后性格和口癖是否还在",
+      "report": {
+        "responseLength": 26,
+        "blockCount": 2,
+        "actCount": 0,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 5,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 2 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "pass",
+            "detail": "通过"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "2 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "0bb6f164",
+        "latencyMs": 4699,
+        "generatedAt": 1792257274997,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>灶上的水壶还响着，她没抬头，抹布在桌角停住。</narr>\n<dlg who=\"林晚晴\">林晚晴。</dlg>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"壁炉里最后一块柴塌下去，火星溅在炉沿上。楼梯口的冷风把她围裙下摆吹动了一下。\"},{\"kind\":\"act\",\"text\":\"她站在账台后没动。\",\"who\":\"林晚晴\"},{\"kind\":\"dlg\",\"text\":\"林晚晴。\",\"who\":\"林晚晴\"},{\"kind\":\"act\",\"text\":\"她伸手去够灶上的水壶。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"水壶里的水汽在壶嘴那儿散开，她没回头看楼梯口。\"}]}"
+    },
+    {
+      "id": "long-02-place",
+      "title": "长对话后地点还在",
+      "goal": "长对话后地点失真：旅店细节被替换或遗忘",
+      "report": {
+        "responseLength": 60,
+        "blockCount": 3,
+        "actCount": 0,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 3,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 3 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "本轮没有 act 块"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "pass",
+            "detail": "通过"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "3 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "b8634026",
+        "latencyMs": 5390,
+        "generatedAt": 1792257283602,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>她把抹布搭在柜台上，没看门，耳朵却朝着那边的方向。</narr>\n<dlg who=\"林晚晴\">雨这么大，谁爱来谁来。</dlg>\n<narr>风把门吹得晃了一下，门廊那盏灯的光在雨里抖了抖。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"act\",\"text\":\"她把手里的抹布搭在柜台上。\",\"who\":\"林晚晴\"},{\"kind\":\"dlg\",\"text\":\"雨这么大，谁爱来谁来。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"风把门吹得晃了一下，她又往那盏灯的方向瞥了一眼。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "long-03-thread",
+      "title": "长对话后悬念还在",
+      "goal": "长对话后悬念失真：前面留下的钩子被忘掉或者被改写",
+      "report": {
+        "responseLength": 97,
+        "blockCount": 4,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 3,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 4 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "pass",
+            "detail": "通过"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "4 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "1d533ad1",
+        "latencyMs": 4334,
+        "generatedAt": 1792257294112,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>他盯着那格空木板，灯焰缩了一下。墙角那串泥脚印的边已经干了，看样是踩进来有一阵了。</narr>\n<act who=\"沈砚\">他把灯搁回桌上。</act>\n<dlg who=\"沈砚\">查过。脚印从后窗进来，鞋底有铁掌。库里三排，只少那一卷。</dlg>\n<narr>他停在这儿，右手袖口掩着缺了指节的小指。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"act\",\"text\":\"他盯着那格空木板。\",\"who\":\"沈砚\"},{\"kind\":\"narr\",\"text\":\"灯焰缩了一下，墙角泥脚印的边已经干了，像被人踩进来有一阵。\"},{\"kind\":\"dlg\",\"text\":\"查过。脚印从后窗进来，鞋底有铁掌。库里三排，只少那一卷。\",\"who\":\"沈砚\"},{\"kind\":\"narr\",\"text\":\"他说到这儿停住，右手袖口掩着缺了指节的小指。\"}],\"toolCalls\":[{\"name\":\"remember_place\",\"arguments\":{\"name\":\"卷宗库\",\"where\":\"县衙卷宗库\",\"ref\":\"沈砚\"}},{\"name\":\"remember_event\",\"arguments\":{\"name\":\"卷宗库第三排失窃一卷\",\"where\":\"县衙卷宗库\",\"ref\":\"沈砚\"}}]}"
+    },
+    {
+      "id": "style-01-haruhi",
+      "title": "毒舌卡要出毒舌的句子",
+      "goal": "角色卡文风：风格包有没有真正改变句子节奏",
+      "report": {
+        "responseLength": 161,
+        "blockCount": 6,
+        "actCount": 2,
+        "invalidActCount": 1,
+        "dialogueCount": 3,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [
+          {
+            "code": "act_multi_action",
+            "severity": "warn",
+            "blockIndex": 0,
+            "detail": "act 含 2 个动作分句"
+          }
+        ],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 6 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "warn",
+            "detail": "1 处：act 含 2 个动作分句"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "3 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "6 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "repair",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "7efddcfc",
+        "latencyMs": 11676,
+        "generatedAt": 1792257312722,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [
+        "判定是 repair，预期 pass"
+      ],
+      "raw": "<act who=\"凉宫春日\">她头也不抬，铅笔尖戳在地图中央。</act>\n<dlg who=\"凉宫春日\">看不懂吗？这是城市异常点分布图。</dlg>\n<narr>那张纸画得歪歪扭扭，几个红圈旁边标着字迹潦草的地名，一条粗线从学校一直拉到河堤方向。窗外天色正一点点暗下去，教室里只剩铅笔划过纸面的声音。</narr>\n<dlg who=\"凉宫春日\">我昨天放学绕了一圈，发现三处怪地方。第二处就在河堤下面，水声不太对。</dlg>\n<act who=\"凉宫春日\">她把铅笔往你这边一推。</act>\n<dlg who=\"凉宫春日\">明天放学，跟我去。不许说没空。</dlg>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"act\",\"text\":\"她头也不抬，铅笔尖戳在地图中央。\",\"who\":\"凉宫春日\"},{\"kind\":\"dlg\",\"text\":\"看不懂吗？这是城市异常点分布图。\",\"who\":\"凉宫春日\"},{\"kind\":\"narr\",\"text\":\"桌上那张纸画得歪歪扭扭，几个红圈旁边标着字迹潦草的地名，一条粗线从学校延伸到河堤方向。\"},{\"kind\":\"dlg\",\"text\":\"我昨天放学绕了一圈，发现三处怪地方。第二处就在河堤下面，水声不太对。\",\"who\":\"凉宫春日\"},{\"kind\":\"act\",\"text\":\"她把铅笔往你这边一推。\",\"who\":\"凉宫春日\"},{\"kind\":\"dlg\",\"text\":\"明天放学，跟我去。不许说没空。\",\"who\":\"凉宫春日\"}],\"toolCalls\":[{\"name\":\"remember_place\",\"arguments\":{\"name\":\"社团教室\",\"where\":\"社团教室\",\"ref\":\"SOS团活动地点，桌上摊着异常点地图\"}},{\"name\":\"remember_event\",\"arguments\":{\"name\":\"凉宫春日绘制城市异常点地图\",\"where\":\"社团教室\",\"ref\":\"凉宫春日、河堤、三处异常点\"}}]}"
+    },
+    {
+      "id": "style-02-dash",
+      "title": "不用破折号，不堆排比",
+      "goal": "违反文风硬规则：破折号和总结式旁白",
+      "report": {
+        "responseLength": 104,
+        "blockCount": 5,
+        "actCount": 2,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 5 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "5 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "43813c2c",
+        "latencyMs": 4862,
+        "generatedAt": 1792257322214,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>雨点还在檐上敲，只是比先前稀了些。门缝里的风钻进来，把壁炉最后几根柴吹得暗红一亮一暗。</narr>\n<act who=\"林晚晴\">她抬手拨了下炉里的柴。</act>\n<dlg who=\"林晚晴\">小不了。后半夜还要大。</dlg>\n<act who=\"林晚晴\">她把炭笔别回围裙口袋。</act>\n<narr>她走到柜台边拎起那只缺口的壶，往灶上添水，没回头看门口。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"雨声还贴着屋檐下，风从门缝里灌进来，壁炉剩几根暗红的柴。\"},{\"kind\":\"act\",\"who\":\"林晚晴\",\"text\":\"她抬手拨了下炉里的柴。\"},{\"kind\":\"dlg\",\"who\":\"林晚晴\",\"text\":\"小不了。后半夜还要大。\"},{\"kind\":\"act\",\"who\":\"林晚晴\",\"text\":\"她把炭笔别回围裙口袋。\"},{\"kind\":\"narr\",\"text\":\"她走到柜台边拿起那只缺了口的壶，往灶上添了水，没回头看门口。\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "edge-01-vague",
+      "title": "模糊输入不要反问",
+      "goal": "玩家输入模糊时的行为：该继续，不该反问玩家想干嘛",
+      "report": {
+        "responseLength": 66,
+        "blockCount": 3,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 3 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "3 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "24fcb2e2",
+        "latencyMs": 2487,
+        "generatedAt": 1792257327658,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>壁炉里的炭只剩一点暗红，雨点敲在窗板上，一阵紧一阵。门缝里的风把桌上的灯芯压得歪了一下，又慢慢直回去。</narr>\n<act who=\"林晚晴\">她蹲在炉边拨灰。</act>\n<dlg who=\"林晚晴\">灶上还有热水。</dlg>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"壁炉里的炭只剩一点暗红，雨敲在窗板上。林晚晴蹲在炉边拨火，没抬头。\"},{\"kind\":\"act\",\"text\":\"她拨了一下炉灰。\",\"who\":\"林晚晴\"},{\"kind\":\"dlg\",\"text\":\"……灶上还有热水。\",\"who\":\"林晚晴\"}],\"toolCalls\":[]}"
+    },
+    {
+      "id": "edge-02-expand",
+      "title": "玩家要求展开时篇幅可以长",
+      "goal": "边界情况：明确要求展开时，长回复是合规的",
+      "report": {
+        "responseLength": 236,
+        "blockCount": 3,
+        "actCount": 1,
+        "invalidActCount": 0,
+        "dialogueCount": 1,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "zh",
+        "sceneCount": 0,
+        "issues": [],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 3 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "1 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "1 个 dlg 全部通过"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "3 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "pass",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "06b9d1e5",
+        "latencyMs": 6504,
+        "generatedAt": 1792257342467,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<narr>油灯只点了一盏，放在靠门的矮几上，火苗被穿堂风带得偏了偏，墙上架子的影子跟着晃。卷宗库三面都是顶到梁的木架，卷册按年份和房科码得齐齐整整，纸边泛黄，霉味和墨味混在一起，闷得人胸口发沉。唯有第三排靠东那一格空着，两边挤得满满的卷册像被谁抽走了中间的一根骨头，空格里只剩一层薄灰，灰上有一道擦过的印子。地上是夯土，潮气重，那串泥脚印从门口一直拖到架子前，前脚掌深，后跟浅，到空格底下停住了。窗纸糊得严，外面的更鼓刚敲过二更。</narr>\n<act who=\"沈砚\">他低头看地上的脚印。</act>\n<dlg who=\"沈砚\">你这个时候来，不是来查卷宗的吧。</dlg>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"narr\",\"text\":\"油灯把卷宗库照出小半圈昏黄，第三排那格空得显眼。地上泥脚印从门口一路拖到架子前，前脚深后脚浅。\"},{\"kind\":\"narr\",\"text\":\"沈砚站在架子边，右手捏着灯座，缺了一节的小指压在灯沿上。\"},{\"kind\":\"act\",\"text\":\"他低头看地上的脚印。\"},{\"kind\":\"dlg\",\"text\":\"你这个时候来，不是来查卷宗的吧。\"}],\"toolCalls\":[{\"name\":\"remember_place\",\"arguments\":{\"name\":\"县衙卷宗库\",\"where\":\"县衙卷宗库\",\"ref\":\"第三排空了一格；地上有新鲜泥脚印\"}},{\"name\":\"remember_event\",\"arguments\":{\"name\":\"卷宗库第三排失窃\",\"where\":\"县衙卷宗库\",\"ref\":\"沈砚、空架格、泥脚印\"}}]}"
+    },
+    {
+      "id": "edge-03-ooc",
+      "title": "玩家出戏指令不该被当成台词",
+      "goal": "边界情况：括号里的元指令",
+      "report": {
+        "responseLength": 108,
+        "blockCount": 5,
+        "actCount": 2,
+        "invalidActCount": 1,
+        "dialogueCount": 0,
+        "playerControlViolation": false,
+        "repeatedPhraseCount": 0,
+        "repairAttempted": false,
+        "repairSucceeded": false,
+        "turn": 1,
+        "language": "unknown",
+        "sceneCount": 1,
+        "issues": [
+          {
+            "code": "act_multi_action",
+            "severity": "warn",
+            "blockIndex": 2,
+            "detail": "act 含 2 个动作分句"
+          }
+        ],
+        "checks": [
+          {
+            "code": "no_blocks",
+            "label": "没有输出消息块",
+            "status": "pass",
+            "detail": "解析出 5 个块"
+          },
+          {
+            "code": "pseudo_tool_text",
+            "label": "把工具调用写成了标签",
+            "status": "pass",
+            "detail": "没有误写的工具标签"
+          },
+          {
+            "code": "act_overlong",
+            "label": "act 过长",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_multi_action",
+            "label": "act 含多个动作",
+            "status": "warn",
+            "detail": "1 处：act 含 2 个动作分句"
+          },
+          {
+            "code": "act_has_dialogue",
+            "label": "act 混入对白",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "act_has_thought",
+            "label": "act 混入心理解释",
+            "status": "pass",
+            "detail": "2 个 act 全部通过"
+          },
+          {
+            "code": "dlg_has_action",
+            "label": "dlg 混入动作",
+            "status": "pass",
+            "detail": "本轮没有 dlg 块"
+          },
+          {
+            "code": "player_control",
+            "label": "替玩家说话或行动",
+            "status": "pass",
+            "detail": "没有玩家名下的块，也没有替玩家行动"
+          },
+          {
+            "code": "repeated_expression",
+            "label": "重复上一轮表达",
+            "status": "skip",
+            "detail": "没有上一轮回复可比较"
+          },
+          {
+            "code": "plot_overreach",
+            "label": "一次性推进太多剧情",
+            "status": "pass",
+            "detail": "5 个块，换场 0 次以内"
+          },
+          {
+            "code": "response_overlong",
+            "label": "回复过长",
+            "status": "pass",
+            "detail": "篇幅在约定范围内"
+          },
+          {
+            "code": "language_switch",
+            "label": "角色语言切换错误",
+            "status": "pass",
+            "detail": "对白语言与玩家输入一致"
+          },
+          {
+            "code": "character_drift",
+            "label": "角色行为脱离设定",
+            "status": "pass",
+            "detail": "所有 who 都在已知人名里"
+          },
+          {
+            "code": "narrator_in_character",
+            "label": "讲述者变成了角色",
+            "status": "pass",
+            "detail": "旁白和动作里没有第一人称"
+          },
+          {
+            "code": "summary_tone",
+            "label": "旁白像说明文",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          },
+          {
+            "code": "style_breach",
+            "label": "违反文风硬规则",
+            "status": "pass",
+            "detail": "没有命中硬规则"
+          }
+        ],
+        "verdict": "repair",
+        "promptVersion": "aedd6cd6",
+        "replyHash": "a74e489c",
+        "latencyMs": 4257,
+        "generatedAt": 1792257351966,
+        "providerId": "yosei-router",
+        "model": "deepseek-v4-flash-200k"
+      },
+      "mismatches": [],
+      "raw": "<scene>第二天清晨。雨停了，酒堂里只剩潮木头和炉灰的味道。</scene>\n<narr>窗板被推开，光斜切进来，照见昨夜客人留下的空杯。灶上的水壶刚响。</narr>\n<act who=\"林晚晴\">她把抹布拧干，搭在柜台上。</act>\n<act who=\"林晚晴\">她弯腰把最后一张凳子摆正。</act>\n<narr>水壶的响声没停，她没急着去提，先朝楼梯口瞥了一眼。</narr>",
+      "directorPlan": "{\"beats\":[{\"kind\":\"scene\",\"text\":\"第二天清晨，雨停了，酒堂里只剩潮木头和炉灰的味道。\"},{\"kind\":\"narr\",\"text\":\"窗板被推开，光斜切进来，照见昨夜客人留下的空杯。\"},{\"kind\":\"act\",\"text\":\"林晚晴把抹布拧干，搭在柜台上。\",\"who\":\"林晚晴\"},{\"kind\":\"act\",\"text\":\"她弯腰把最后一张凳子摆正。\",\"who\":\"林晚晴\"},{\"kind\":\"narr\",\"text\":\"灶上水壶刚响，她没急着去提，先朝楼梯口瞥了一眼。\"}],\"toolCalls\":[]}"
+    }
+  ]
+}
