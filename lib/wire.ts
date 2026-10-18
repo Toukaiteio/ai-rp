@@ -1,4 +1,6 @@
 import type { ChatStreamEvent } from "@/lib/providers/types";
+import type { ScenePatch } from "@/lib/scene";
+import type { ThreadPatchEntry } from "@/lib/story";
 
 /**
  * /api/chat 的线上格式：一帧一个 JSON，最后一帧是 [DONE]。
@@ -18,6 +20,14 @@ export type WireEvent =
       needsSummarize: boolean;
       provider: string;
       model: string;
+      /**
+       * 导演顺便给出的状态变化。服务端路径下这是前端唯一能拿到它的地方——
+       * 状态要跟着会话落盘，而组装在服务端，所以随 meta 回传。
+       */
+      statePatch?: ScenePatch;
+      threadPatch?: ThreadPatchEntry[];
+      /** 这一轮用的回合模式，同样只用于观测 */
+      mode?: string;
     }
   | { type: "summary"; text: string; coveredIndex: number }
   | ChatStreamEvent;

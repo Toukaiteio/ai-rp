@@ -48,6 +48,21 @@ export function stripPseudoToolTags(raw: string): string {
  * 不带任何标记的纯文本按角色对白处理，保证旧回复也能显示。
  */
 export function parseBlocks(raw: string): MessageBlock[] {
+  return parseBlocksInternal(raw, true);
+}
+
+/**
+ * 和 parseBlocks 一样，但不做 act 降级：模型写成什么样就是什么样。
+ *
+ * 只给质量检查用。渲染必须走 parseBlocks（不规范的 act 会降级成 narr，
+ * 免得界面把第二段旁白画成金色动作），但检查要看的是模型的原始行为——
+ * 被降级掉的那条 act 恰恰是最该计进 invalidActCount 的样本。
+ */
+export function parseRawBlocks(raw: string): MessageBlock[] {
+  return parseBlocksInternal(raw, false);
+}
+
+function parseBlocksInternal(raw: string, degradeAct: boolean): MessageBlock[] {
   const blocks: MessageBlock[] = [];
   if (!raw) return blocks;
   raw = stripPseudoToolTags(raw);
@@ -63,7 +78,7 @@ export function parseBlocks(raw: string): MessageBlock[] {
 
     if (closing) {
       if (open?.kind === kind) {
-        pushBlock(blocks, open.kind, raw.slice(open.textStart, match.index), open.who);
+        pushBlock(blocks, open.kind, raw.slice(open.textStart, match.index), open.who, degradeAct);
         open = null;
         last = match.index + match[0].length;
       }
@@ -73,7 +88,7 @@ export function parseBlocks(raw: string): MessageBlock[] {
     // If a malformed response starts another block before closing the previous
     // one, keep both blocks visible instead of letting the first one swallow it.
     if (open) {
-      pushBlock(blocks, open.kind, raw.slice(open.textStart, match.index), open.who);
+      pushBlock(blocks, open.kind, raw.slice(open.textStart, match.index), open.who, degradeAct);
     } else {
       pushDialogue(blocks, raw.slice(last, match.index));
     }
@@ -87,7 +102,7 @@ export function parseBlocks(raw: string): MessageBlock[] {
   }
 
   if (open) {
-    pushBlock(blocks, open.kind, raw.slice(open.textStart), open.who);
+    pushBlock(blocks, open.kind, raw.slice(open.textStart), open.who, degradeAct);
   } else {
     pushDialogue(blocks, raw.slice(last));
   }
@@ -122,9 +137,46 @@ function pushDialogue(blocks: MessageBlock[], text: string) {
   if (value) blocks.push({ kind: "dlg", text: value });
 }
 
-function pushBlock(blocks: MessageBlock[], kind: BlockKind, text: string, who?: string) {
+function pushBlock(
+  blocks: MessageBlock[],
+  kind: BlockKind,
+  text: string,
+  who?: string,
+  degradeAct = true,
+) {
   const value = text.trim();
-  if (value) blocks.push({ kind, who, text: value });
+  if (!value) return;
+
+  // act 是界面上的金色“即时动作”层，不应该成为第二段旁白。
+  // 模型偶尔会把连续动作、结果解释或说话内容塞进 act。与其错误地渲染成动作，
+  // 不如降级到 narr：内容仍保留，但视觉语义不会误导玩家。
+  if (kind === "act" && degradeAct && !isAtomicAct(value)) {
+    blocks.push({ kind: "narr", text: value });
+    return;
+  }
+  blocks.push({ kind, who, text: value });
+}
+
+/**
+ * act 的硬上限。
+ *
+ * 检查器和解析器共用这一个数：解析器拿它决定「要不要降级成旁白」，
+ * 检查器拿它统计 act 过长。两处各写一个数字，基线就会和实际渲染对不上。
+ */
+export const ACT_MAX_LENGTH = 24;
+
+/** 判断 act 是否仍然是一个旁观者能直接看见的单一动作。 */
+export function isAtomicAct(text: string): boolean {
+  const value = text.trim();
+  if (!value || value.length > ACT_MAX_LENGTH) return false;
+  if (/[，,；;：:！？!?]/.test(value)) return false;
+  if (/(?:然后|于是|随后|接着|说完|只是|却|便|才|没|不再|因为|所以|好像|似乎|像是|仿佛)/.test(value)) {
+    return false;
+  }
+  if (/(?:说|问|答|回答|开口|补充|解释|喊|叫|低声|轻声|声音|语气|话音)/.test(value)) {
+    return false;
+  }
+  return true;
 }
 
 /**

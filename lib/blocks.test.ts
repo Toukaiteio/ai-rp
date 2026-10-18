@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   blocksToRaw,
   dialogueContinues,
+  isAtomicAct,
   parseBlocks,
   stripPseudoToolTags,
 } from "./blocks";
@@ -110,5 +111,13 @@ describe("消息块解析", () => {
       '<narr>旁白。</narr><act who="林晚晴">她顿了顿。</act><dlg who="林晚晴">坐。</dlg><scene>天亮了。</scene>';
     expect(stripPseudoToolTags(raw)).toBe(raw);
     expect(parseBlocks(raw)).toHaveLength(4);
+  });
+
+  it("复杂动作不再伪装成 act，而是降级为旁白", () => {
+    expect(isAtomicAct("她抬眼。")).toBe(true);
+    expect(isAtomicAct("她说完就去翻书，没真翻，只是来回翻。")).toBe(false);
+    expect(
+      parseBlocks('<act who="Fuka">她说完就去翻书，没真翻，只是来回翻。</act>'),
+    ).toEqual([{ kind: "narr", text: "她说完就去翻书，没真翻，只是来回翻。", who: undefined }]);
   });
 });
