@@ -79,6 +79,17 @@ registerVaultData(load, () => {
   notify();
 });
 
+/**
+ * 等第一次读盘结束，再把当前的卡列表给出来。
+ *
+ * 启动时要判定进哪张卡，光看快照不行：没读完时快照是空的，看起来就像
+ * 一张卡都没有，于是先挂上第一张卡再换掉。这里等到读完为止。
+ */
+export async function ensureImportedCardsLoaded(): Promise<ImportedCardRecord[]> {
+  await load();
+  return getImportedCardsSnapshot();
+}
+
 export async function addImportedCard(card: CharacterCard): Promise<ImportedCardRecord> {
   const record: ImportedCardRecord = {
     id: createId(),

@@ -2,6 +2,7 @@
  * 角色卡：兼容 SillyTavern Character Card V2 的字段名。
  * 只做 JSON，不做 PNG 内嵌卡，也不做 CHARX。
  */
+import type { CharacterVoiceProfile } from "@/lib/voice";
 
 /**
  * 世界书条目。keys / content / constant 是最小集，其余都可选。
@@ -50,6 +51,18 @@ export interface CharacterCardData {
   system_prompt?: string;
   /** 长对话后的人设兜底 */
   post_history_instructions?: string;
+  /**
+   * 这张卡的默认作者注：管「这一轮怎么写」。
+   * 只放节奏、写作重点、格式提醒和临时风格约束，不放世界设定——
+   * 世界设定属于 description / scenario / character_book。
+   * 会话里单独设过作者注时，以会话的为准。
+   */
+  author_note?: string;
+  /**
+   * 角色声音（Phase 9）。放在 extensions 里，因为它不是 V2 规范字段，
+   * 别的客户端读卡时会原样忽略，不会因为我们加了它而认不出这张卡。
+   */
+  voice?: CharacterVoiceProfile;
   alternate_greetings?: string[];
   character_book?: WorldBook;
   tags?: string[];

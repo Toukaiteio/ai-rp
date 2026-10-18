@@ -13,6 +13,8 @@ import {
   subscribeImportedCards,
 } from "@/lib/storage/cards";
 import { getSessionStore } from "@/lib/storage";
+import { rememberLastCardId } from "@/lib/last-card";
+import { resolveStartupCardId } from "@/lib/startup-card";
 import {
   buildArchiveWithCards,
   buildKdfSidecar,
@@ -42,6 +44,7 @@ import { explainError, loadLocale } from "@/lib/i18n";
 import { loadTheme } from "@/lib/theme";
 import { loadUnfiltered } from "@/lib/cards/unfiltered";
 import { watchRememberedSession } from "@/lib/vault/remember";
+import { isBackupDue } from "@/lib/storage/backup";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { ChatScreen } from "./ChatScreen";
 import { SettingsScreen } from "./SettingsScreen";
@@ -78,6 +81,8 @@ export function AppShell() {
   const [screen, setScreen] = useState<Screen>("chat");
   /** 没有默认卡：进来先进角色架，挑一张或在线拉一张再开聊 */
   const [cardId, setCardId] = useState<string | null>(null);
+  /** 启动时那一次「上次是哪张卡」判完没有。判完之前不挂任何一屏，见下面的 useEffect */
+  const [resolved, setResolved] = useState(false);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [edited, setEdited] = useState<ProviderConfig | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
@@ -114,6 +119,30 @@ export function AppShell() {
     return watchRememberedSession(() => lockVault());
   }, [vault.status]);
 
+  /**
+   * 解锁后先判定这次该进哪个角色：上次打开的那张，退而求其次最近聊过的那张。
+   *
+   * 以前这里什么都不做，`current` 就落到 cards[0]，也就是最近导入的那张，
+   * 于是每次刷新都跑进第一个角色的对话。
+   */
+  useEffect(() => {
+    if (vault.status !== "unlocked" || resolved) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const chosen = await resolveStartupCardId();
+        if (!cancelled && chosen) setCardId(chosen);
+      } finally {
+        if (!cancelled) setResolved(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [vault.status, resolved]);
+
   /** 角色全部来自本机：在线下载或 JSON 导入，代码里不放别人的卡。 */
   const cards = useMemo<CardEntry[]>(
     () =>
@@ -134,12 +163,15 @@ export function AppShell() {
     void saveProviderConfig(next);
   }, []);
 
+  const disableQualityGate = useCallback(() => {
+    updateConfig({ ...config, qualityGate: false });
+  }, [config, updateConfig]);
+
   /** 导出 / 导入走的是一个加密整包，密钥就是解锁用的那个。 */
-  const handleExport = useCallback(() => {
+  const exportArchive = useCallback(async (automatic: boolean) => {
     setArchiveBusy(true);
     setArchiveMessage(null);
-    void (async () => {
-      try {
+    try {
         const store = getSessionStore();
         const sessions = await store.list();
         const text = await buildArchiveWithCards(sessions, imported);
@@ -147,26 +179,40 @@ export function AppShell() {
         downloadText(text, archiveName);
         const kdf = getVaultKdfParams();
         if (kdf) {
-          /* 存档整包是密文，盐和迭代次数不在里面。换设备时没有它们就解不开，
-             所以同名再落一个明文旁文件。浏览器会把同一拍里的第二个下载当弹窗
-             拦掉，错开一拍再发。 */
           const sidecarName = kdfSidecarName(archiveName);
           window.setTimeout(() => downloadText(buildKdfSidecar(kdf), sidecarName), 250);
-          setArchiveNote(
-            t("shell.exportedWithKdf", {
-              file: sidecarName,
-              salt: kdf.salt,
-              iterations: kdf.iterations,
-            }),
-          );
+          setArchiveNote(t("shell.exportedWithKdf", { file: sidecarName, salt: kdf.salt, iterations: kdf.iterations }));
         }
-      } catch (caught) {
-        setArchiveMessage(explainError(caught, t));
-      } finally {
-        setArchiveBusy(false);
-      }
-    })();
-  }, [imported, t]);
+        if (automatic) {
+          const next = { ...config, autoBackup: { ...config.autoBackup, lastBackupAt: Date.now() } };
+          setEdited(next);
+          void saveProviderConfig(next);
+        }
+    } catch (caught) {
+      setArchiveMessage(explainError(caught, t));
+    } finally {
+      setArchiveBusy(false);
+    }
+  }, [config, imported, t]);
+
+  const handleExport = useCallback(() => {
+    void exportArchive(false);
+  }, [exportArchive]);
+
+  useEffect(() => {
+    if (vault.status !== "unlocked" || !config.autoBackup.enabled) return;
+    const check = () => {
+      if (document.visibilityState !== "visible" || archiveBusy || !isBackupDue(config.autoBackup)) return;
+      void exportArchive(true);
+    };
+    check();
+    const timer = window.setInterval(check, 60_000);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [archiveBusy, config.autoBackup, exportArchive, vault.status]);
 
   const handleImport = useCallback((file: File | undefined) => {
     if (!file) return;
@@ -222,6 +268,16 @@ export function AppShell() {
     );
   }
 
+  // 角色还没判定完就先别画：先画角色架会闪一下，先画第一张卡又会把
+  // 别人的对话挂上去，等这一下换来的就是「回到上次那张卡」。
+  if (!resolved) {
+    return (
+      <div className="grid h-dvh place-items-center bg-background px-6 text-[14px] text-ink-2">
+        {t("shell.loading")}
+      </div>
+    );
+  }
+
   if (screen === "editor") {
     const editingRecord = editingCardId ? imported.find((record) => record.id === editingCardId) : undefined;
     return (
@@ -229,7 +285,11 @@ export function AppShell() {
         record={editingRecord}
         onCancel={() => setScreen("shelf")}
         onSaved={(id) => {
-          setCardId((currentId) => currentId ?? id);
+          // 之前一张卡都没有时，新建的这张就是当前角色，一起记下来
+          if (!cardId) {
+            setCardId(id);
+            rememberLastCardId(id);
+          }
           setEditingCardId(null);
           setScreen("shelf");
         }}
@@ -246,6 +306,7 @@ export function AppShell() {
         currentCardId=""
         onSelect={(id) => {
           setCardId(id);
+          rememberLastCardId(id);
           setScreen("chat");
         }}
         onCardsChanged={() => setScreen("shelf")}
@@ -267,6 +328,7 @@ export function AppShell() {
           cardId={current.id}
           card={current.card.data}
           config={config}
+          onDisableQualityGate={disableQualityGate}
           onOpenSettings={() => setScreen("settings")}
           onOpenShelf={() => setScreen("shelf")}
         />
@@ -278,6 +340,7 @@ export function AppShell() {
           currentCardId={current.id}
           onSelect={(id) => {
             setCardId(id);
+            rememberLastCardId(id);
             setScreen("chat");
           }}
           onBack={() => setScreen("chat")}

@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PenLine, Plus, Upload } from "lucide-react";
 import {
   CharacterCard,
+  Dialog,
   IconButton,
-  ImportCard,
   ScreenHead,
   Tag,
 } from "@/components/ui";
-import { CreateCard } from "@/components/ui/CharacterCard";
 import { IconBack, IconDownload, IconEdit, IconImage, IconTrash } from "@/components/icons";
 import {
   downloadCard,
@@ -61,6 +61,9 @@ export function ShelfScreen({
   const [announceOpen, setAnnounceOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [tagDialogOpen, setTagDialogOpen] = useState(false);
+  const [quickMenuOpen, setQuickMenuOpen] = useState(false);
+  const [shelfTab, setShelfTab] = useState<"network" | "local">("network");
   const { t } = useI18n();
 
   const tags = useMemo(
@@ -76,6 +79,17 @@ export function ShelfScreen({
     },
     [cards],
   );
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const entry of cards) {
+      for (const rawTag of entry.card.data.tags ?? []) {
+        const tag = rawTag.trim();
+        if (tag) counts.set(tag.toLocaleLowerCase(), (counts.get(tag.toLocaleLowerCase()) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [cards]);
+  const visibleTags = tags.slice(0, 8);
   const filteredCards = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase();
     return cards.filter((entry) => {
@@ -182,13 +196,34 @@ export function ShelfScreen({
             </div>
           ) : null}
 
-          {cards.length === 0 ? (
-            <p className="m-0 mb-5 text-[13.5px] leading-[1.75] text-ink-2">
+          <div className="mb-5 flex gap-1 rounded-pill border border-line bg-surface-2 p-1">
+            <button
+              type="button"
+              onClick={() => setShelfTab("network")}
+              className={`flex-1 rounded-pill px-4 py-2 text-[13px] transition-colors ${shelfTab === "network" ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-surface-3"}`}
+            >
+              {t("shelf.tabNetwork")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShelfTab("local")}
+              className={`flex-1 rounded-pill px-4 py-2 text-[13px] transition-colors ${shelfTab === "local" ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-surface-3"}`}
+            >
+              {t("shelf.tabLocal")}
+            </button>
+          </div>
+
+          {shelfTab === "network" && chubAvailabilityChecked && !chubRegionRestricted ? (
+            <OnlineCards feed onAdded={onCardsChanged} localCards={cards} onSelectLocal={onSelect} />
+          ) : null}
+
+          {shelfTab === "local" && cards.length === 0 ? (
+            <p className="m-0 mt-5 mb-5 text-[13.5px] leading-[1.75] text-ink-2">
               {t("shelf.empty")}
             </p>
           ) : null}
 
-        {cards.length > 0 ? (
+        {shelfTab === "local" && cards.length > 0 ? (
           <div className="mb-4 flex flex-col gap-2.5">
             <input
               value={search}
@@ -215,7 +250,7 @@ export function ShelfScreen({
               >
                 {t("shelf.allTags")}
               </button>
-              {tags.map((tag) => (
+              {visibleTags.map((tag) => (
                 <button
                   key={tag}
                   type="button"
@@ -229,17 +264,26 @@ export function ShelfScreen({
                   {tag}
                 </button>
               ))}
+              {tags.length > visibleTags.length ? (
+                <button
+                  type="button"
+                  onClick={() => setTagDialogOpen(true)}
+                  className="shrink-0 rounded-pill border border-line bg-surface px-3 py-1.5 text-[12px] text-ink-2 hover:border-line-strong"
+                >
+                  {t("shelf.moreTags", { count: tags.length - visibleTags.length })}
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
 
-        {filteredCards.length === 0 && cards.length > 0 ? (
+        {shelfTab === "local" && filteredCards.length === 0 && cards.length > 0 ? (
           <p className="mb-4 rounded-md border border-line bg-surface px-4 py-3 text-[13px] text-ink-2">
             {t("shelf.noMatch")}
           </p>
         ) : null}
 
-        <div className="grid gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3">
+        {shelfTab === "local" ? <div className="grid gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3">
           {filteredCards.map((entry) => {
             const playable = isPlayableCard(entry.card.data);
             return (
@@ -302,13 +346,7 @@ export function ShelfScreen({
             );
           })}
 
-          {chubAvailabilityChecked && !chubRegionRestricted ? (
-            <OnlineCards compact onAdded={onCardsChanged} />
-          ) : null}
-
-          <ImportCard label={t("card.import")} onClick={() => fileRef.current?.click()} />
-          {onCreate ? <CreateCard label={t("card.create")} onClick={onCreate} /> : null}
-        </div>
+        </div> : null}
 
         <input
           ref={fileRef}
@@ -326,6 +364,53 @@ export function ShelfScreen({
       </div>
 
       <AnnouncementDialog open={announceOpen} onClose={() => setAnnounceOpen(false)} />
+      <div className="fixed right-5 bottom-5 z-30 flex flex-col items-end gap-2 sm:right-8 sm:bottom-8">
+        {quickMenuOpen ? (
+          <div className="flex flex-col items-end gap-2 rounded-card border border-line bg-surface p-2 shadow-pop">
+            <button type="button" onClick={() => { setQuickMenuOpen(false); fileRef.current?.click(); }} className="flex items-center gap-2 rounded-pill px-3 py-2 text-[13px] text-ink hover:bg-surface-2">
+              <Upload className="size-4" aria-hidden="true" />
+              {t("card.import")}
+            </button>
+            {onCreate ? (
+              <button type="button" onClick={() => { setQuickMenuOpen(false); onCreate(); }} className="flex items-center gap-2 rounded-pill px-3 py-2 text-[13px] text-ink hover:bg-surface-2">
+                <PenLine className="size-4" aria-hidden="true" />
+                {t("card.create")}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <button type="button" aria-expanded={quickMenuOpen} aria-label={quickMenuOpen ? t("shelf.closeQuickMenu") : t("shelf.openQuickMenu")} onClick={() => setQuickMenuOpen((open) => !open)} className="grid size-14 place-items-center rounded-pill bg-accent text-accent-ink shadow-pop transition-transform hover:scale-105">
+          <Plus className={`size-7 transition-transform duration-300 ease-out motion-reduce:transition-none ${quickMenuOpen ? "rotate-45" : "rotate-0"}`} aria-hidden="true" />
+        </button>
+      </div>
+      <Dialog
+        open={tagDialogOpen}
+        onClose={() => setTagDialogOpen(false)}
+        closeLabel={t("common.close")}
+        title={t("shelf.chooseTag")}
+        className="max-w-[440px]"
+      >
+        <div className="grid grid-cols-2 gap-2">
+          {tags.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => {
+                setActiveTag((current) => (current === tag ? null : tag));
+                setTagDialogOpen(false);
+              }}
+              className={`flex items-center justify-between rounded-md border px-3 py-2 text-left text-[12.5px] ${
+                activeTag === tag
+                  ? "border-selected-line bg-selected text-selected-ink"
+                  : "border-line bg-surface-2 text-ink hover:border-line-strong"
+              }`}
+            >
+              <span className="truncate">{tag}</span>
+              <span className="ml-2 shrink-0 text-[11px] opacity-70">{tagCounts.get(tag.toLocaleLowerCase()) ?? 0}</span>
+            </button>
+          ))}
+        </div>
+      </Dialog>
     </div>
   );
 }

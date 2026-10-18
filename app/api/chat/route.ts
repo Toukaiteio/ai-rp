@@ -23,6 +23,9 @@ import {
 import { isChatImage } from "@/lib/chat-image";
 import { cleanApiKey, headerSafeValue } from "@/lib/providers/apikey";
 import { DICE_TOOL } from "@/lib/dice";
+import type { ThreadPatchEntry } from "@/lib/story";
+import type { ScenePatch } from "@/lib/scene";
+import { normalizeVoiceProfile } from "@/lib/voice";
 import { MEMORY_TOOLS, normalizeJournal } from "@/lib/memory/journal";
 import type { Journal, ToolTrace } from "@/lib/memory/journal";
 import { encodeSseFrame, type WireEvent } from "@/lib/wire";
@@ -48,6 +51,8 @@ interface ChatRequestBody {
   context: {
     card: AssembleInput["card"];
     lorebook?: AssembleInput["lorebook"];
+    /** 三来源世界书（Phase 8）。给了就忽略 lorebook */
+    lorebooks?: AssembleInput["lorebooks"];
     persona?: string;
     history: ChatMessage[];
     seed: number;
@@ -57,9 +62,13 @@ interface ChatRequestBody {
     journal?: Journal;
     toolTrace?: ToolTrace[];
     authorNote?: AssembleInput["authorNote"];
+    temporaryNote?: string;
     style?: AssembleInput["style"];
+    sceneState?: AssembleInput["sceneState"];
+    storyThreads?: AssembleInput["storyThreads"];
     userName?: string;
     maxContext?: number;
+    storySystems?: { events?: boolean; goals?: boolean; eventAfterTurns?: number; stagnantTurns?: number };
   };
   temperature?: number;
   maxTokens?: number;
@@ -179,8 +188,12 @@ function parseBody(raw: unknown): ParsedRequest {
         system_prompt: asString(card.system_prompt),
         mes_example: asString(card.mes_example),
         post_history_instructions: asString(card.post_history_instructions),
+        author_note: asString(card.author_note),
+        voice: normalizeVoiceProfile(card.voice),
       },
       lorebook: context.lorebook as AssembleInput["lorebook"],
+      // 三来源世界书（Phase 8）：浏览器把三本一起送上来，服务端合并匹配
+      lorebooks: context.lorebooks as AssembleInput["lorebooks"],
       persona: asString(context.persona),
       history,
       // seed 必须是数字。它是概率条目与摘要判定的确定性依据，
@@ -192,12 +205,18 @@ function parseBody(raw: unknown): ParsedRequest {
       journal: normalizeJournal(context.journal),
       toolTrace: parseToolTrace(context.toolTrace),
       authorNote: context.authorNote as AssembleInput["authorNote"],
+      temporaryNote: asString(context.temporaryNote),
       style: (context.style === "haruhi" || context.style === "mushoku"
         ? context.style
         : undefined) as AssembleInput["style"],
       userName: asString(context.userName),
+      sceneState: context.sceneState as AssembleInput["sceneState"],
+      storyThreads: Array.isArray(context.storyThreads)
+        ? (context.storyThreads as AssembleInput["storyThreads"])
+        : undefined,
       maxContext:
         typeof context.maxContext === "number" ? context.maxContext : undefined,
+      storySystems: context.storySystems as AssembleInput["storySystems"],
     },
     temperature: typeof raw.temperature === "number" ? raw.temperature : undefined,
     maxTokens: typeof raw.maxTokens === "number" ? raw.maxTokens : undefined,
@@ -277,7 +296,13 @@ export async function POST(request: Request): Promise<Response> {
   const maxContext = context.maxContext ?? 16_000;
   const budget = planBudget(maxContext, RESPONSE_TOKENS);
 
-  const { messages: assembledMessages, budget: report, cacheKey, needsSummarize } = assemble({
+  const {
+    messages: assembledMessages,
+    budget: report,
+    cacheKey,
+    mode: responseMode,
+    needsSummarize,
+  } = assemble({
     ...context,
     budget,
   });
@@ -305,9 +330,17 @@ export async function POST(request: Request): Promise<Response> {
   // 先用一个很短的导演阶段规划本轮节拍，再让最终请求负责自然语言渲染。
   // 规划失败时静默回退到原来的单阶段流程，不能因为弱模型的 JSON 失败而阻断聊天。
   let messages = assembledMessages;
+  let mode = responseMode;
+  let statePatch: ScenePatch | undefined;
+  let threadPatch: ThreadPatchEntry[] | undefined;
   try {
     const directorEvents = await provider.open({
-      messages: buildDirectorMessages(assembledMessages),
+      messages: buildDirectorMessages(assembledMessages, {
+        eventsEnabled: context.storySystems?.events,
+        goalsEnabled: context.storySystems?.goals,
+        stagnantTurns: context.storySystems?.stagnantTurns,
+        eventAfterTurns: context.storySystems?.eventAfterTurns,
+      }),
       model: body.model,
       temperature: 0.2,
       maxTokens: 420,
@@ -320,7 +353,15 @@ export async function POST(request: Request): Promise<Response> {
     }
     const plan = parseTurnPlan(directorText);
     if (plan) {
-      messages = [...assembledMessages, { role: "system", content: formatTurnPlan(plan) }];
+      statePatch = plan.statePatch;
+      threadPatch = plan.threadPatch;
+      // 导演看过完整聊天记录，它给的 mode 比只看玩家这一句的推断准。
+      // 回合层是按 mode 拼的，所以覆盖之后要重新组装一次（纯函数，很便宜）。
+      if (plan.mode && plan.mode !== mode) {
+        mode = plan.mode;
+        messages = assemble({ ...context, mode, budget }).messages;
+      }
+      messages = [...messages, { role: "system", content: formatTurnPlan(plan) }];
     }
   } catch {
     // 计划阶段只是质量增强，连接已经能用时不因它失败而让整轮失败。
@@ -366,6 +407,9 @@ export async function POST(request: Request): Promise<Response> {
         needsSummarize,
         provider: provider.name,
         model: body.model,
+        mode,
+        ...(statePatch ? { statePatch } : {}),
+        ...(threadPatch ? { threadPatch } : {}),
       };
 
       try {

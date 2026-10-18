@@ -2,11 +2,12 @@ export * from "./types";
 export {
   parseCharacterCard,
   serializeCard,
+  toWireCard,
   cardFileName,
   createEmptyCard,
 } from "./validate";
 export type { ParseResult } from "./validate";
-export { downloadCard, readCardFile } from "./io";
+export { downloadCard, downloadCardPng, encodeCardPng, readCardFile } from "./io";
 export { extractCardJson } from "./png";
 export type { OnlineCardItem, OnlineCardSource } from "./online";
 export {

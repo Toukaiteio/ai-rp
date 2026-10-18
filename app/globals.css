@@ -380,16 +380,40 @@
     overflow: hidden;
   }
 
+  /* 角色架里一格的高度：立绘卡由 .card-spacer 撑出来，三个操作格
+     （在线导入 / 文件导入 / 新建）用 .card-tile 跟它对齐。不对齐的话，
+     最后一行只剩操作格时会比上面矮一截。 */
+  .card-tile {
+    min-height: 112px;
+  }
+
+  @media (min-width: 768px) {
+    .card-tile {
+      min-height: 0;
+      height: 100%;
+    }
+  }
+
   /* 手机上把角色卡改成「封面 + 信息」行，减少长图堆叠，让开始入口和操作更容易找到。 */
   @media (max-width: 767px) {
     .character-card {
-      min-height: 148px;
+      min-height: 180px;
       display: block;
+      aspect-ratio: auto;
     }
 
     .character-card .card-portrait {
       inset: 0 auto 0 0;
-      width: 108px;
+      width: 42%;
+    }
+
+    .character-card .card-portrait::after {
+      position: absolute;
+      inset: 0 -58px 0 auto;
+      width: 76px;
+      background: linear-gradient(to right, transparent, var(--overlay-strong));
+      content: "";
+      pointer-events: none;
     }
 
     .character-card .card-spacer {
@@ -397,11 +421,11 @@
     }
 
     .character-card .card-scrim {
-      inset: 0 0 0 108px;
+      inset: 0 0 0 30%;
       justify-content: center;
       gap: 6px;
       padding: 14px 12px 12px 16px;
-      background: linear-gradient(to right, transparent 0%, var(--overlay-strong) 12%, var(--overlay-strong) 100%);
+      background: var(--overlay-strong);
     }
 
     .character-card .card-info-text {

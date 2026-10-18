@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import { X } from "lucide-react";
 import { cn } from "./cn";
 
 /* 遮罩：抽屉与侧栏共用，点击即关闭 */
@@ -45,12 +46,16 @@ export function Sheet({
   description,
   children,
   className,
+  onClose,
+  closeLabel,
 }: {
   open: boolean;
   title?: ReactNode;
   description?: ReactNode;
   children: ReactNode;
   className?: string;
+  onClose?: () => void;
+  closeLabel?: string;
 }) {
   if (!open) return null;
 
@@ -62,14 +67,26 @@ export function Sheet({
         className,
       )}
     >
-      <Grab />
-      {title ? (
-        <h3 className="m-0 mb-1 text-[17px] font-bold text-ink">{title}</h3>
-      ) : null}
-      {description ? (
-        <p className="m-0 mb-4 text-[13.5px] text-ink-2">{description}</p>
-      ) : null}
-      {children}
+      <div className="relative">
+        <Grab />
+        {onClose ? (
+          <button
+            type="button"
+            aria-label={closeLabel}
+            onClick={onClose}
+            className="absolute top-0 right-0 grid size-8 place-items-center rounded-pill text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        ) : null}
+        {title ? (
+          <h3 className="m-0 mb-1 text-[17px] font-bold text-ink">{title}</h3>
+        ) : null}
+        {description ? (
+          <p className="m-0 mb-4 text-[13.5px] text-ink-2">{description}</p>
+        ) : null}
+        {children}
+      </div>
     </div>
   );
 }

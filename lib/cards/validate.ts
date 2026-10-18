@@ -5,6 +5,7 @@ import {
   type CharacterCardData,
   type WorldBookEntry,
 } from "./types";
+import { normalizeVoiceProfile } from "@/lib/voice";
 
 export type ParseResult =
   | { ok: true; card: CharacterCard }
@@ -20,6 +21,7 @@ const KNOWN_FIELDS = new Set([
   "mes_example",
   "system_prompt",
   "post_history_instructions",
+  "author_note",
   "alternate_greetings",
   "character_book",
   "tags",
@@ -29,6 +31,8 @@ const KNOWN_FIELDS = new Set([
 ]);
 
 const UNMAPPED_KEY = "_unmapped";
+/** extensions 里放角色声音的键。 */
+const VOICE_KEY = "voice_profile";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -40,6 +44,17 @@ function asString(value: unknown, fallback = ""): string {
 
 function asOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function portraitUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:") return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
 }
 
 function asStringArray(value: unknown): string[] | undefined {
@@ -146,6 +161,10 @@ export function parseCharacterCard(raw: unknown): ParseResult {
   if (Object.keys(unmapped).length > 0) {
     extensions[UNMAPPED_KEY] = unmapped;
   }
+  const local = isRecord(extensions._local) ? { ...extensions._local } : {};
+  const importedPortrait = portraitUrl(body.avatar_url) ?? portraitUrl(body.avatar) ?? portraitUrl(body.image);
+  if (!local.portrait && !local.portraitUrl && importedPortrait) local.portraitUrl = importedPortrait;
+  if (Object.keys(local).length > 0) extensions._local = local;
 
   const data: CharacterCardData = {
     name,
@@ -157,6 +176,7 @@ export function parseCharacterCard(raw: unknown): ParseResult {
     mes_example: asString(body.mes_example),
     system_prompt: asString(body.system_prompt),
     post_history_instructions: asString(body.post_history_instructions),
+    author_note: asString(body.author_note),
     alternate_greetings: asStringArray(body.alternate_greetings) ?? [],
     tags: asStringArray(body.tags) ?? [],
     creator: asString(body.creator),
@@ -167,6 +187,11 @@ export function parseCharacterCard(raw: unknown): ParseResult {
   // 空世界书没有意义，只有真有条目时才写
   const book = parseBook(body.character_book);
   if (book) data.character_book = book;
+
+  // 角色声音放在 extensions 里：它不是 V2 规范字段，
+  // 别的客户端读卡时会原样忽略，不会因为我们加了它而认不出这张卡。
+  const voice = normalizeVoiceProfile(extensions[VOICE_KEY]);
+  if (voice) data.voice = voice;
 
   return {
     ok: true,
@@ -184,8 +209,25 @@ export function cardFileName(card: CharacterCard): string {
   return `${safe}.json`;
 }
 
+/**
+ * 转成「落盘/导出用」的卡。
+ *
+ * 内存里 `data.voice` 是一个正经字段，方便界面读写；
+ * 写出去时挪进 `extensions.voice_profile`——它不是 V2 规范字段，
+ * 放 extensions 里别的客户端才会原样忽略，而不是认不出这张卡。
+ *
+ * 读写两边都走这一对函数，形状才不会漂。
+ */
+export function toWireCard(card: CharacterCard): CharacterCard {
+  const { voice, ...rest } = card.data;
+  if (!voice) return card;
+  const extensions = { ...(rest.extensions ?? {}) };
+  extensions[VOICE_KEY] = voice;
+  return { ...card, data: { ...rest, extensions } };
+}
+
 export function serializeCard(card: CharacterCard): string {
-  return `${JSON.stringify(card, null, 2)}\n`;
+  return `${JSON.stringify(toWireCard(card), null, 2)}\n`;
 }
 
 /** 新建一张空卡，用于「导入」失败时的兜底展示。 */

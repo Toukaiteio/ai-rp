@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { browserModelIsReady } from "./browser-model";
 import { canSend, usesBrowserModel, type ProviderConfig } from "./providers/settings";
+import { defaultAutoBackupSettings } from "./storage/backup";
 
 function config(partial: Partial<ProviderConfig>): ProviderConfig {
   return {
@@ -20,6 +21,8 @@ function config(partial: Partial<ProviderConfig>): ProviderConfig {
       budget: 4,
       threshold: 6,
     },
+    autoBackup: defaultAutoBackupSettings(),
+    qualityGate: true,
     ...partial,
   };
 }

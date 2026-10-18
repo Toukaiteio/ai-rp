@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type PointerEvent,
   type ReactNode,
   type TouchEvent,
@@ -37,7 +38,7 @@ import {
   TypingCursor,
   Veil,
 } from "@/components/ui";
-import { IconCheck, IconCopy, IconEdit, IconImage } from "@/components/icons";
+import { IconBookmark, IconBranch, IconCheck, IconCopy, IconEdit, IconImage, IconRefresh } from "@/components/icons";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
 import { cn } from "@/components/ui/cn";
 import { hashSeed } from "@/lib/seed";
@@ -48,25 +49,72 @@ import {
   stripPseudoToolTags,
   type MessageBlock,
 } from "@/lib/blocks";
-import { checkGeneration } from "@/lib/engine";
-import { devReportEnabled, recordReport, reportLog } from "@/lib/engine/dev-log";
+import { bypassResponseValidation, reportForValidation, resolveGeneration, validateResponseBlocks } from "@/lib/engine";
+import { commitTurn } from "@/lib/engine/history";
+import {
+  buildRepairMessages,
+  extractRepairedText,
+  type RepairOutcome,
+} from "@/lib/engine/repair";
+import type { GenerationIssue } from "@/lib/engine/types";
+import {
+  devFlagServerSnapshot,
+  devReportEnabled,
+  recordReport,
+  recordInspector,
+  reportLog,
+  subscribeDevFlag,
+} from "@/lib/engine/dev-log";
 import { DevReportButton, DevReportPanel, logReport } from "./DevReportPanel";
 import { buildSuggestionMessages, parseSuggestions } from "@/lib/suggest";
 import { DICE_TOOL } from "@/lib/dice";
+import { GLOBAL_LOREBOOK, type WorldBook, type WorldBookReport } from "@/lib/prompt";
 import {
-  applyChatTool,
+  applyMemoryWrite,
   emptyJournal,
   MEMORY_TOOLS,
   normalizeJournal,
   putPortrait,
   type Journal,
+  type MemoryConflict,
   type ToolTrace,
 } from "@/lib/memory/journal";
+import {
+  applyScenePatch,
+  emptySceneState,
+  isEmptySceneState,
+  normalizeSceneState,
+  type ScenePatch,
+  type SceneState,
+} from "@/lib/scene";
+import {
+  applyThreadPatch,
+  normalizeThreads,
+  type StoryThread,
+  type ThreadPatchEntry,
+} from "@/lib/story";
 import { adaptGreeting } from "@/lib/cards/builder-opening";
 import { openingGreetings } from "@/lib/cards/greetings";
 import type { CharacterCardData } from "@/lib/cards/types";
 import type { ChatMessage } from "@/lib/prompt/types";
-import type { KeyFacts, RollingSummary } from "@/lib/prompt/types";
+import type { AuthorNote, KeyFacts, RollingSummary } from "@/lib/prompt/types";
+import { correctionNote } from "@/lib/prompt";
+import {
+  appendToBranch,
+  createBranch,
+  describeBranch,
+  mainBranch,
+  normalizeTree,
+  planRegenerate,
+  regenerateNote,
+  removeBranch,
+  reportStale,
+  resolveBranch,
+  MAIN_BRANCH,
+  type BranchTree,
+  type ChatBranch,
+  type StaleReport,
+} from "@/lib/chat";
 import { findProvider, presetChat } from "@/lib/providers/config";
 import {
   canSend,
@@ -75,10 +123,11 @@ import {
   isImageConfigured,
   usesBrowserModel,
   type ProviderConfig,
+  defaultStorySystemSettings,
 } from "@/lib/providers/settings";
 import { authHeaders, cleanApiKey } from "@/lib/providers/apikey";
 import { createId, createSession, emptyCardMemory, getSessionStore, loadCardMemory, saveCardMemory } from "@/lib/storage";
-import type { ChatSession, StoredCg, StoredMessage } from "@/lib/storage";
+import type { ChatSession, StoredAuthorNote, StoredCg, StoredMessage } from "@/lib/storage";
 import {
   allowAutoCg,
   extractAppearance,
@@ -92,9 +141,21 @@ import { persistGeneratedImage, readChatImage, shrinkPortrait } from "@/lib/chat
 import { embedDocument, normalizeDocument, readChatDocument, type ChatDocument } from "@/lib/chat-document";
 import { BROWSER_PROVIDER_ID, describeImage, probeBrowserModel, streamBrowserChat } from "@/lib/browser-model";
 import { browserChatEndpoint, streamBrowserOpenAI } from "@/lib/browser-openai";
-import { applyMacros, assemble, buildDirectorMessages, formatTurnPlan, parseTurnPlan, planBudget } from "@/lib/prompt";
+import {
+  applyMacros,
+  assemble,
+  buildDirectorMessages,
+  defaultCost,
+  formatTurnPlan,
+  parseTurnPlan,
+  planBudget,
+  withExtraMessage,
+  type PromptInspector,
+} from "@/lib/prompt";
+import type { ResponseMode } from "@/lib/prompt";
 import { cardPortraitUrl } from "@/lib/cards/online";
 import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
+import { AuthorNoteSheet } from "./AuthorNoteSheet";
 import { Avatar } from "./Avatar";
 
 /** 这次 remember_character 是不是第一次记下这个人。更新旧条目不重新出头像。 */
@@ -142,7 +203,25 @@ interface PendingTool {
   arguments: string;
 }
 
-type GenerationStage = "attachment" | "plan" | "write";
+/**
+ * 被质量门拒收的一轮。
+ *
+ * 它不属于 turns：拒收的内容一个字都不进历史，所以单独挂在这里，
+ * 只在界面上留一个「你刚才说了什么 + 为什么被丢掉 + 要不要重来」的提示。
+ * 玩家点重新生成时，用这里的 baseTurns 从头跑一遍，不会把失败的那版接在后面。
+ */
+interface RejectedTurn {
+  reason: string;
+  userText: string;
+  image?: string;
+  document?: ChatDocument;
+  baseTurns: Turn[];
+  /** 这一轮试过自动修复没有，以及修复为什么没救回来（只在开发模式展示） */
+  repairAttempted?: boolean;
+  repairNote?: string;
+}
+
+type GenerationStage = "attachment" | "plan" | "write" | "repair";
 
 interface TocItem {
   id: string;
@@ -250,6 +329,46 @@ function lastAssistantReply(turns: Turn[]): string {
 }
 
 /**
+ * 把会话里存的作者注收成提示词层要的形状。
+ * 旧存档可能只有 text，也可能一个字段都没有。
+ */
+function normalizeStoredNote(value: StoredAuthorNote | undefined): AuthorNote | null {
+  const text = value?.text?.trim();
+  if (!text) return null;
+  return {
+    text,
+    ...(typeof value?.frequency === "number" ? { frequency: value.frequency } : {}),
+    ...(typeof value?.depth === "number" ? { depth: value.depth } : {}),
+    ...(value?.enabled === false ? { enabled: false } : {}),
+  };
+}
+
+/**
+ * 旧存档里的聊天世界书补全。
+ *
+ * 只留能用的条目：有内容、触发词或常驻二者之一。坏条目丢掉而不是让整本书失效，
+ * 一本世界书里有一条坏数据不该拖垮其余设定。
+ */
+function normalizeChatBook(value: WorldBook | undefined): WorldBook | undefined {
+  const entries = (value?.entries ?? []).filter(
+    (entry) =>
+      entry &&
+      typeof entry.content === "string" &&
+      entry.content.trim().length > 0 &&
+      (entry.constant === true || (Array.isArray(entry.keys) && entry.keys.length > 0)),
+  );
+  if (entries.length === 0) return undefined;
+  return {
+    ...(value?.name ? { name: value.name } : {}),
+    entries,
+    ...(typeof value?.scanDepth === "number" ? { scanDepth: value.scanDepth } : {}),
+    ...(typeof value?.budgetCap === "number" ? { budgetCap: value.budgetCap } : {}),
+    ...(typeof value?.tokenCap === "number" ? { tokenCap: value.tokenCap } : {}),
+    ...(value?.recursiveScan === true ? { recursiveScan: true } : {}),
+  };
+}
+
+/**
  * 一条回复可能由多个块组成，逐块渲染。
  *
  * 同一轮里的块间距收紧到 10px（轮与轮之间仍由 ChatColumn 的 26px 分隔），
@@ -288,6 +407,9 @@ function AssistantTurn({
     },
     write: {
       title: t("chat.stage.write.title"),
+    },
+    repair: {
+      title: t("chat.stage.repair.title"),
     },
   } satisfies Record<GenerationStage, { title: string }>;
   const stageText = stage ? stageInfo[stage] : null;
@@ -364,12 +486,15 @@ function AssistantTurn({
         }
 
         const who = (block.who ?? cardName).trim() || cardName;
-        const src = who === cardName ? portraitUrl : portraits?.[who];
+        const src =
+          who === cardName
+            ? portraitUrl
+            : Object.entries(portraits ?? {}).find(([name]) => name.toLocaleLowerCase() === who.toLocaleLowerCase())?.[1];
         return (
           <DialogueBlock
             key={key}
             who={who}
-            avatar={src ? <Avatar name={who} src={src} /> : undefined}
+            avatar={<Avatar name={who} src={src} />}
             continued={continuedFlags[index]}
             actions={slot}
           >
@@ -433,6 +558,33 @@ function ChatComposer({
   );
 }
 
+function MessageIconButton({
+  label,
+  onClick,
+  children,
+  hot = false,
+  disabled = false,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+  hot?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      disabled={disabled}
+      className={`grid size-7 place-items-center rounded-sm text-ink-3 transition-colors hover:bg-surface-3 hover:text-ink disabled:cursor-default disabled:opacity-45 ${hot ? "text-act" : ""}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function ChatScreen({
   cardId,
   card,
@@ -441,6 +593,7 @@ export function ChatScreen({
   style,
   onOpenSettings,
   onOpenShelf,
+  onDisableQualityGate,
 }: {
   cardId: string;
   card: CharacterCardData;
@@ -449,8 +602,10 @@ export function ChatScreen({
   style?: "haruhi" | "mushoku";
   onOpenSettings: () => void;
   onOpenShelf: () => void;
+  onDisableQualityGate: () => void;
 }) {
   const { t, locale } = useI18n();
+  const storySystems = config.storySystems ?? defaultStorySystemSettings();
   const greetings = useMemo(
     () =>
       openingGreetings(card).map((text) =>
@@ -471,13 +626,26 @@ export function ChatScreen({
   /**
    * Phase 0 的观测开关。开发模式默认开，也可以在 URL 上加 ?dev=1 打开，
    * 这样对着预览部署也能看真实模型的表现。生产环境不带这个参数时全程不计算、不记录。
+   *
+   * 用 useSyncExternalStore 而不是 state + effect：它只由 NODE_ENV 和 URL 决定，
+   * 本来就不该进 React 状态，服务端快照固定 false 也不会和水合结果打架。
    */
-  const [devEnabled, setDevEnabled] = useState(false);
+  const devEnabled = useSyncExternalStore(subscribeDevFlag, devReportEnabled, devFlagServerSnapshot);
   const [devOpen, setDevOpen] = useState(false);
-  useEffect(() => {
-    setDevEnabled(devReportEnabled());
-  }, []);
   const [error, setError] = useState<ChatError | null>(null);
+  /** 被质量门拒收、还没重来的一轮 */
+  const [rejected, setRejected] = useState<RejectedTurn | null>(null);
+  const [qualityPassed, setQualityPassed] = useState(false);
+  const qualityGateOverrideRef = useRef(false);
+  useEffect(() => {
+    if (!config.qualityGate) qualityGateOverrideRef.current = false;
+  }, [config.qualityGate]);
+  /**
+   * 当前聊天专属的作者注。管「这一轮怎么写」，不放世界设定。
+   * 空的时候回退到角色卡上的默认注记。
+   */
+  const [note, setNote] = useState<AuthorNote | null>(null);
+  const [noteOpen, setNoteOpen] = useState(false);
   const [memory, setMemory] = useState<number | null>(null);
   const [cgBusy, setCgBusy] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -495,6 +663,26 @@ export function ChatScreen({
   /** 正在编辑哪一条玩家消息，以及编辑框里的草稿 */
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
+  /**
+   * 编辑之后的「状态可能过时」提示（Phase 11.2）。
+   * 只提示，不自动重算：重算要么再叫一次模型，要么本地推——两样都比留着旧值更糟。
+   */
+  const [staleState, setStaleState] = useState<{ report: StaleReport; editedId: string } | null>(
+    null,
+  );
+  /** 分支（Phase 11.3）。不同选择形成不同剧情线，而不是覆盖原来的故事。 */
+  const [branches, setBranches] = useState<ChatBranch[]>([mainBranch()]);
+  const [activeBranch, setActiveBranch] = useState<string>(MAIN_BRANCH);
+  const [branchOpen, setBranchOpen] = useState(false);
+  const branchTreeRef = useRef<BranchTree>({
+    branches: [mainBranch()],
+    messages: { [MAIN_BRANCH]: [] },
+  });
+  /**
+   * 当前分支的 ref 版。runTurn 是异步的，落地时要读「当时在哪条分支」，
+   * 读 state 会拿到闭包里的旧值。
+   */
+  const activeBranchRef = useRef<string>(MAIN_BRANCH);
   /** 刚复制过哪一条，用来把按钮文字短暂换成「已复制」 */
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -535,6 +723,38 @@ export function ChatScreen({
   const summaryRef = useRef<RollingSummary | null>(null);
   const factsRef = useRef<KeyFacts>({ characters: {}, places: {}, flags: {} });
   const journalRef = useRef<Journal>(emptyJournal());
+  /**
+   * 场景状态：此刻在哪儿、什么时候、谁在场、正在发生什么。
+   *
+   * 用 ref 而不是 state：它不直接参与渲染，只在组装提示词和落盘时读，
+   * 每轮更新一次。放 state 会让每一轮都多一次全树重渲染。
+   */
+  const sceneRef = useRef<SceneState>(emptySceneState());
+  /**
+   * 未完成的剧情线。比场景状态长命：一条线可以跨几十轮才交代完。
+   * 和场景状态一样用 ref：只在组装和落盘时读，不直接参与渲染。
+   */
+  const threadsRef = useRef<StoryThread[]>([]);
+  const stagnantTurnsRef = useRef(0);
+  /** 这一轮导演给出的状态变化，等这一轮落地之后再应用 */
+  const pendingPatchRef = useRef<ScenePatch | null>(null);
+  /**
+   * 这一轮实际发出去的提示词结构（Phase 10）。
+   * 由组装器产出，导演计划拼上之后再补一条；面板读它。
+   */
+  const inspectorRef = useRef<PromptInspector | null>(null);
+  /** 这一轮导演给出的剧情线变化 */
+  const pendingThreadsRef = useRef<ThreadPatchEntry[] | null>(null);
+  /**
+   * 被挡下的记忆冲突（7.3）：模型想改一条已经记下的事，保留旧的、记在这里。
+   * 目前只做记录和开发模式日志，界面上的「等玩家确认」是下一步。
+   */
+  const memoryConflictsRef = useRef<MemoryConflict[]>([]);
+  /**
+   * 当前聊天专属的世界书（Phase 8）。只影响这一场，重置会话就清空。
+   * 和场景状态一样用 ref：只在组装时读。
+   */
+  const chatBookRef = useRef<WorldBook | undefined>(undefined);
   const [portraits, setPortraits] = useState<Record<string, string>>({});
   const portraitBusy = useRef(new Set<string>());
   /** 额度或频率到顶后，自动生图和头像都停。手动再点仍会试一次。 */
@@ -702,6 +922,14 @@ export function ChatScreen({
       const existing = sessions.find((s) => s.cardId === cardId);
       if (existing) {
         sessionRef.current = existing;
+        setNote(normalizeStoredNote(existing.authorNote));
+        sceneRef.current = normalizeSceneState(existing.sceneState);
+        threadsRef.current = normalizeThreads(existing.storyThreads);
+        chatBookRef.current = normalizeChatBook(existing.chatLorebook);
+        branchTreeRef.current = normalizeTree(existing.branchTree);
+        setBranches(branchTreeRef.current.branches);
+        setActiveBranch(existing.activeBranch ?? MAIN_BRANCH);
+        activeBranchRef.current = existing.activeBranch ?? MAIN_BRANCH;
         const restored = existing.messages.map((m, index) => ({
           id: m.id,
           role: m.role,
@@ -732,6 +960,8 @@ export function ChatScreen({
             system_prompt: card.system_prompt,
             mes_example: card.mes_example,
             post_history_instructions: card.post_history_instructions,
+            author_note: card.author_note,
+            ...(card.voice ? { voice: card.voice } : {}),
           },
           lorebook: card.character_book ? { entries: card.character_book.entries } : undefined,
           history: restored.map((turn) => ({ role: turn.role, content: historyContent(turn) })),
@@ -742,6 +972,7 @@ export function ChatScreen({
           journal: journalRef.current,
           style,
           userName,
+           ...(storySystems.events && !isEmptySceneState(sceneRef.current) ? { sceneState: sceneRef.current } : {}),
           budget: planBudget(16_000, 1024),
         });
         setMemory(Math.round((assembled.budget.used / Math.max(assembled.budget.max, 1)) * 100));
@@ -793,7 +1024,12 @@ export function ChatScreen({
   }, [turns, suggestions, cgBusy]);
 
   /** 落盘时保留已有消息的 createdAt，只给新消息盖时间戳。 */
-  function persist(nextTurns: Turn[]) {
+  function persist(
+    nextTurns: Turn[],
+    nextNote: AuthorNote | null = note,
+    nextScene: SceneState = sceneRef.current,
+    nextThreads: StoryThread[] = threadsRef.current,
+  ) {
     const session = sessionRef.current;
     if (!session) return;
 
@@ -813,7 +1049,23 @@ export function ChatScreen({
       ...(turn.document ? { document: turn.document } : {}),
     }));
 
-    const updated: ChatSession = { ...session, messages, updatedAt: Date.now() };
+    const updated: ChatSession = {
+      ...session,
+      messages,
+      ...(nextNote?.text.trim()
+        ? { authorNote: { ...nextNote, text: nextNote.text.trim() } }
+        : { authorNote: undefined }),
+      ...(isEmptySceneState(nextScene) ? { sceneState: undefined } : { sceneState: nextScene }),
+      ...(nextThreads.length ? { storyThreads: nextThreads } : { storyThreads: undefined }),
+      ...(chatBookRef.current?.entries.length
+        ? { chatLorebook: chatBookRef.current }
+        : { chatLorebook: undefined }),
+      // 分支（Phase 11.3）：只有真的分过支才落盘，主干不占字段
+      ...(branchTreeRef.current.branches.length > 1
+        ? { branchTree: branchTreeRef.current, activeBranch }
+        : { branchTree: undefined, activeBranch: undefined }),
+      updatedAt: Date.now(),
+    };
     sessionRef.current = updated;
     void getSessionStore().save(updated);
   }
@@ -829,7 +1081,10 @@ export function ChatScreen({
     baseTurns: Turn[],
     image?: string,
     document?: ChatDocument,
+    /** 本轮临时作者注：重新生成纠偏用，只影响这一轮，不落盘 */
+    temporaryNote?: string,
   ) {
+    const memoryBeforeTurn = memory;
     setError(null);
     needsSummarizeRef.current = false;
     setGenerationStage(null);
@@ -906,6 +1161,70 @@ export function ChatScreen({
       ...userTurnsAsMessages(userTurn),
     ];
 
+    /** 这一轮实际用的回合模式，报告里带上 */
+    let turnMode: ResponseMode | undefined;
+    /** 这一轮世界书的注入情况，随组装结果一起记下，报告里要带上 */
+    let turnLorebook: WorldBookReport | undefined;
+
+    /*
+     * 三来源世界书（Phase 8）：全局 + 角色卡 + 当前聊天。
+     *
+     * 分开送而不是先合并成一堆条目：匹配时要按来源排优先级——
+     * 同一档里聊天书压过角色书，角色书压过全局书。
+     * 合并了就没法区分，一场对话里的临时设定会被通用背景顶掉。
+     * 直连路径和服务端路径共用这一份原料，两条路结果一致。
+     */
+    const lorebooks = {
+      ...(GLOBAL_LOREBOOK ? { global: GLOBAL_LOREBOOK } : {}),
+      ...(card.character_book ? { card: { entries: card.character_book.entries } } : {}),
+      ...(chatBookRef.current?.entries.length ? { chat: chatBookRef.current } : {}),
+    };
+
+    /**
+     * 组装这一轮的提示词。
+     *
+     * 抽成函数是因为回合模式可能被导演覆盖：先按玩家输入推断组一次给导演看，
+     * 导演给了更准的 mode 之后再组一次。组装是纯函数，重复调用没有副作用。
+     */
+    const assembleFor = (mode?: ResponseMode) => {
+      const assembled = assemble({
+        card: {
+          name: card.name,
+          description: card.description,
+          personality: card.personality,
+          scenario: card.scenario,
+          system_prompt: card.system_prompt,
+          mes_example: card.mes_example,
+          post_history_instructions: card.post_history_instructions,
+          author_note: card.author_note,
+          // 角色声音（Phase 9）：压成一句话进前缀
+          ...(card.voice ? { voice: card.voice } : {}),
+        },
+        ...(Object.keys(lorebooks).length > 0 ? { lorebooks } : {}),
+        history,
+        seed,
+        turn: turnRef.current,
+        summary: summaryRef.current ?? undefined,
+        facts: factsRef.current,
+        journal: journalRef.current,
+        style,
+        userName,
+        // 作者注：会话专属优先，没有就用卡上的默认；临时纠偏压过两者
+        ...(note ? { authorNote: note } : {}),
+        ...(temporaryNote ? { temporaryNote } : {}),
+        // 场景状态：有就带上，每个字段会标出可信度
+         ...(storySystems.events && !isEmptySceneState(sceneRef.current) ? { sceneState: sceneRef.current } : {}),
+        // 剧情线：给完整列表，由组装器按策略挑几条注入，不是全部塞进去
+         ...(storySystems.goals && threadsRef.current.length ? { storyThreads: threadsRef.current } : {}),
+        ...(mode ? { mode } : {}),
+        budget: planBudget(16_000, 1024),
+      });
+      // 记下这一轮实际用的模式和世界书注入情况，报告里要带上
+      turnMode = assembled.mode;
+      turnLorebook = assembled.budget.lorebook;
+      return assembled;
+    };
+
     // 远程模型优先从浏览器直连。只有 CORS、网络或上游协议失败时，才回退到 /api/chat。
     // 组装器是纯函数，因此可以安全地在浏览器运行；服务端路径仍保留作后备。
     let directMessages: ChatMessage[] | null = null;
@@ -916,34 +1235,21 @@ export function ChatScreen({
       const baseURL = config.providerId === "custom" ? config.baseURL : preset?.baseURL ?? "";
       try {
         directEndpoint = browserChatEndpoint(baseURL);
-        const assembled = assemble({
-          card: {
-            name: card.name,
-            description: card.description,
-            personality: card.personality,
-            scenario: card.scenario,
-            system_prompt: card.system_prompt,
-            mes_example: card.mes_example,
-            post_history_instructions: card.post_history_instructions,
-          },
-          lorebook: card.character_book ? { entries: card.character_book.entries } : undefined,
-          history,
-          seed,
-          turn: turnRef.current,
-          summary: summaryRef.current ?? undefined,
-          facts: factsRef.current,
-          journal: journalRef.current,
-          style,
-          userName,
-          budget: planBudget(16_000, 1024),
-        });
+        const assembled = assembleFor();
         directMessages = assembled.messages;
+        // 先按当前组装结果记一份：导演失败时这就是最终发给模型的东西
+        inspectorRef.current = assembled.inspector;
         let planText = "";
         await streamBrowserOpenAI({
           endpoint: directEndpoint,
           apiKey: cleanApiKey(config.apiKey).value,
           model: chatRoute.model,
-          messages: buildDirectorMessages(assembled.messages),
+           messages: buildDirectorMessages(assembled.messages, {
+             eventsEnabled: storySystems.events,
+             goalsEnabled: storySystems.goals,
+             stagnantTurns: stagnantTurnsRef.current,
+             eventAfterTurns: storySystems.eventAfterTurns,
+           }),
           temperature: 0.2,
           maxTokens: 420,
           signal: controller.signal,
@@ -954,7 +1260,29 @@ export function ChatScreen({
           },
         });
         const plan = parseTurnPlan(planText);
-        if (plan) directMessages = [...assembled.messages, { role: "system", content: formatTurnPlan(plan) }];
+        if (plan) {
+          // 状态变化等这一轮落地之后再应用：导演给的是「这一轮会变成什么」，
+          // 提前写进状态会让模型把还没发生的事当成已确认的事实。
+           if (storySystems.events && plan.statePatch) pendingPatchRef.current = plan.statePatch;
+           if (storySystems.goals && plan.threadPatch) pendingThreadsRef.current = plan.threadPatch;
+          // 导演看过完整聊天记录，它给的 mode 比只看玩家这一句的推断准。
+          // 回合层是按 mode 拼的，所以覆盖之后要重新组装一次（纯函数，很便宜）。
+          const base = plan.mode ? assembleFor(plan.mode) : assembled;
+          directMessages = [
+            ...base.messages,
+            { role: "system", content: formatTurnPlan(plan) },
+          ];
+          /*
+           * 导演计划是组装之后才拼上的（它由模型现场生成，组装时还不存在），
+           * 所以面板要单独补这一条——否则 Inspector 显示的就不是最终发出去的那份。
+           */
+          inspectorRef.current = withExtraMessage(
+            base.inspector,
+            { role: "system", content: formatTurnPlan(plan) },
+            { section: "director", layer: "post", detail: "导演计划（beats / mode / statePatch）" },
+            defaultCost,
+          );
+        }
       } catch {
         directMessages = null;
       }
@@ -963,6 +1291,12 @@ export function ChatScreen({
     let replyText = "";
     let toolTrace: ToolTrace[] = [];
     let allowTools = true;
+    let storyChanged = false;
+    // 每一轮都从干净的 pending 开始，避免上一轮没应用的变化漏到这一轮
+    if (!directMessages) {
+      pendingPatchRef.current = null;
+      pendingThreadsRef.current = null;
+    }
 
     const appendReply = (text: string) => {
       replyText += text;
@@ -976,27 +1310,7 @@ export function ChatScreen({
     try {
       if (local) {
         setGenerationStage("write");
-        const assembled = assemble({
-          card: {
-            name: card.name,
-            description: card.description,
-            personality: card.personality,
-            scenario: card.scenario,
-            system_prompt: card.system_prompt,
-            mes_example: card.mes_example,
-            post_history_instructions: card.post_history_instructions,
-          },
-          lorebook: card.character_book ? { entries: card.character_book.entries } : undefined,
-          history,
-          seed,
-          turn: turnRef.current,
-          summary: summaryRef.current ?? undefined,
-          facts: factsRef.current,
-          journal: journalRef.current,
-          style,
-          userName,
-          budget: planBudget(16_000, 1024),
-        });
+        const assembled = assembleFor();
         setMemory(Math.round((assembled.budget.used / Math.max(assembled.budget.max, 1)) * 100));
         await streamBrowserChat({
           messages: assembled.messages,
@@ -1022,6 +1336,9 @@ export function ChatScreen({
           } else if (frame.type === "meta") {
             setMemory(Math.round((frame.used / Math.max(frame.max, 1)) * 100));
             needsSummarizeRef.current = frame.needsSummarize;
+            // 服务端路径下导演计划在前端看不到，状态变化只能随 meta 回传
+            if (storySystems.events && frame.statePatch) pendingPatchRef.current = frame.statePatch;
+            if (storySystems.goals && frame.threadPatch) pendingThreadsRef.current = frame.threadPatch;
           } else if (frame.type === "error") {
             setError({ status: 502, code: "stream", message: frame.message });
           }
@@ -1075,11 +1392,11 @@ export function ChatScreen({
                 system_prompt: card.system_prompt,
                 mes_example: card.mes_example,
                 post_history_instructions: card.post_history_instructions,
+                author_note: card.author_note,
+                ...(card.voice ? { voice: card.voice } : {}),
               },
-              // 卡上的简化世界书翻译成新版结构：常驻条目原样保留
-              lorebook: card.character_book
-                ? { entries: card.character_book.entries }
-                : undefined,
+              // 三来源世界书：和服务端直连路径用同一份原料，两条路结果一致
+              ...(Object.keys(lorebooks).length > 0 ? { lorebooks } : {}),
               history,
               seed,
               turn: turnRef.current,
@@ -1087,6 +1404,19 @@ export function ChatScreen({
               facts: factsRef.current,
               journal: journalRef.current,
               ...(toolTrace.length > 0 ? { toolTrace } : {}),
+              // 作者注和场景状态、剧情线在服务端路径下也要带上，
+              // 否则回退到服务端时 Phase 4 到 6 的效果会整段消失
+              ...(note ? { authorNote: note } : {}),
+              ...(temporaryNote ? { temporaryNote } : {}),
+               ...(storySystems.events && !isEmptySceneState(sceneRef.current) ? { sceneState: sceneRef.current } : {}),
+               ...(storySystems.goals && threadsRef.current.length ? { storyThreads: threadsRef.current } : {}),
+               storySystems: {
+                 events: storySystems.events,
+                 goals: storySystems.goals,
+                 eventAfterTurns: storySystems.eventAfterTurns,
+                 stagnantTurns: stagnantTurnsRef.current,
+               },
+              ...(turnMode ? { mode: turnMode } : {}),
               style,
               userName,
             },
@@ -1139,9 +1469,23 @@ export function ChatScreen({
             const created = newCharacter(journalRef.current, call.arguments);
             if (created) freshCharacters.push(created);
           }
-          // 带上当前轮次：模型不传 turn 时，目录也能知道哪条是新的
-          const applied = applyChatTool(journalRef.current, call.name, call.arguments, turnRef.current);
+          /*
+           * 带上当前轮次：模型不传 turn 时，目录也能知道哪条是新的。
+           *
+           * 走 applyMemoryWrite 而不是 applyChatTool：长期记忆的写入要过 7.2 / 7.3
+           * 那套规则——同一个名字已有记录、内容却不一样时保留旧的，
+           * 返回一条冲突提示，而不是让最新一次输出把旧记录顶掉。
+           */
+          const applied = applyMemoryWrite(
+            journalRef.current,
+            call.name,
+            call.arguments,
+            turnRef.current,
+          );
           journalRef.current = applied.journal;
+          if (applied.conflict) {
+            memoryConflictsRef.current = [...memoryConflictsRef.current, applied.conflict];
+          }
           toolTrace = [
             ...toolTrace,
             { name: call.name, arguments: call.arguments, result: applied.result },
@@ -1188,56 +1532,243 @@ export function ChatScreen({
         );
       }
     } finally {
-      setStreaming(false);
-      abortRef.current = null;
-
-      const finalTurns: Turn[] = [...baseTurns, userTurn];
-      const carried = carrySwipesRef.current;
-      carrySwipesRef.current = null;
-      if (replyText) {
-        const swipes = carried ? [...carried, replyText] : undefined;
-        finalTurns.push({
-          id: assistantId,
-          role: "assistant",
-          content: replyText,
-          swipes,
-          swipeIndex: swipes ? swipes.length - 1 : undefined,
-        });
-        carryTurnRef.current = null;
-      } else if (carryTurnRef.current) {
-        finalTurns.push(carryTurnRef.current);
-        carryTurnRef.current = null;
-      }
+      /*
+       * 注意：这里先不关 streaming。
+       * 质量门和自动修复都还在这一轮里，界面上应该继续显示阶段提示
+       * （「正在修正格式」），直到这一轮真的落地或被拒收。
+       */
+      const known = knownCast(baseTurns, card.name, journalRef.current);
+      const validateOptions = {
+        cardName: card.name,
+        userName,
+        knownCharacters: known,
+        playerInput: userMessage,
+        previousReply: lastAssistantReply(baseTurns),
+        // 角色声音（Phase 9）：有档案才检查对白有没有违背声明的禁令
+        ...(card.voice ? { voice: card.voice } : {}),
+      };
+      const qualityGateEnabled = config.qualityGate && !qualityGateOverrideRef.current;
+      let validation = qualityGateEnabled
+        ? validateResponseBlocks(replyText, validateOptions)
+        : bypassResponseValidation(replyText);
+      let report = reportForValidation(validation, {
+        raw: replyText,
+        ...validateOptions,
+        qualityGateEnabled,
+        turn: turnRef.current + 1,
+        providerId: config.providerId,
+        model: chatRoute.model,
+        latencyMs: performance.now() - startedAt,
+        ...(turnMode ? { mode: turnMode } : {}),
+        ...(turnLorebook ? { lorebook: turnLorebook } : {}),
+      });
+      let result = resolveGeneration(validation, { report });
 
       /*
-       * Phase 0：把这一轮跑过的检查记下来。
+       * Phase 2：自动修复，每轮最多一次。
        *
-       * 只判断、不改写：回复照常显示、照常存进历史。等基线稳定了，
-       * 后面的阶段才会在这里接上「可修复就自动修一次 / 不合格就不写历史」。
-       * 记录只在开发模式进行，报告里不含正文和玩家输入。
+        * 只有硬错误才值得修（软错误 Phase 1 已经就地降级了）。修复只改格式和
+        * 叙述分工，不重写剧情；修复结果直接落地，不再重复触发质量门。
+       * 不循环：第二次修复很容易引入新问题，代价比让玩家重生成更高。
        */
-      if (devEnabled && replyText.trim()) {
-        const report = checkGeneration({
-          raw: replyText,
+      let repairAttempted = false;
+      let repairNote = "";
+      if (replyText.trim() && result.status === "rejected" && !controller.signal.aborted) {
+        repairAttempted = true;
+        setGenerationStage("repair");
+        /*
+         * 修复期间先把没通过校验的正文从画面上撤掉。
+         * 让玩家先读到一版错的、再眼睁睁看它被换掉，比直接等修复结果更糟；
+         * 屏幕上只剩「正在修正格式」，修好之后直接出现修好的版本。
+         */
+        setTurns((prev) =>
+          prev.map((turn) => (turn.id === assistantId ? { ...turn, content: "" } : turn)),
+        );
+        const repaired = await requestRepair({
+          candidate: replyText,
           playerInput: userMessage,
-          previousReply: lastAssistantReply(baseTurns),
           cardName: card.name,
-          userName,
-          knownCharacters: knownCast(finalTurns, card.name, journalRef.current),
-          turn: turnRef.current + 1,
-          providerId: config.providerId,
-          model: chatRoute.model,
-          latencyMs: performance.now() - startedAt,
+          knownCharacters: known,
+          issues: validation.hardIssues,
+          signal: controller.signal,
+          local,
+          directEndpoint,
         });
+        if (repaired.text) {
+          // 修复请求本身就是格式转换步骤。修复结果直接进入历史，不再重复执行质量门。
+          const nextValidation = bypassResponseValidation(repaired.text);
+          const nextResult = resolveGeneration(nextValidation, {
+            report: reportForValidation(nextValidation, {
+              raw: repaired.text,
+              ...validateOptions,
+              qualityGateEnabled,
+              turn: turnRef.current + 1,
+              providerId: config.providerId,
+              model: chatRoute.model,
+              latencyMs: performance.now() - startedAt,
+              repair: { attempted: true, succeeded: nextValidation.decision !== "rejected" },
+              ...(turnLorebook ? { lorebook: turnLorebook } : {}),
+            }),
+          });
+          // bypassResponseValidation 始终返回 accepted；这里不再存在修复后二次拒收分支。
+          replyText = nextValidation.content;
+          validation = nextValidation;
+          report = { ...nextResult.report, repairAttempted: true, repairSucceeded: true };
+          result = nextResult;
+          setTurns((prev) =>
+            prev.map((turn) =>
+              turn.id === assistantId ? { ...turn, content: nextValidation.content } : turn,
+            ),
+          );
+        } else {
+          repairNote = repaired.note;
+          report = { ...report, repairAttempted: true, repairSucceeded: false, repairNote };
+        }
+        setGenerationStage(null);
+      }
+
+      if (devEnabled) {
         recordReport(report);
         logReport(report, reportLog().length - 1);
+        // 提示词结构单独记（Phase 10）：它带着正文，和只存计数的报告分开放
+        if (inspectorRef.current) recordInspector(inspectorRef.current);
+      }
+
+      // 拒收：不落地、不持久化、不推轮次，把画面恢复到这一轮开始之前。
+      if (replyText.trim() && result.status === "rejected") {
+        setStreaming(false);
+        abortRef.current = null;
+        setMemory(memoryBeforeTurn);
+        setTurns(baseTurns);
+        persist(baseTurns);
+        // 玩家主动中断的不弹「没通过校验」，那不是模型的错
+        if (!controller.signal.aborted) {
+          setRejected({
+            reason: result.reason,
+            userText: userMessage,
+            image,
+            document,
+            baseTurns,
+            repairAttempted,
+            repairNote,
+          });
+        }
+        return;
+      }
+      setRejected(null);
+      setQualityPassed(qualityGateEnabled && result.status !== "rejected");
+
+      /*
+       * 落地。写入规则本身在 lib/engine/history.ts 里，纯函数、有测试：
+       * 拒收时它返回的数组里根本没有这一轮，调用方想污染历史也污染不了。
+       */
+      const carried = carrySwipesRef.current;
+      carrySwipesRef.current = null;
+      const committed = commitTurn(
+        baseTurns,
+        { user: userTurn, assistant: { id: assistantId, role: "assistant", content: "" } },
+        result,
+      );
+      // 空回复（被玩家中断、上游没吐字）不算一轮，恢复被替换掉的那条旧回复
+      const wrote = committed.written && committed.content.length > 0;
+
+      const finalTurns: Turn[] = wrote
+        ? committed.turns.map((turn) => {
+            if (turn.id !== assistantId) return turn;
+            const swipes = carried ? [...carried, committed.content] : undefined;
+            return {
+              ...turn,
+              swipes,
+              swipeIndex: swipes ? swipes.length - 1 : undefined,
+            };
+          })
+        : // 没有正文：玩家的这一句照旧留在画面上，被替换掉的旧回复放回去
+          [...baseTurns, userTurn, ...(carryTurnRef.current ? [carryTurnRef.current] : [])];
+      if (wrote || carryTurnRef.current) carryTurnRef.current = null;
+
+      /*
+       * 分支记账（Phase 11.3）：这一轮落在哪条分支上，就把这两个消息 id
+       * 记到那条分支名下。主干不在这里管——主干的顺序就是 turns 本身。
+       */
+      if (wrote && activeBranchRef.current !== MAIN_BRANCH) {
+        branchTreeRef.current = appendToBranch(branchTreeRef.current, activeBranchRef.current, [
+          userTurn.id,
+          assistantId,
+        ]);
       }
 
       setTurns(finalTurns);
       persist(finalTurns);
+      setStreaming(false);
+      abortRef.current = null;
+
+      /*
+       * 场景状态更新（Phase 5）：正文生成完了才应用导演给出的变化。
+       *
+       * 顺序就是 5.2 那条链路：正文生成 → 状态提取（导演顺带做的）→ 比较旧状态 →
+       * 只保存变化项。被拒收的一轮不更新状态——那一轮根本没发生。
+       * 已确认的事实挡得住推断值的覆盖，被挡下的记进 pending。
+       */
+      if (storySystems.events && wrote && pendingPatchRef.current) {
+        const update = applyScenePatch(sceneRef.current, pendingPatchRef.current, turnRef.current + 1, {
+          now: Date.now(),
+        });
+        sceneRef.current = update.state;
+        storyChanged = storyChanged || update.changes.length > 0;
+        if (update.changes.length > 0 || update.conflicts.length > 0) {
+          persist(finalTurns, note, update.state);
+          if (process.env.NODE_ENV === "development") {
+            console.debug("[ai-rp] scene state", {
+              changes: update.changes,
+              conflicts: update.conflicts,
+            });
+          }
+        }
+      }
+      pendingPatchRef.current = null;
+
+      /*
+       * 剧情线更新（Phase 6）：和状态一样，正文生成完之后才应用。
+       * 已解决的线不会被重新打开；被挡下来的记进 blocked 只做日志。
+       */
+      if (storySystems.goals && wrote && pendingThreadsRef.current) {
+        const update = applyThreadPatch(
+          threadsRef.current,
+          pendingThreadsRef.current,
+          turnRef.current + 1,
+        );
+        threadsRef.current = update.threads;
+        storyChanged = storyChanged || update.created.length > 0 || update.updated.length > 0 || update.resolved.length > 0;
+        if (update.created.length || update.updated.length || update.blocked.length) {
+          persist(finalTurns, note, sceneRef.current, update.threads);
+          if (process.env.NODE_ENV === "development") {
+            console.debug("[ai-rp] story threads", {
+              created: update.created.map((item) => item.title),
+              updated: update.updated.map((item) => item.title),
+              resolved: update.resolved.map((item) => item.title),
+              blocked: update.blocked.map((item) => item.title),
+            });
+          }
+        }
+      }
+      pendingThreadsRef.current = null;
+
+      /*
+       * 记忆冲突（Phase 7）：模型想改一条已经记下的事，旧记录留住了。
+       * 现在只做开发模式日志——界面上的「等玩家确认」是下一步。
+       */
+      if (memoryConflictsRef.current.length > 0) {
+        if (process.env.NODE_ENV === "development") {
+          console.debug("[ai-rp] memory conflicts", memoryConflictsRef.current);
+        }
+        memoryConflictsRef.current = [];
+      }
 
       turnRef.current += 1;
-      if (replyText) void maybeAutoCg(finalTurns);
+      if (wrote) {
+        stagnantTurnsRef.current = storyChanged ? 0 : stagnantTurnsRef.current + 1;
+      }
+      if (wrote) void maybeAutoCg(finalTurns);
       void saveCardMemory({
         cardId,
         summary: summaryRef.current,
@@ -1249,6 +1780,92 @@ export function ChatScreen({
       // 压一次历史。放在这里而不是流中途，免得拖慢首字时间
       if (needsSummarizeRef.current) void summarizeNow(finalTurns);
     }
+  }
+
+  /**
+   * 发一次修复请求。
+   *
+   * 只给候选正文、玩家这一句和合法人名，不重发聊天历史：
+   * 历史会让模型把「接着写」当成任务，也会把旧错误带回来。
+   *
+   * 三条通道和正文生成保持一致（本机模型 / 浏览器直连 / 服务端 complete 模式）。
+   * 修复失败不抛错：拿不到文本就是「没修好」，交给上层拒收。
+   */
+  async function requestRepair(args: {
+    candidate: string;
+    playerInput: string;
+    cardName: string;
+    knownCharacters: string[];
+    issues: GenerationIssue[];
+    signal: AbortSignal;
+    local: boolean;
+    directEndpoint: string;
+  }): Promise<RepairOutcome> {
+    const messages = buildRepairMessages({
+      candidate: args.candidate,
+      playerInput: args.playerInput,
+      cardName: args.cardName,
+      knownCharacters: args.knownCharacters,
+      issues: args.issues,
+    });
+
+    let text = "";
+    try {
+      if (args.local) {
+        await streamBrowserChat({
+          messages,
+          temperature: 0.2,
+          signal: args.signal,
+          onDelta: (delta) => {
+            text += delta;
+          },
+        });
+      } else if (args.directEndpoint) {
+        await streamBrowserOpenAI({
+          endpoint: args.directEndpoint,
+          apiKey: cleanApiKey(config.apiKey).value,
+          model: chatRoute.model,
+          messages,
+          temperature: 0.2,
+          maxTokens: 1024,
+          signal: args.signal,
+          onEvent: (event) => {
+            if (event.type === "delta") text += event.text;
+          },
+        });
+      } else {
+        // 服务端 complete 模式：原样转发 messages，不组装、不记缓存统计
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders(config.apiKey) },
+          signal: args.signal,
+          body: JSON.stringify({
+            mode: "complete",
+            providerId: config.providerId,
+            model: chatRoute.model,
+            messages,
+            temperature: 0.2,
+            maxTokens: 1024,
+            ...(chatRoute.baseURL ? { baseURL: chatRoute.baseURL } : {}),
+          }),
+        });
+        if (!response.ok || !response.body) {
+          return { attempted: true, text: null, note: `修复请求失败（HTTP ${response.status}）` };
+        }
+        text = await readSseText(response.body);
+      }
+    } catch (caught) {
+      if (args.signal.aborted) return { attempted: true, text: null, note: "修复被中断" };
+      return {
+        attempted: true,
+        text: null,
+        note: `修复请求失败：${caught instanceof Error ? caught.message : String(caught)}`,
+      };
+    }
+
+    const repaired = extractRepairedText(text);
+    if (!repaired) return { attempted: true, text: null, note: "修复模型没有返回内容" };
+    return { attempted: true, text: repaired, note: "" };
   }
 
   function cgStats(list: Turn[]) {
@@ -1433,6 +2050,19 @@ export function ChatScreen({
     factsRef.current = { characters: {}, places: {}, flags: {} };
     journalRef.current = emptyJournal();
     setPortraits({});
+    setRejected(null);
+    // 重置会话等于回到开场，场景状态、剧情线和聊天世界书也要跟着回到起点
+    sceneRef.current = emptySceneState();
+    threadsRef.current = [];
+    chatBookRef.current = undefined;
+    // 重置会话回到主线，分支也一起清掉
+    branchTreeRef.current = { branches: [mainBranch()], messages: { [MAIN_BRANCH]: [] } };
+    setBranches([mainBranch()]);
+    setActiveBranch(MAIN_BRANCH);
+    activeBranchRef.current = MAIN_BRANCH;
+    setStaleState(null);
+    pendingPatchRef.current = null;
+    pendingThreadsRef.current = null;
     turnRef.current = 0;
     setTurns(next);
     persist(next);
@@ -1450,12 +2080,35 @@ export function ChatScreen({
         : undefined;
     carrySwipesRef.current = null;
     carryTurnRef.current = null;
+    // 玩家直接说了新的一句，就等于放弃上一轮被拒收的那条
+    setRejected(null);
     setComposerReset((key) => key + 1);
     setAttachment(null);
     setSuggestions([]);
     const visible = userMessage || (document ? t("chat.fileOnly") : t("chat.imageOnly"));
     void runTurn(visible, turns, image, document);
     return true;
+  }
+
+  /**
+   * 重跑被拒收的那一轮。
+   *
+   * 从 rejected.baseTurns 重新开始，而不是从当前 turns——失败的那一版
+   * 从来没进过历史，重跑时必须把它当成不存在，否则错误内容会被当成上下文。
+   */
+  function retryRejected() {
+    const pending = rejected;
+    if (!pending || streaming || !memoryReadyRef.current) return;
+    setRejected(null);
+    setTurns(pending.baseTurns);
+    // 把上一版被拒收的原因当成临时作者注带进去：重新生成时最有用的信息就是「别再这样写」
+    void runTurn(
+      pending.userText,
+      pending.baseTurns,
+      pending.image,
+      pending.document,
+      correctionNote(pending.reason),
+    );
   }
 
   async function pickFile(file: File | undefined) {
@@ -1492,27 +2145,63 @@ export function ChatScreen({
 
   function regenerate() {
     if (streaming || !memoryReadyRef.current) return;
+    // 有被拒收的一轮时，「重新生成」指的是把它重跑一遍，而不是重跑上一条回复
+    if (rejected) {
+      retryRejected();
+      return;
+    }
     if (turns.length <= 1) {
       cycleGreeting();
       return;
     }
-    // 丢掉最后一条回复，用它前面那条玩家输入重跑
-    const base = turns.slice(0, -1);
-    const userIndex = base.map((t) => t.role).lastIndexOf("user");
-    if (userIndex < 0) {
+    /*
+     * Phase 11.1：用 planRegenerate 算「重跑要用什么」。
+     *
+     * 它保证三件事：错误回复不进新请求、玩家输入原样保留、
+     * 从末尾往前找到真正要重跑的那一轮（回复后面可能还跟着别的消息）。
+     * 以前这里是手写的 slice(0, -1)，两者在正常情况一样，
+     * 但玩家改过历史之后就不一样了。
+     */
+    const plan = planRegenerate(
+      turns.map((turn) => ({ id: turn.id, role: turn.role, content: turn.content })),
+    );
+    if (plan.blocked || !plan.discardedId) {
       cycleGreeting();
       return;
     }
-    const userText = playerText(base[userIndex].content);
-    const userImage = base[userIndex].image;
-    const userDocument = base[userIndex].document;
-    const last = turns[turns.length - 1];
+
+    const base = turns.slice(0, plan.history.length);
+    const last = turns.find((turn) => turn.id === plan.discardedId);
     if (last?.role === "assistant") {
       carrySwipesRef.current = last.swipes?.length ? [...last.swipes] : [last.content];
       carryTurnRef.current = last;
     }
-    setTurns(base.slice(0, userIndex));
-    void runTurn(userText, base.slice(0, userIndex), userImage, userDocument);
+    setTurns(base);
+    // 临时纠偏：说清「别复用上一版什么」，只影响这一轮，不落盘
+    void runTurn(
+      playerText(plan.playerInput),
+      base,
+      lastUserImage(turns, plan.discardedId),
+      lastUserDocument(turns, plan.discardedId),
+      regenerateNote(plan.discarded),
+    );
+  }
+
+  /** 被重跑那一轮的玩家附件。它挂在玩家那条消息上，不在回复上。 */
+  function lastUserImage(list: Turn[], replyId: string) {
+    const index = list.findIndex((turn) => turn.id === replyId);
+    for (let i = index - 1; i >= 0; i -= 1) {
+      if (list[i].role === "user") return list[i].image;
+    }
+    return undefined;
+  }
+
+  function lastUserDocument(list: Turn[], replyId: string) {
+    const index = list.findIndex((turn) => turn.id === replyId);
+    for (let i = index - 1; i >= 0; i -= 1) {
+      if (list[i].role === "user") return list[i].document;
+    }
+    return undefined;
   }
 
   /** 复制一条消息的正文。剪贴板 API 在不安全来源下没有，退回到老办法。 */
@@ -1552,14 +2241,88 @@ export function ChatScreen({
     setEditingText(playerText(turn.content));
   }
 
-  /** 改完这条玩家消息就从这里重跑：后面的对话被丢掉，由模型重新接。 */
-  function applyEdit(turn: Turn, index: number) {
+  /**
+   * 改完这条玩家消息就从这里重跑：后面的对话被丢掉，由模型重新接。
+   *
+   * Phase 11.2：丢掉后面内容的同时，把「哪些状态可能过时了」记下来。
+   * 场景状态、剧情线、摘要、事实都是从已落地的正文里推出来的，
+   * 那段正文既然不作数了，它们也就只能算「可能过时」。
+   * 不自动重算：重算要么再叫一次模型（花钱、还会漂），要么本地推（推不出来）。
+   * 留着旧值但明确标注，比猜一个更安全。
+   */
+  function commitEdit(turn: Turn, index: number) {
     const text = editingText.trim();
     setEditingId(null);
     if (!text || streaming) return;
     const base = turns.slice(0, index);
+    const stale = reportStale({ index, role: turn.role }, base.length, turns.length);
+    if (stale.action !== "none") setStaleState({ report: stale, editedId: turn.id });
     setTurns(base);
     void runTurn(text, base, turn.image, turn.document);
+  }
+
+  /**
+   * 建一条分支（Phase 11.3）。
+   *
+   * 分出去的那一刻把当前历史复制一份给分支，之后两条各走各的。
+   * 主干一个字节都不动——这正是「不同选择形成不同剧情线，
+   * 而不是覆盖原来的故事」。
+   */
+  function branchFrom(turn: Turn, index: number) {
+    if (streaming) return;
+    const id = `b${Date.now().toString(36)}`;
+    const created = createBranch({
+      id,
+      parentMessageId: turn.id,
+      title: `从第 ${index + 1} 条分出去`,
+      createdAt: Date.now(),
+      inheritedMessageIds: turns.slice(0, index + 1).map((item) => item.id),
+      existing: branchTreeRef.current.branches,
+    });
+    if (!created) return;
+    const tree: BranchTree = {
+      ...created.tree,
+      messages: {
+        ...created.tree.messages,
+        // 分支从分叉点开始，先把已经发生的这一段带过去
+        [id]: turns.slice(0, index + 1).map((item) => item.id),
+      },
+    };
+    branchTreeRef.current = tree;
+    setBranches(tree.branches);
+    setActiveBranch(id);
+    activeBranchRef.current = id;
+    persist(turns);
+    setBranchOpen(false);
+  }
+
+  /** 切到某条分支。主干只留到分叉点，接上分支自己的消息。 */
+  function switchBranch(branch: ChatBranch) {
+    if (streaming) return;
+    setActiveBranch(branch.id);
+    activeBranchRef.current = branch.id;
+    setBranchOpen(false);
+    const view = resolveBranch(branch, branchTreeRef.current, turns.map((turn) => turn.id));
+    if (branch.id === MAIN_BRANCH) {
+      persist(turns);
+      return;
+    }
+    /*
+     * 分支视图 = 主干到分叉点 + 分支自己的消息。
+     * 分支的消息内容目前和主干共享（分出去时是复制的），所以这里只切显示范围；
+     * 等分支上真的生成了新回复，它会有自己的消息 id。
+     */
+    const allowed = new Set([...view.baseIds, ...view.branchIds]);
+    const visible = turns.filter((turn) => allowed.has(turn.id));
+    if (visible.length > 0) setTurns(visible);
+    persist(visible);
+  }
+
+  function dropBranch(branch: ChatBranch) {
+    const tree = removeBranch(branchTreeRef.current, branch.id);
+    branchTreeRef.current = tree;
+    setBranches(tree.branches);
+    if (activeBranch === branch.id) switchBranch(mainBranch());
   }
 
   function switchSwipe(turn: Turn, delta: number) {
@@ -1686,7 +2449,7 @@ export function ChatScreen({
 
   return (
     <div
-      className="relative flex h-dvh"
+      className="relative flex h-dvh overflow-hidden"
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
@@ -1700,7 +2463,7 @@ export function ChatScreen({
         onClose={() => setTocOpen(false)}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
       <TopBar
         className="absolute inset-x-0 top-0 z-20"
         avatar={<Avatar name={card.name} src={portraitUrl} />}
@@ -1715,19 +2478,57 @@ export function ChatScreen({
         exportLabel={t("topbar.export")}
         settingsLabel={t("topbar.settings")}
         onWho={onOpenShelf}
+        onMemory={() => setNoteOpen(true)}
         onHistory={() => setResetOpen(true)}
         onExport={() => setExportOpen(true)}
         onSettings={onOpenSettings}
         extra={
           <>
-            {devEnabled ? (
-              <DevReportButton open={devOpen} onToggle={() => setDevOpen((open) => !open)} />
-            ) : null}
             <PwaInstallButton />
             <AnnouncementBell onClick={() => setAnnounceOpen(true)} />
           </>
         }
       />
+
+      {/*
+        状态过时提示（Phase 11.2）：编辑过历史消息之后出现。
+        只提示，不自动重算——重算要么再叫一次模型，要么本地推，两样都更糟。
+      */}
+      {staleState ? (
+        <div className="mx-auto mb-2 flex w-full max-w-[720px] items-start gap-2 rounded-card border border-line bg-surface-2 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
+          <span className="min-w-0 flex-1">{staleState.report.note}</span>
+          <button
+            type="button"
+            onClick={() => setStaleState(null)}
+            className="shrink-0 text-[12px] text-ink-3 underline"
+          >
+            {t("common.close")}
+          </button>
+        </div>
+      ) : null}
+
+      {qualityPassed ? (
+        <div className="mx-auto mb-2 flex w-full max-w-[720px] items-center gap-2 rounded-card border border-line bg-surface-2 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
+          <span className="min-w-0 flex-1">{t("chat.qualityPassed")}</span>
+          <button
+            type="button"
+            onClick={() => {
+              onDisableQualityGate();
+              setQualityPassed(false);
+            }}
+            className="shrink-0 text-[12px] text-ink-3 underline"
+          >
+            {t("chat.disableQualityGate")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setQualityPassed(false)}
+            className="shrink-0 text-[12px] text-ink-3 underline"
+          >
+            {t("common.close")}
+          </button>
+        </div>
+      ) : null}
 
       <ChatScroll
         ref={scrollRef}
@@ -1770,7 +2571,7 @@ export function ChatScreen({
                           onKeyDown={(event) => {
                             if (event.key === "Enter" && !event.shiftKey) {
                               event.preventDefault();
-                              applyEdit(turn, index);
+                              commitEdit(turn, index);
                             }
                             if (event.key === "Escape") setEditingId(null);
                           }}
@@ -1778,7 +2579,7 @@ export function ChatScreen({
                         />
                         <div className="flex justify-end gap-2">
                           <ActPill onClick={() => setEditingId(null)}>{t("chat.cancel")}</ActPill>
-                          <ActPill hot onClick={() => applyEdit(turn, index)}>
+                          <ActPill hot onClick={() => commitEdit(turn, index)}>
                             {t("chat.save")}
                           </ActPill>
                         </div>
@@ -1838,30 +2639,47 @@ export function ChatScreen({
             const actions = !streaming ? (
               <MessageActions>
                 {isLastTurn && (turns.length > 1 || greetings.length > 1) ? (
-                  <ActPill hot onClick={regenerate}>
-                    {turns.length <= 1 ? t("chat.newOpening") : t("chat.regenerate")}
-                  </ActPill>
+                  <MessageIconButton
+                    hot
+                    label={turns.length <= 1 ? t("chat.newOpening") : t("chat.regenerate")}
+                    onClick={regenerate}
+                  >
+                    <IconRefresh className="size-4" />
+                  </MessageIconButton>
                 ) : null}
                 {turn.swipes && turn.swipes.length > 1 ? (
                   <>
-                    <ActPill onClick={() => switchSwipe(turn, -1)}>{t("chat.prev")}</ActPill>
-                    <ActPill onClick={() => switchSwipe(turn, 1)}>
-                      {(turn.swipeIndex ?? turn.swipes.length - 1) + 1}/{turn.swipes.length}
-                    </ActPill>
+                    <MessageIconButton label={t("chat.prev")} onClick={() => switchSwipe(turn, -1)}>
+                      ‹
+                    </MessageIconButton>
+                    <MessageIconButton
+                      label={t("chat.next")}
+                      onClick={() => switchSwipe(turn, 1)}
+                    >
+                      ›
+                    </MessageIconButton>
                   </>
                 ) : null}
-                <ActPill hot={turn.chapterBreak} onClick={() => toggleChapter(turn)}>
-                  {turn.chapterBreak ? t("chat.unchapter") : t("chat.chapter")}
-                </ActPill>
+                {/* 从这一条分出去（Phase 11.3）：换一条路走，不动原来的故事 */}
+                <MessageIconButton label={t("branch.fromHere")} onClick={() => branchFrom(turn, index)}>
+                  <IconBranch className="size-4" />
+                </MessageIconButton>
+                <MessageIconButton
+                  hot={turn.chapterBreak}
+                  label={turn.chapterBreak ? t("chat.unchapter") : t("chat.chapter")}
+                  onClick={() => toggleChapter(turn)}
+                >
+                   <IconBookmark className="size-4" filled={turn.chapterBreak} />
+                </MessageIconButton>
                 {/* 没配生图模型就整颗不出现，不给假入口 */}
                 {isLastTurn && imageReady ? (
-                  <ActPill
+                  <MessageIconButton
                     disabled={cgBusy === turn.id}
-                    title={t("chat.cgTitle")}
+                    label={t("chat.cgTitle")}
                     onClick={() => void generateFor(turn, "manual")}
                   >
-                    {t("chat.cg")}
-                  </ActPill>
+                    <IconImage className="size-4" />
+                  </MessageIconButton>
                 ) : null}
               </MessageActions>
             ) : undefined;
@@ -1919,10 +2737,58 @@ export function ChatScreen({
               </Fragment>
             );
           })}
+          {/*
+            被拒收的那一轮：玩家那句话照常显示（他确实说了），
+            但下面没有回复，只有一行说明。它不在 turns 里，所以不会被发给模型。
+          */}
+          {rejected ? (
+            <div className="flex flex-col gap-1">
+              <PlayerBubble>
+                {rejected.image ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={rejected.image} alt="" className="mb-2 max-h-60 w-full rounded-md object-cover" />
+                ) : null}
+                <MarkdownText tone="bubble" text={rejected.userText} />
+              </PlayerBubble>
+            </div>
+          ) : null}
         </ChatColumn>
       </ChatScroll>
 
       <div className="shrink-0 px-4 pt-1.5 pb-4">
+        {rejected ? (
+          <div className="mx-auto mb-2 flex max-w-[660px] flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-danger-soft px-4 py-2.5 text-[13px] text-danger">
+            <span className="font-bold">{t("chat.rejected")}</span>
+            {/*
+              技术细节只给开发模式看：玩家只需要知道「这轮没成，要不要重来」。
+              修复失败的原因（是没修、还是修了仍不合格）留在 QA 面板里。
+            */}
+            {devEnabled ? (
+              <span className="min-w-0 flex-1 truncate text-[12px] opacity-80" title={rejected.reason}>
+                {rejected.repairAttempted ? "修复失败。" : "检测拒绝。"}
+              </span>
+            ) : null}
+            <button type="button" onClick={retryRejected} className="underline">
+              {t("chat.rejectedRetry")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                qualityGateOverrideRef.current = true;
+                onDisableQualityGate();
+                setRejected(null);
+                void retryRejected();
+              }}
+              className="underline"
+            >
+              {t("chat.disableQualityGate")}
+            </button>
+            <button type="button" onClick={() => setRejected(null)} className="underline">
+              {t("chat.cancel")}
+            </button>
+          </div>
+        ) : null}
+
         {error ? (
           <div className="mx-auto mb-2 flex max-w-[660px] flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-danger-soft px-4 py-2.5 text-[13px] text-danger">
             <span className="font-bold">{error.message}</span>
@@ -1949,6 +2815,32 @@ export function ChatScreen({
             >
               {attachment.kind === "image" ? t("chat.removeImage") : t("chat.removeFile")}
             </button>
+          </div>
+        ) : null}
+        {devEnabled ? (
+          <div className="mx-auto mb-1 flex max-w-[660px] justify-end gap-1.5">
+            {branches.length > 1 ? (
+                <MessageIconButton label={t("branch.title")} onClick={() => setBranchOpen(true)}>
+                <span className="relative">
+                  <IconBranch className="size-4" />
+                  <span className="absolute -top-2 -right-2 grid size-4 place-items-center rounded-pill bg-accent text-[9px] leading-none text-accent-ink">
+                    {branches.length}
+                  </span>
+                </span>
+              </MessageIconButton>
+            ) : null}
+            <DevReportButton open={devOpen} onToggle={() => setDevOpen((open) => !open)} />
+          </div>
+        ) : branches.length > 1 ? (
+          <div className="mx-auto mb-1 flex max-w-[660px] justify-end">
+            <MessageIconButton label={t("branch.title")} onClick={() => setBranchOpen(true)}>
+                <span className="relative">
+                  <IconBranch className="size-4" />
+                  <span className="absolute -top-2 -right-2 grid size-4 place-items-center rounded-pill bg-accent text-[9px] leading-none text-accent-ink">
+                    {branches.length}
+                  </span>
+                </span>
+            </MessageIconButton>
           </div>
         ) : null}
         <input
@@ -2028,6 +2920,63 @@ export function ChatScreen({
 
       {/* 公告抽屉挂在屏幕根部，不套在「更多」里，否则会跟着抽屉一起定位 */}
       <AnnouncementDialog open={announceOpen} onClose={() => setAnnounceOpen(false)} />
+
+      {/* 分支切换（Phase 11.3）：不同选择各走各的，不覆盖原来的故事 */}
+      <Veil open={branchOpen} onClose={() => setBranchOpen(false)} />
+      <Sheet open={branchOpen} title={t("branch.title")} description={t("branch.hint")} onClose={() => setBranchOpen(false)} closeLabel={t("common.close")}>
+        <ul className="m-0 mb-4 list-none space-y-1.5 p-0">
+          {branches.map((branch, index) => (
+            <li key={branch.id} className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-pressed={activeBranch === branch.id}
+                onClick={() => switchBranch(branch)}
+                className={cn(
+                  "min-w-0 flex-1 truncate rounded-md border px-3 py-2 text-left text-[13px] transition-colors",
+                  activeBranch === branch.id
+                    ? "border-line-strong bg-surface-3 text-ink"
+                    : "border-line bg-surface-2 text-ink-2 hover:border-line-strong",
+                )}
+              >
+                {describeBranch(branch, index)}
+                <span className="ml-2 text-[11px] text-ink-3">
+                  {branchTreeRef.current.messages[branch.id]?.length ?? 0} 条
+                </span>
+              </button>
+              {branch.id !== MAIN_BRANCH ? (
+                <button
+                  type="button"
+                  aria-label={t("branch.remove")}
+                  onClick={() => dropBranch(branch)}
+                  className="shrink-0 rounded-sm px-2 py-1 text-[12px] text-ink-3 transition-colors hover:bg-surface-3 hover:text-danger"
+                >
+                  {t("branch.remove")}
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </Sheet>
+
+      {/* 作者注：当前聊天专属，从顶栏的大脑图标进来 */}
+      <AuthorNoteSheet
+        open={noteOpen}
+        note={note}
+        cardDefault={card.author_note}
+        scene={sceneRef.current}
+        threads={threadsRef.current}
+        onClose={() => setNoteOpen(false)}
+        onSave={(next) => {
+          setNote(next);
+          persist(turns, next);
+          setNoteOpen(false);
+        }}
+        onClear={() => {
+          setNote(null);
+          persist(turns, null);
+          setNoteOpen(false);
+        }}
+      />
 
       {/* 文本引擎观测只在开发模式（或 ?dev=1）出现，数据只在内存里 */}
       {devEnabled ? (

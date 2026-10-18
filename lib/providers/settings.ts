@@ -9,6 +9,7 @@ import {
   modelName,
   modelSeesImages,
 } from "./config";
+import { defaultAutoBackupSettings, normalizeAutoBackupSettings, type AutoBackupSettings } from "@/lib/storage/backup";
 
 export interface ProviderConfig {
   providerId: string;
@@ -26,6 +27,23 @@ export interface ProviderConfig {
   vision: boolean;
   /** 生图。model 为空表示没配，界面上的 CG 按钮保持禁用。 */
   image: ImageSettings;
+  /** Automatic encrypted archive downloads, persisted in the same encrypted slot. */
+  autoBackup: AutoBackupSettings;
+  /** Quality gate for generated message blocks and speaker names. */
+  qualityGate: boolean;
+  /** Story pacing systems. Missing fields in old vaults default to enabled. */
+  storySystems?: StorySystemSettings;
+}
+
+export interface StorySystemSettings {
+  events: boolean;
+  goals: boolean;
+  /** Start suggesting a gentle event after this many quiet turns. */
+  eventAfterTurns: number;
+}
+
+export function defaultStorySystemSettings(): StorySystemSettings {
+  return { events: true, goals: true, eventAfterTurns: 4 };
 }
 
 export interface ImageSettings {
@@ -99,6 +117,16 @@ export function withImage(config: Partial<ProviderConfig> | null | undefined): P
             (item) => modelName(item) === (config.model ?? base.model),
           )),
     image: migrateImage(config.image),
+    autoBackup: normalizeAutoBackupSettings(config.autoBackup),
+    qualityGate: config.qualityGate !== false,
+    storySystems: {
+      ...defaultStorySystemSettings(),
+      ...(config.storySystems ?? {}),
+      eventAfterTurns:
+        typeof config.storySystems?.eventAfterTurns === "number"
+          ? Math.max(2, Math.min(8, Math.round(config.storySystems.eventAfterTurns)))
+          : defaultStorySystemSettings().eventAfterTurns,
+    },
   };
 }
 
@@ -112,6 +140,9 @@ export function defaultProviderConfig(): ProviderConfig {
     temperature: 0.9,
     vision: modelSeesImages(preset.models[0]),
     image: defaultImageSettings(),
+    autoBackup: defaultAutoBackupSettings(),
+    qualityGate: true,
+    storySystems: defaultStorySystemSettings(),
   };
 }
 

@@ -75,7 +75,7 @@ export function createOpenAIProvider(
     async open(request) {
       // SDK 在 stream:true 时也会先 await fetch，
       // 所以 4xx / 5xx 会在这里抛出来，交给路由转成真实 HTTP 状态码。
-      const stream = await client.chat.completions.create(
+      const stream = (await client.chat.completions.create(
         {
           model: request.model,
           messages: attachImage(request.messages, request.image) as OpenAI.Chat.ChatCompletionCreateParams["messages"],
@@ -86,11 +86,12 @@ export function createOpenAIProvider(
           ...(request.maxTokens !== undefined
             ? { max_tokens: request.maxTokens }
             : {}),
+          reasoning_effort: request.reasoningEffort ?? "high",
           ...(request.tools?.length ? { tools: request.tools } : {}),
-        },
+        } as OpenAI.Chat.ChatCompletionCreateParams & { reasoning_effort?: "low" | "medium" | "high" },
         // signal 是中断链的末端：浏览器断开 → 路由 abort → 这里掐断上游连接
         { signal: request.signal },
-      );
+      )) as AsyncIterable<ChatCompletionChunk>;
 
       return toEvents(stream);
     },

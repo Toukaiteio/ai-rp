@@ -1,14 +1,15 @@
 "use client";
 
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { IconCheck, IconGlobe, IconSearch, IconX } from "@/components/icons";
-import { Field, FieldAction, FieldInput, PillButton } from "@/components/ui";
+import { CharacterCard, Dialog, Field, FieldAction, FieldInput, PillButton } from "@/components/ui";
 import { cn } from "@/components/ui/cn";
 import { parseCharacterCard } from "@/lib/cards";
 import {
   normalizeOnlineSearchResponse,
   onlineSearchUrl,
   ONLINE_SOURCE,
+  ONLINE_PAGE_SIZE,
   type OnlineCardsPayload,
   type OnlineCardItem,
 } from "@/lib/cards/online";
@@ -89,27 +90,7 @@ function writeCache(key: string, payload: OnlineCardsPayload): void {
   }
 }
 
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className={cn(
-        "size-[18px] transition-transform duration-200 motion-reduce:transition-none",
-        open && "rotate-180",
-      )}
-    >
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
-export function OnlineCards({ onAdded, compact = false }: { onAdded?: () => void; compact?: boolean }) {
+export function OnlineCards({ onAdded, compact = false, feed = false, localCards, onSelectLocal }: { onAdded?: () => void; compact?: boolean; feed?: boolean; localCards?: Array<{ id: string; card: { data: { name: string } } }>; onSelectLocal?: (cardId: string) => void }) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -126,8 +107,81 @@ export function OnlineCards({ onAdded, compact = false }: { onAdded?: () => void
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [added, setAdded] = useState<string | null>(null);
+  const [feedItems, setFeedItems] = useState<OnlineCardItem[]>([]);
+  const [feedQuery, setFeedQuery] = useState("");
+  const [feedApplied, setFeedApplied] = useState("");
+  const [feedPage, setFeedPage] = useState(0);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const feedLoadingRef = useRef(false);
+  const [feedHasMore, setFeedHasMore] = useState(true);
+  const feedEndRef = useRef<HTMLDivElement>(null);
   const loadedKeyRef = useRef<string | null>(null);
   const { t } = useI18n();
+
+  useEffect(() => {
+    if (!feed) return;
+    const controller = new AbortController();
+    let active = true;
+    feedLoadingRef.current = true;
+    void fetch(onlineSearchUrl(feedApplied, 1, includeAdult, []), { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`${t("online.fetchFail")}（HTTP ${response.status}）`);
+        const payload = normalizeOnlineSearchResponse(await response.json(), feedApplied, 1);
+        if (!active) return;
+        setFeedItems(payload.items);
+        setFeedPage(1);
+        setFeedHasMore(payload.items.length > 0 && payload.items.length < payload.total);
+      })
+      .catch(() => {
+        if (active) setFeedHasMore(false);
+      })
+      .finally(() => {
+        feedLoadingRef.current = false;
+        if (active) setFeedLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [feed, feedApplied, includeAdult, t]);
+
+  useEffect(() => {
+    if (!feed || !feedEndRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting) && feedHasMore && !feedLoading && !feedLoadingRef.current) {
+          const nextPage = feedPage + 1;
+          feedLoadingRef.current = true;
+          setFeedLoading(true);
+          void fetch(onlineSearchUrl(feedApplied, nextPage, includeAdult, []))
+            .then(async (response) => {
+              if (!response.ok) return null;
+              return normalizeOnlineSearchResponse(await response.json(), feedApplied, nextPage);
+            })
+            .then((nextPayload) => {
+              if (!nextPayload) {
+                setFeedHasMore(false);
+                return;
+              }
+              setFeedItems((current) => {
+                const seen = new Set(current.map((item) => item.id));
+                return [...current, ...nextPayload.items.filter((item) => !seen.has(item.id))];
+              });
+              setFeedPage(nextPage);
+              setFeedHasMore(nextPayload.items.length > 0 && nextPage * ONLINE_PAGE_SIZE < nextPayload.total);
+            })
+            .catch(() => setFeedHasMore(false))
+            .finally(() => {
+              feedLoadingRef.current = false;
+              setFeedLoading(false);
+            });
+        }
+      },
+      { rootMargin: "500px 0px" },
+    );
+    observer.observe(feedEndRef.current);
+    return () => observer.disconnect();
+  }, [feed, feedApplied, feedHasMore, feedLoading, feedPage, includeAdult]);
 
   async function load(nextQuery: string, nextTags: string[], adult: boolean, force: boolean) {
     const key = listKey(nextQuery, nextTags, adult);
@@ -183,7 +237,7 @@ export function OnlineCards({ onAdded, compact = false }: { onAdded?: () => void
   function toggle() {
     const next = !open;
     setOpen(next);
-    // 只在第一次展开、或者换过关键词时自动拉；其余时候本机缓存够用
+    // 只在第一次打开、或者换过关键词时自动拉；其余时候本机缓存够用
     if (next && loadedKeyRef.current !== listKey(applied, tags, includeAdult)) {
       void load(applied, tags, includeAdult, false);
     }
@@ -236,6 +290,60 @@ export function OnlineCards({ onAdded, compact = false }: { onAdded?: () => void
     }
   }
 
+  if (feed) {
+    return (
+      <section className="mt-1">
+        <form
+          className="mb-4 flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            feedLoadingRef.current = true;
+            setFeedItems([]);
+            setFeedPage(0);
+            setFeedHasMore(true);
+            setFeedApplied(feedQuery.trim());
+          }}
+        >
+          <Field className="min-w-0 flex-1">
+            <FieldInput
+              value={feedQuery}
+              onChange={(event) => setFeedQuery(event.target.value)}
+              placeholder={t("online.searchPlaceholder")}
+              aria-label={t("online.searchPlaceholder")}
+              maxLength={40}
+            />
+            <FieldAction type="submit" aria-label={t("online.search")}>
+              <IconSearch className="size-4" />
+            </FieldAction>
+          </Field>
+        </form>
+        <div className="grid gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3">
+          {feedItems.map((item) => (
+            (() => {
+              const local = localCards?.find((entry) => entry.card.data.name.trim().toLocaleLowerCase() === item.name.trim().toLocaleLowerCase());
+              return <CharacterCard
+              key={item.id}
+              portrait={<Avatar name={item.name} src={item.avatarUrl} />}
+              name={item.name}
+              description={item.tagline || item.topics.join(" · ")}
+              tags={item.topics.slice(0, 3).map((topic) => <span key={topic}>{topic}</span>)}
+              startLabel={local ? t("online.downloaded") : added === item.path ? t("online.added") : t("online.add")}
+              onStart={local || added === item.path ? undefined : () => void add(item)}
+              current={false}
+              currentLabel={t("online.added")}
+              onCardClick={local && onSelectLocal ? () => onSelectLocal(local.id) : undefined}
+              cardClickLabel={t("online.openDownloaded")}
+            />
+            })()
+          ))}
+        </div>
+        <div ref={feedEndRef} className="min-h-12 py-4 text-center text-[12px] text-ink-3" aria-live="polite">
+          {feedLoading ? t("online.loading") : feedHasMore ? "" : t("online.empty")}
+        </div>
+      </section>
+    );
+  }
+
   const items = payload?.items ?? [];
   const sourceName = payload?.source.name ?? ONLINE_SOURCE.name;
   const selected = new Set(tags.map((tag) => tag.toLowerCase()));
@@ -260,33 +368,44 @@ export function OnlineCards({ onAdded, compact = false }: { onAdded?: () => void
     <section className={compact ? "contents" : "mt-7"}>
       <button
         type="button"
-        aria-expanded={open}
+        aria-haspopup="dialog"
         onClick={toggle}
         className={cn(
-          "flex w-full items-center gap-3 rounded-card border border-line bg-surface px-4 py-3.5 text-left transition-colors hover:border-line-strong",
-          compact &&
-            "h-full min-h-[112px] justify-center px-3 py-3 text-center sm:min-h-[180px] sm:px-5 lg:min-h-[220px]",
+          "w-full rounded-card border border-line bg-surface transition-colors hover:border-line-strong",
+          compact
+            ? "card-tile flex flex-col items-center justify-center gap-2 p-3 text-center text-[13px] text-ink md:gap-3 md:p-5 md:text-[14.5px]"
+            : "flex items-center gap-3 px-4 py-3.5 text-left",
         )}
       >
-        <span className="grid size-[38px] shrink-0 place-items-center rounded-pill bg-surface-2 text-ink">
-          <IconGlobe className="size-[18px]" />
+        <span
+          className={cn(
+            "grid shrink-0 place-items-center rounded-pill bg-surface-2 text-ink",
+            compact ? "size-9 md:size-[52px]" : "size-[38px]",
+          )}
+        >
+          <IconGlobe className={compact ? "size-[18px] md:size-[26px]" : "size-[18px]"} />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-bold text-ink">
-            {compact ? t("online.importCard") : t("online.title")}
+        {compact ? (
+          <>
+            <span className="block text-[13px] md:text-[14.5px]">{t("online.importCard")}</span>
+            <span className="block text-[11.5px] text-ink-3">{t("online.disclaimerShort")}</span>
+          </>
+        ) : (
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-bold text-ink">{t("online.title")}</span>
+            <span className="block text-[12.5px] text-ink-2">{t("online.disclaimerShort")}</span>
           </span>
-          <span className="block text-[12.5px] text-ink-2">{t("online.disclaimerShort")}</span>
-        </span>
-        <span className="shrink-0 text-ink-2">
-          <Chevron open={open} />
-        </span>
+        )}
       </button>
 
-      {open ? (
-        <div className={cn(
-          "mt-2.5 rounded-card border border-line bg-surface px-4 pb-4 pt-3.5",
-          compact && "col-span-full",
-        )}>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        closeLabel={t("common.close")}
+        title={t("online.title")}
+        className="max-w-[680px]"
+      >
+        <div className="pb-1">
           <p className="m-0 mb-3 text-[12.5px] leading-[1.7] text-ink-3">
             {t("online.disclaimer", { source: sourceName })}
           </p>
@@ -461,7 +580,7 @@ export function OnlineCards({ onAdded, compact = false }: { onAdded?: () => void
             </>
           ) : null}
         </div>
-      ) : null}
+      </Dialog>
     </section>
   );
 }

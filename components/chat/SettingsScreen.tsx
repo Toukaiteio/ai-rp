@@ -27,12 +27,13 @@ import {
   type ProviderPreset,
 } from "@/lib/providers/config";
 import { IMAGE_STYLES } from "@/lib/image";
-import { defaultImageSettings, type ImageSettings, type ProviderConfig } from "@/lib/providers/settings";
+import { defaultImageSettings, defaultStorySystemSettings, type ImageSettings, type ProviderConfig } from "@/lib/providers/settings";
 import { cleanApiKey } from "@/lib/providers/apikey";
 import { hasMessage } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { useTheme } from "@/lib/use-theme";
 import type { MessageKey } from "@/lib/i18n";
+import { BACKUP_INTERVAL_HOURS } from "@/lib/storage/backup";
 
 /* 只从 config / settings 导入，不要从 @/lib/providers 导入：
    那个入口会带出 openai SDK，整个打进浏览器包。 */
@@ -66,6 +67,7 @@ export function SettingsScreen({
   const [showKey, setShowKey] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [browserReady, setBrowserReady] = useState(false);
+  const [activeTab, setActiveTab] = useState<"general" | "model" | "image" | "story" | "data">("general");
   const fileRef = useRef<HTMLInputElement>(null);
   const { t, locale, setLocale } = useI18n();
   const { theme, setTheme } = useTheme();
@@ -99,6 +101,7 @@ export function SettingsScreen({
   }
 
   const image = config.image ?? defaultImageSettings();
+  const storySystems = config.storySystems ?? defaultStorySystemSettings();
 
   /* 粘贴 Key 时常混进全角空格、零宽字符、BOM 或整段中文说明。
      这些字符进不了 HTTP 头，浏览器会在发请求前直接抛错，
@@ -119,7 +122,21 @@ export function SettingsScreen({
           action={<BackPill onClick={onBack}>{t("settings.back")}</BackPill>}
         />
 
+        <div className="mb-6 flex gap-1 overflow-x-auto rounded-pill border border-line bg-surface-2 p-1">
+          {(["general", "model", "image", "story", "data"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`shrink-0 rounded-pill px-3 py-2 text-[12px] transition-colors ${activeTab === tab ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-surface-3"}`}
+            >
+              {t(`settings.tab.${tab}` as MessageKey)}
+            </button>
+          ))}
+        </div>
+
         <div className="flex flex-col gap-7">
+          {activeTab === "general" ? <>
           <FormGroup title={t("settings.language")}>
             <OptRow>
               <OptChip selected={locale === "zh"} onClick={() => setLocale("zh")}>
@@ -145,7 +162,9 @@ export function SettingsScreen({
             </OptRow>
           </FormGroup>
 
-          <SettingsCard title={t("settings.languageModel")}>
+          </> : null}
+
+          {activeTab === "model" ? <SettingsCard title={t("settings.languageModel")}>
           <FormGroup title={t("settings.provider")}>
             <OptRow>
               {providers.map((provider) => (
@@ -311,9 +330,9 @@ export function SettingsScreen({
               onChange={(value) => patch({ temperature: value / 10 })}
             />
           </FormGroup>
-          </SettingsCard>
+          </SettingsCard> : null}
 
-          <SettingsCard title={t("settings.image")}>
+          {activeTab === "image" ? <SettingsCard title={t("settings.image")}>
           <div className="flex flex-col gap-3">
             <OptRow>
               <OptChip
@@ -429,8 +448,15 @@ export function SettingsScreen({
               </>
             ) : null}
           </div>
-          </SettingsCard>
+          </SettingsCard> : null}
 
+          {activeTab === "story" ? <FormGroup title={t("settings.storySystems")}>
+            <StoryToggle label={t("settings.events")} help={t("settings.eventsHelp")} enabled={storySystems.events} onClick={() => patch({ storySystems: { ...storySystems, events: !storySystems.events } })} />
+            <StoryToggle label={t("settings.goals")} help={t("settings.goalsHelp")} enabled={storySystems.goals} onClick={() => patch({ storySystems: { ...storySystems, goals: !storySystems.goals } })} />
+            {storySystems.events ? <SliderRow label={t("settings.eventAfterTurns")} min={2} max={8} value={storySystems.eventAfterTurns} display={t("settings.eventAfterTurnsValue", { count: storySystems.eventAfterTurns })} onChange={(value) => patch({ storySystems: { ...storySystems, eventAfterTurns: value } })} /> : null}
+          </FormGroup> : null}
+
+          {activeTab === "data" ? <>
           <FormGroup title={t("settings.archive")}>
             <MenuRow
               icon={<IconDownload className="size-[17px]" />}
@@ -453,6 +479,46 @@ export function SettingsScreen({
                 {archiveMessage}
               </div>
             ) : null}
+            <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 px-4 py-3">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={config.autoBackup.enabled}
+                onClick={() => patch({ autoBackup: { ...config.autoBackup, enabled: !config.autoBackup.enabled } })}
+                className="flex w-full items-center justify-between text-left text-[13px] text-ink"
+              >
+                <span>
+                  <span className="block">{t("settings.autoBackup")}</span>
+                  <span className="mt-1 block text-[12px] text-ink-2">{t("settings.autoBackupHelp")}</span>
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={`flex h-[22px] w-10 shrink-0 items-center justify-start rounded-pill p-0.5 ${config.autoBackup.enabled ? "bg-accent" : "bg-surface-3"}`}
+                >
+                  <span className={`size-[18px] rounded-pill shadow-raised ${config.autoBackup.enabled ? "bg-accent-ink" : "bg-ink"}`} style={{ transform: config.autoBackup.enabled ? "translateX(20px)" : "translateX(0px)" }} />
+                </span>
+              </button>
+              {config.autoBackup.enabled ? (
+                <>
+                  <OptRow>
+                    {BACKUP_INTERVAL_HOURS.map((hours) => (
+                      <OptChip
+                        key={hours}
+                        selected={config.autoBackup.intervalHours === hours}
+                        onClick={() => patch({ autoBackup: { ...config.autoBackup, intervalHours: hours } })}
+                      >
+                        {t("settings.autoBackupInterval", { count: hours })}
+                      </OptChip>
+                    ))}
+                  </OptRow>
+                  <p className="m-0 text-[12px] text-ink-2">
+                    {config.autoBackup.lastBackupAt
+                      ? t("settings.autoBackupLast", { time: new Date(config.autoBackup.lastBackupAt).toLocaleString() })
+                      : t("settings.autoBackupNever")}
+                  </p>
+                </>
+              ) : null}
+            </div>
             <input
               ref={fileRef}
               type="file"
@@ -464,6 +530,27 @@ export function SettingsScreen({
                 event.target.value = "";
               }}
             />
+          </FormGroup>
+
+          <FormGroup title={t("settings.qualityGate")}>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={config.qualityGate}
+              onClick={() => patch({ qualityGate: !config.qualityGate })}
+              className="flex w-full items-center justify-between rounded-lg border border-line bg-surface-2 px-4 py-3 text-left text-[13px] text-ink"
+            >
+              <span>
+                <span className="block">{t("settings.qualityGateEnabled")}</span>
+                <span className="mt-1 block text-[12px] text-ink-2">{t("settings.qualityGateHelp")}</span>
+              </span>
+              <span
+                aria-hidden="true"
+                className={`flex h-[22px] w-10 shrink-0 items-center rounded-pill p-0.5 ${config.qualityGate ? "justify-end bg-accent" : "justify-start bg-surface-3"}`}
+              >
+                <span className={`size-[18px] rounded-pill shadow-raised ${config.qualityGate ? "bg-accent-ink" : "bg-ink"}`} />
+              </span>
+            </button>
           </FormGroup>
 
           <FormGroup title={t("settings.vault")}>
@@ -503,6 +590,7 @@ export function SettingsScreen({
               </MenuRow>
             )}
           </FormGroup>
+          </> : null}
 
           <PillButton variant="primary" block onClick={onBack}>
             {t("settings.back")}
@@ -535,8 +623,21 @@ function SettingsCard({ title, children }: { title: string; children: ReactNode 
   );
 }
 
+function StoryToggle({ label, help, enabled, onClick }: { label: string; help: string; enabled: boolean; onClick: () => void }) {
+  return (
+    <button type="button" role="switch" aria-checked={enabled} onClick={onClick} className="flex w-full items-center justify-between rounded-lg border border-line bg-surface-2 px-4 py-3 text-left text-[13px] text-ink">
+      <span>
+        <span className="block">{label}</span>
+        <span className="mt-1 block text-[12px] text-ink-2">{help}</span>
+      </span>
+      <span aria-hidden="true" className={`flex h-[22px] w-10 shrink-0 items-center rounded-pill p-0.5 ${enabled ? "justify-end bg-accent" : "justify-start bg-surface-3"}`}>
+        <span className={`size-[18px] rounded-pill shadow-raised ${enabled ? "bg-accent-ink" : "bg-ink"}`} />
+      </span>
+    </button>
+  );
+}
+
 function styleName(id: string, t: (key: MessageKey) => string): string {
   const key = `image.style.${id}`;
   return hasMessage(key) ? t(key) : id;
 }
-

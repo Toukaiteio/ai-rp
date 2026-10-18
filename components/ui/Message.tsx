@@ -181,7 +181,7 @@ export function MessageActions({
   className?: string;
 }) {
   return (
-    <div className={cn("mt-3 flex flex-wrap gap-2", className)}>
+    <div className={cn("mt-1 flex flex-wrap gap-2", className)}>
       {children}
     </div>
   );

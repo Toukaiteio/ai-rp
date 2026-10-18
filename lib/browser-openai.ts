@@ -8,6 +8,7 @@ export interface BrowserOpenAIRequest {
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: "low" | "medium" | "high";
   tools?: ChatTool[];
   image?: string;
   signal?: AbortSignal;
@@ -40,6 +41,7 @@ export async function streamBrowserOpenAI(request: BrowserOpenAIRequest): Promis
       stream: true,
       ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
       ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),
+      reasoning_effort: request.reasoningEffort ?? "high",
       ...(request.tools?.length ? { tools: request.tools } : {}),
     }),
     signal: request.signal,

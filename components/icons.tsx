@@ -1,4 +1,4 @@
-import { Brain, Settings } from "lucide-react";
+import { Bookmark, Brain, ClipboardCheck, GitBranch, RefreshCw, Settings } from "lucide-react";
 import type { ReactNode, SVGProps } from "react";
 
 type IconProps = Omit<SVGProps<SVGSVGElement>, "children" | "strokeWidth"> & {
@@ -198,6 +198,22 @@ export function IconGithub({ className = "size-[19px]", ...rest }: IconProps) {
 /** 记忆：用 Lucide 的 Brain，不自己画。外面的进度环由调用方画。 */
 export function IconBrain({ className = "size-[19px]", ...rest }: IconProps) {
   return <Brain className={className} strokeWidth={1.8} aria-hidden="true" {...rest} />;
+}
+
+export function IconQuality({ className = "size-[17px]", ...rest }: IconProps) {
+  return <ClipboardCheck className={className} strokeWidth={1.8} aria-hidden="true" {...rest} />;
+}
+
+export function IconBranch({ className = "size-[17px]", ...rest }: IconProps) {
+  return <GitBranch className={className} strokeWidth={1.8} aria-hidden="true" {...rest} />;
+}
+
+export function IconRefresh({ className = "size-[17px]", ...rest }: IconProps) {
+  return <RefreshCw className={className} strokeWidth={1.8} aria-hidden="true" {...rest} />;
+}
+
+export function IconBookmark({ className = "size-[17px]", filled = false, ...rest }: IconProps & { filled?: boolean }) {
+  return <Bookmark className={className} strokeWidth={1.8} fill={filled ? "currentColor" : "none"} aria-hidden="true" {...rest} />;
 }
 
 /** 公告：一只铃铛，未读时调用方在角上加点 */

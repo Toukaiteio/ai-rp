@@ -19,6 +19,8 @@ export function CharacterCard({
   onStart,
   onReturn,
   returnLabel,
+  onCardClick,
+  cardClickLabel,
   className,
 }: {
   portrait?: ReactNode;
@@ -36,6 +38,8 @@ export function CharacterCard({
   onReturn?: () => void;
   /** 整张卡可点时的无障碍名称，随界面语言传入 */
   returnLabel?: string;
+  onCardClick?: () => void;
+  cardClickLabel?: string;
   className?: string;
 }) {
   const info = (
@@ -98,11 +102,20 @@ export function CharacterCard({
           className="absolute inset-0 z-10 cursor-pointer"
         />
       ) : null}
+      {!current && onCardClick ? (
+        <button
+          type="button"
+          aria-label={cardClickLabel ?? (typeof name === "string" ? name : undefined)}
+          onClick={onCardClick}
+          className="absolute inset-0 z-10 cursor-pointer"
+        />
+      ) : null}
     </div>
   );
 }
 
-/* 导入角色卡：虚线框，和实心角色卡区分开 */
+/* 导入角色卡：虚线框，和实心角色卡区分开。
+   高度交给 .card-tile，和旁边的立绘卡对齐。 */
 export function ImportCard({
   label,
   className,
@@ -112,7 +125,7 @@ export function ImportCard({
     <button
       type="button"
       className={cn(
-        "flex h-full min-h-[112px] flex-col items-center justify-center gap-2 rounded-card border-[1.5px] border-dashed border-line bg-transparent p-3 text-[13px] text-ink-2 sm:min-h-[180px] sm:gap-3 sm:p-5 sm:text-[14.5px] lg:min-h-[220px]",
+        "card-tile flex flex-col items-center justify-center gap-2 rounded-card border-[1.5px] border-dashed border-line bg-transparent p-3 text-[13px] text-ink-2 sm:gap-3 sm:p-5 sm:text-[14.5px]",
         "transition-colors hover:border-line-strong hover:text-ink",
         className,
       )}
@@ -136,7 +149,7 @@ export function CreateCard({
     <button
       type="button"
       className={cn(
-        "flex h-full min-h-[112px] flex-col items-center justify-center gap-2 rounded-card border border-line bg-surface p-3 text-[13px] text-ink sm:min-h-[180px] sm:gap-3 sm:p-5 sm:text-[14.5px] lg:min-h-[220px]",
+        "card-tile flex flex-col items-center justify-center gap-2 rounded-card border border-line bg-surface p-3 text-[13px] text-ink sm:gap-3 sm:p-5 sm:text-[14.5px]",
         "transition-colors hover:border-line-strong hover:bg-surface-2",
         className,
       )}

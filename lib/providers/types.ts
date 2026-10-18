@@ -34,6 +34,8 @@ export interface ChatRequest {
   model: string;
   temperature?: number;
   maxTokens?: number;
+  /** Reasoning-capable models use the strongest default effort. */
+  reasoningEffort?: "low" | "medium" | "high";
   signal?: AbortSignal;
   /** 不传就不向模型提供函数调用 */
   tools?: ChatTool[];

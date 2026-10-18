@@ -5,6 +5,12 @@ import { IconBack } from "@/components/icons";
 import { PillButton, ScreenHead } from "@/components/ui";
 import { addImportedCard, updateImportedCard, type ImportedCardRecord } from "@/lib/storage/cards";
 import { cardPortraitUrl, createEmptyCard, type CharacterCard } from "@/lib/cards";
+import {
+  defaultVoiceProfile,
+  describeVoice,
+  normalizeVoiceProfile,
+  type CharacterVoiceProfile,
+} from "@/lib/voice";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { Avatar } from "./Avatar";
 
@@ -17,6 +23,12 @@ type Draft = {
   mes_example: string;
   system_prompt: string;
   post_history_instructions: string;
+  author_note: string;
+  /**
+   * 角色声音（Phase 9）。编辑器里始终有一份完整档案，
+   * 和默认值完全一样时保存会把它丢掉——没写就是没写，不要留一份空档案。
+   */
+  voice: CharacterVoiceProfile;
   creator: string;
   character_version: string;
   tags: string;
@@ -50,6 +62,8 @@ function toDraft(card: CharacterCard): Draft {
     mes_example: data.mes_example ?? "",
     system_prompt: data.system_prompt ?? "",
     post_history_instructions: data.post_history_instructions ?? "",
+    author_note: data.author_note ?? "",
+    voice: data.voice ?? defaultVoiceProfile(),
     creator: data.creator ?? "",
     character_version: data.character_version ?? "",
     tags: data.tags?.join(", ") ?? "",
@@ -89,6 +103,9 @@ function toCard(draft: Draft, original: CharacterCard): CharacterCard {
       mes_example: draft.mes_example,
       system_prompt: draft.system_prompt,
       post_history_instructions: draft.post_history_instructions,
+      author_note: draft.author_note,
+      // 和默认值完全一样就不写：留一份空档案等于告诉组装器「这张卡有声音设定」
+      ...(normalizeVoiceProfile(draft.voice) ? { voice: draft.voice } : { voice: undefined }),
       creator: draft.creator.trim(),
       character_version: draft.character_version.trim(),
       tags,
@@ -105,6 +122,7 @@ function TextField({
   multiline = false,
   placeholder,
   required,
+  hint,
 }: {
   label: string;
   value: string;
@@ -112,6 +130,7 @@ function TextField({
   multiline?: boolean;
   placeholder?: string;
   required?: boolean;
+  hint?: string;
 }) {
   const className =
     "w-full rounded-md border border-line bg-surface-2 px-3.5 py-3 text-[14px] leading-6 text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-line-strong";
@@ -123,7 +142,44 @@ function TextField({
       ) : (
         <input className={className} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
       )}
+      {hint ? <span className="text-[11.5px] leading-relaxed text-ink-3">{hint}</span> : null}
     </label>
+  );
+}
+
+/** 三选一的分段按钮。用来编辑声音的三个枚举维度。 */
+function ChoiceRow<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[13px] font-bold text-ink">{label}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={value === option.value}
+            onClick={() => onChange(option.value)}
+            className={`rounded-pill border px-3 py-1.5 text-[12.5px] transition-colors ${
+              value === option.value
+                ? "border-line-strong bg-surface-3 text-ink"
+                : "border-line bg-surface-2 text-ink-2 hover:border-line-strong"
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -146,6 +202,27 @@ export function CharacterEditor({
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  /** 改声音的一个维度。 */
+  function setVoice(patch: Partial<CharacterVoiceProfile>) {
+    setDraft((current) => ({ ...current, voice: { ...current.voice, ...patch } }));
+  }
+
+  /**
+   * 改声音里的一个列表字段。
+   * 界面上是一个输入框，用分隔符切开——中文习惯用顿号，示例台词按行。
+   */
+  function setVoiceList(
+    key: "vocabulary" | "habits" | "avoidances" | "sampleLines",
+    value: string,
+    separator = "、",
+  ) {
+    const items = value
+      .split(separator)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    setVoice({ [key]: items } as Partial<CharacterVoiceProfile>);
   }
 
   async function save() {
@@ -263,7 +340,70 @@ export function CharacterEditor({
                 <TextField label={t("card.examples")} value={draft.mes_example} onChange={(value) => set("mes_example", value)} multiline />
                 <TextField label={t("card.systemPrompt")} value={draft.system_prompt} onChange={(value) => set("system_prompt", value)} multiline />
                 <TextField label={t("card.postHistory")} value={draft.post_history_instructions} onChange={(value) => set("post_history_instructions", value)} multiline />
+                <TextField label={t("card.authorNote")} value={draft.author_note} onChange={(value) => set("author_note", value)} multiline placeholder={t("card.authorNotePlaceholder")} />
                 <TextField label={t("card.alternateGreetings")} value={draft.alternate_greetings} onChange={(value) => set("alternate_greetings", value)} multiline placeholder={t("card.alternateGreetingsPlaceholder")} />
+                <div className="sm:col-span-2 flex flex-col gap-4 rounded-lg border border-line bg-surface-2 p-4">
+                  <div>
+                    <p className="m-0 text-[13px] font-bold text-ink">{t("voice.title")}</p>
+                    <p className="m-0 mt-1 text-[11.5px] leading-relaxed text-ink-3">{t("voice.hint")}</p>
+                  </div>
+                  <ChoiceRow
+                    label={t("voice.sentenceLength")}
+                    value={draft.voice.sentenceLength}
+                    options={[
+                      { value: "short", label: t("voice.length.short") },
+                      { value: "medium", label: t("voice.length.medium") },
+                      { value: "long", label: t("voice.length.long") },
+                    ]}
+                    onChange={(value) => setVoice({ sentenceLength: value })}
+                  />
+                  <ChoiceRow
+                    label={t("voice.directness")}
+                    value={draft.voice.directness}
+                    options={[
+                      { value: "direct", label: t("voice.direct.direct") },
+                      { value: "indirect", label: t("voice.direct.indirect") },
+                    ]}
+                    onChange={(value) => setVoice({ directness: value })}
+                  />
+                  <ChoiceRow
+                    label={t("voice.emotion")}
+                    value={draft.voice.emotionalExpression}
+                    options={[
+                      { value: "open", label: t("voice.emotion.open") },
+                      { value: "restrained", label: t("voice.emotion.restrained") },
+                    ]}
+                    onChange={(value) => setVoice({ emotionalExpression: value })}
+                  />
+                  <TextField
+                    label={t("voice.vocabulary")}
+                    value={draft.voice.vocabulary.join("、")}
+                    onChange={(value) => setVoiceList("vocabulary", value)}
+                    placeholder={t("voice.vocabularyPlaceholder")}
+                  />
+                  <TextField
+                    label={t("voice.habits")}
+                    value={draft.voice.habits.join("、")}
+                    onChange={(value) => setVoiceList("habits", value)}
+                    placeholder={t("voice.habitsPlaceholder")}
+                  />
+                  <TextField
+                    label={t("voice.avoidances")}
+                    value={draft.voice.avoidances.join("、")}
+                    onChange={(value) => setVoiceList("avoidances", value)}
+                    placeholder={t("voice.avoidancesPlaceholder")}
+                  />
+                  <TextField
+                    label={t("voice.samples")}
+                    value={draft.voice.sampleLines.join("\n")}
+                    onChange={(value) => setVoiceList("sampleLines", value, "\n")}
+                    multiline
+                    placeholder={t("voice.samplesPlaceholder")}
+                  />
+                  <p className="m-0 rounded-md border border-line bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-2">
+                    {t("voice.preview")}：{describeVoice(draft.voice) || t("voice.previewEmpty")}
+                  </p>
+                </div>
               </>
             ) : null}
           </section>
