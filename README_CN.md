@@ -37,3 +37,66 @@ pnpm start
 ```
 
 仅限个人 / 非商业使用。
+
+## 文本引擎观测
+
+每轮生成都会产出一份结构化报告：块数、act 是否合格、有没有替玩家行动、有没有复读、
+语言是否切错，以及判定结果是合格 / 可修复 / 不合格。
+
+- 开发模式点顶栏的 `QA` 按钮查看，每轮列出跑过的全部检查；预览部署可加 `?dev=1` 打开。
+- 报告只在内存里，不含正文和玩家输入，不落盘。
+- 不合格的回复不会写进历史：先自动降级一次（act 改旁白、对白剥掉动作），
+  救不回来时再让模型只修格式修一次，仍然不合格就丢弃并提示重新生成。
+- 提示词分两层：稳定层（规则、角色卡、文风、世界书、摘要）负责缓存命中，
+  回合层（语言、当前场景、活跃剧情线、回合模式、act 约束与正向示例）
+  放在历史之后，让最容易漂移的要求离生成最近。
+- 作者注（顶栏大脑图标）只管「这一轮怎么写」：节奏、重点、格式提醒、临时风格。
+  它插在最后一条玩家输入之前，可以设出现频率和插入位置，也能按角色卡给默认值。
+- 场景状态记「此刻」：在哪儿、什么时候、谁在场、正在发生什么、有哪些线没收。
+  每轮只保存变化项，每个字段带可信度——模型猜的内容标成推断，不会悄悄变成设定。
+- 未完成的剧情线单独记：每轮最多把和当前场景有关的三条交给模型，
+  已交代完的线不会被重新说成悬念，也不会催模型去收线。
+- 记忆分五层（场景 / 角色 / 世界 / 剧情 / 风格），不是提到就记：
+  要满足「玩家确认、多次出现、影响剧情、来自卡或世界书、工具调用」之一。
+  新旧事实冲突时保留旧记录、标记冲突，等玩家确认，不让模型随口改掉长期设定。
+- 世界书分三来源（全局 / 角色 / 当前聊天），按「常驻规则 → 当前场景相关 →
+  玩家刚提到的关键词 → 普通背景」花预算：预算不够时丢背景，不丢常驻。
+- 角色声音把「她怎么说话」拆成句长、直接程度、情绪外露加习惯和口头禅，
+  再压成一句话交给模型（不逐项念给它听）。在角色卡的「高级」里填，
+  保存时写进 `extensions.voice_profile`，别的客户端读卡不受影响。
+- 开发模式顶栏的 QA 面板有两个页签：「检查结果」看这一轮写得怎么样，
+  「提示词结构」看模型到底看到了什么（消息顺序、来源、token、
+  激活的世界书、场景状态、剧情线、作者注、导演计划）。定位问题先看后者。
+- 重新生成会把上一版整个丢掉、保留同一句玩家输入，并附一句临时纠偏
+  （说清别复用上一版的什么）。改历史消息之后会提示哪些状态可能过时，
+  不自动重算。每条消息都能「分出去」建剧情分支，主干不会被覆盖。
+- 有一份 50 组的评测集和三族指标（结构 / 叙事 / 连贯性），
+  改完提示词跑一遍就知道有没有变差。连贯性那四项靠 4 轮序列才测得出。
+- 改动提示词或解析之后，重跑用例并对比基线：
+
+```bash
+$env:YOSEI_API_KEY = "sk-..."   # Key 只从环境变量读，不写进输出文件
+pnpm baseline         # 26 组人工用例，看生成质量
+pnpm repair-check     # 6 条坏候选，看自动修复行为
+pnpm state-check      # 连跑 6 轮，看场景状态和剧情线有没有漂
+pnpm lorebook-check   # 三来源世界书的注入与预算分配
+pnpm voice-check      # 角色声音 A/B：同一段对话，加不加声音差多少
+pnpm regenerate-check # 重新生成：错误回复有没有泄漏、纠偏有没有生效
+pnpm test:roleplay    # 50 组评测集的装配检查（不调模型，几秒）
+pnpm test:roleplay:live  # 同上但调模型，出三族指标并和基线比（要 Key）
+```
+
+细节见 [doc/phase0-baseline.md](doc/phase0-baseline.md)、
+[doc/phase1-quality-gate.md](doc/phase1-quality-gate.md)、
+[doc/phase2-repair.md](doc/phase2-repair.md)、
+[doc/phase3-prompt-layers.md](doc/phase3-prompt-layers.md)、
+[doc/phase4-author-note.md](doc/phase4-author-note.md)、
+[doc/phase5-scene-state.md](doc/phase5-scene-state.md)、
+[doc/phase6-story-threads.md](doc/phase6-story-threads.md)、
+[doc/phase7-memory-layers.md](doc/phase7-memory-layers.md)、
+[doc/phase8-worldbook.md](doc/phase8-worldbook.md)、
+[doc/phase9-voice.md](doc/phase9-voice.md)、
+[doc/phase10-prompt-inspector.md](doc/phase10-prompt-inspector.md)、
+[doc/phase11-regenerate-edit-branch.md](doc/phase11-regenerate-edit-branch.md)、
+[doc/phase12-eval-regression.md](doc/phase12-eval-regression.md)。
+
