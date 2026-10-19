@@ -172,8 +172,7 @@ export async function translateCharacterCard(
           body: JSON.stringify({ mode: "complete", providerId: config.providerId, model: config.model.trim(),
             baseURL: resolved && "baseURL" in resolved ? resolved.baseURL : undefined,
             messages, temperature: settings.temperature, reasoningEffort: "low",
-            maxTokens: Math.min(settings.maxTokens, Math.max(settings.minTokens,
-              Math.ceil(messages[1].content.length * settings.outputTokensPerCharacter + settings.outputTokenOverhead))) }),
+            maxTokens: settings.maxTokens }),
         });
         if (!response.ok) throw new CardTranslationError("translation_request_failed", { reason: "http_error", status: response.status });
         if (!response.body) throw new CardTranslationError("translation_incomplete", { reason: "stream_interrupted" });

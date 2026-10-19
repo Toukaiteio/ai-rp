@@ -208,7 +208,7 @@ describe("translateCharacterCard", () => {
     expect(url).toBe("/api/chat");
     expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-test" });
     expect(JSON.parse(String(init?.body))).toMatchObject({ mode: "complete", model: "test-model", reasoningEffort: "low" });
-    expect(JSON.parse(String(init?.body)).maxTokens).toBeLessThanOrEqual(4096);
+    expect(JSON.parse(String(init?.body)).maxTokens).toBe(10000);
     expect(String(init?.body)).not.toContain("sk-test");
   });
   it("splits a large field and completes multiple batches without splitting markers", async () => {

@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "batchCharacters": 1800,
   "segmentCharacters": 1000,
-  "maxTokens": 4096,
+  "maxTokens": 10000,
   "minTokens": 1024,
   "outputTokensPerCharacter": 2,
   "outputTokenOverhead": 512,
