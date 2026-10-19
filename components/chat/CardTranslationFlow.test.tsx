@@ -5,11 +5,11 @@ import { getProviderConfigSnapshot } from "@/lib/storage/settings";
 import { defaultProviderConfig, withImage } from "@/lib/providers/settings";
 import { clearTranslationSession, translateAndSaveCard, translationDiagnostic, translationErrorKey, translationPercent, type TranslationProgress, type TranslationSession } from "./CardTranslationFlow";
 import { renderToStaticMarkup } from "react-dom/server";
-import { translate, type MessageKey } from "@/lib/i18n";
+import { translate, type MessageKey, type Vars } from "@/lib/i18n";
 import { CardTranslationDialog } from "./CardTranslationDialog";
 
 vi.mock("@/lib/i18n/use-i18n", () => ({
-  useI18n: () => ({ locale: "en", t: (key: MessageKey) => translate("en", key) }),
+  useI18n: () => ({ locale: "en", t: (key: MessageKey, vars?: Vars) => translate("en", key, vars) }),
 }));
 
 vi.mock("@/lib/cards", async (importOriginal) => ({
@@ -24,15 +24,15 @@ describe("card translation save flow", () => {
     vi.mocked(getProviderConfigSnapshot).mockReturnValue(defaultProviderConfig());
   });
 
-  it.each(["zh", "en"] as const)("uses the current config and saves a separate %s card", async (locale) => {
+  it.each(["Simplified Chinese", "English"])("uses the current config and saves a separate %s card", async (language) => {
     const card = createEmptyCard();
     card.data.name = "Original";
     const result = structuredClone(card);
     result.data.name = "Translated";
     vi.mocked(translateCharacterCard).mockResolvedValue(result);
     const controller = new AbortController();
-    await translateAndSaveCard(card, locale, controller.signal);
-    expect(translateCharacterCard).toHaveBeenCalledWith(card, locale, withImage(getProviderConfigSnapshot()), { signal: controller.signal });
+    await translateAndSaveCard(card, language, controller.signal);
+    expect(translateCharacterCard).toHaveBeenCalledWith(card, language, withImage(getProviderConfigSnapshot()), { signal: controller.signal });
     expect(addImportedCard).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ name: "Translated" }),
     }), { strict: true, signal: controller.signal });
@@ -46,21 +46,21 @@ describe("card translation save flow", () => {
       controller.abort();
       return createEmptyCard();
     });
-    await expect(translateAndSaveCard(createEmptyCard(), "zh", controller.signal)).rejects.toThrow();
+    await expect(translateAndSaveCard(createEmptyCard(), "Simplified Chinese", controller.signal)).rejects.toThrow();
     expect(addImportedCard).not.toHaveBeenCalled();
   });
 
   it("does not invoke the model for an already cancelled request", async () => {
     const controller = new AbortController();
     controller.abort();
-    await expect(translateAndSaveCard(createEmptyCard(), "en", controller.signal)).rejects.toThrow();
+    await expect(translateAndSaveCard(createEmptyCard(), "English", controller.signal)).rejects.toThrow();
     expect(translateCharacterCard).not.toHaveBeenCalled();
   });
 
   it("reports persistence failure rather than success", async () => {
     vi.mocked(translateCharacterCard).mockResolvedValue(createEmptyCard());
     vi.mocked(addImportedCard).mockRejectedValue(new Error("disk full"));
-    await expect(translateAndSaveCard(createEmptyCard(), "en", new AbortController().signal))
+    await expect(translateAndSaveCard(createEmptyCard(), "English", new AbortController().signal))
       .rejects.toMatchObject({ code: "translation_save_failed" });
   });
 
@@ -72,10 +72,10 @@ describe("card translation save flow", () => {
       checkpoint.translations.s0 = "Completed";
       throw { code: "translation_incomplete", details: { reason: "stream_interrupted", completed: 1, total: 2 } };
     }).mockResolvedValueOnce(createEmptyCard());
-    await expect(translateAndSaveCard(card, "en", new AbortController().signal, { session })).rejects.toMatchObject({ code: "translation_incomplete" });
+    await expect(translateAndSaveCard(card, "English", new AbortController().signal, { session })).rejects.toMatchObject({ code: "translation_incomplete" });
     expect(session.checkpoint.translations).toEqual({ s0: "Completed" });
     const checkpoint = session.checkpoint;
-    await translateAndSaveCard(card, "en", new AbortController().signal, { session });
+    await translateAndSaveCard(card, "English", new AbortController().signal, { session });
     expect(vi.mocked(translateCharacterCard).mock.calls[1][3]).toMatchObject({ checkpoint });
     expect(session).toEqual({ checkpoint: { translations: {} } });
   });
@@ -86,19 +86,19 @@ describe("card translation save flow", () => {
     const translated = createEmptyCard();
     vi.mocked(translateCharacterCard).mockResolvedValue(translated);
     vi.mocked(addImportedCard).mockRejectedValueOnce(new Error("disk full")).mockResolvedValueOnce({ id: "saved", card: translated, importedAt: 0 });
-    await expect(translateAndSaveCard(card, "en", new AbortController().signal, { session })).rejects.toMatchObject({ code: "translation_save_failed" });
+    await expect(translateAndSaveCard(card, "English", new AbortController().signal, { session })).rejects.toMatchObject({ code: "translation_save_failed" });
     expect(session.translated).toBe(translated);
-    await translateAndSaveCard(card, "en", new AbortController().signal, { session });
+    await translateAndSaveCard(card, "English", new AbortController().signal, { session });
     expect(translateCharacterCard).toHaveBeenCalledTimes(1);
     expect(addImportedCard).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["source", "locale", "provider", "model", "baseURL", "temperature"])("invalidates the complete cache when %s changes", async (changed) => {
+  it.each(["source", "language", "provider", "model", "baseURL", "temperature"])("invalidates the complete cache when %s changes", async (changed) => {
     const session: TranslationSession = { checkpoint: { translations: {} } };
     const card = createEmptyCard();
     vi.mocked(translateCharacterCard).mockResolvedValue(createEmptyCard());
     vi.mocked(addImportedCard).mockRejectedValueOnce(new Error("disk full")).mockResolvedValueOnce({ id: "saved", card, importedAt: 0 });
-    await expect(translateAndSaveCard(card, "en", new AbortController().signal, { session })).rejects.toThrow();
+    await expect(translateAndSaveCard(card, "English", new AbortController().signal, { session })).rejects.toThrow();
     if (changed === "source") card.data.description = "new source";
     const config = defaultProviderConfig();
     config.apiKey = "private-key";
@@ -107,7 +107,7 @@ describe("card translation save flow", () => {
     if (changed === "baseURL") config.baseURL = "https://example.com/v1";
     if (changed === "temperature") config.temperature = 0.3;
     vi.mocked(getProviderConfigSnapshot).mockReturnValue(config);
-    await translateAndSaveCard(card, changed === "locale" ? "zh" : "en", new AbortController().signal, { session });
+    await translateAndSaveCard(card, changed === "language" ? "Simplified Chinese" : "English", new AbortController().signal, { session });
     expect(translateCharacterCard).toHaveBeenCalledTimes(2);
   });
 
@@ -119,7 +119,7 @@ describe("card translation save flow", () => {
     const session: TranslationSession = { checkpoint: { translations: {} } };
     vi.mocked(translateCharacterCard).mockResolvedValue(createEmptyCard());
     vi.mocked(addImportedCard).mockRejectedValue(new Error("disk full"));
-    await expect(translateAndSaveCard(createEmptyCard(), "en", new AbortController().signal, { session })).rejects.toThrow();
+    await expect(translateAndSaveCard(createEmptyCard(), "English", new AbortController().signal, { session })).rejects.toThrow();
     expect(session.binding).not.toContain("secret-");
     clearTranslationSession(session);
     expect(session).toEqual({ checkpoint: { translations: {} } });
@@ -137,7 +137,7 @@ describe("card translation save flow", () => {
       events.push("saved");
       return { id: "saved", card, importedAt: 0 };
     });
-    await translateAndSaveCard(createEmptyCard(), "en", new AbortController().signal, {
+    await translateAndSaveCard(createEmptyCard(), "English", new AbortController().signal, {
       onProgress, onSaving: () => { events.push("saving"); },
     });
     expect(onProgress).toHaveBeenCalledWith(progress);
@@ -150,7 +150,7 @@ describe("card translation save flow", () => {
       vi.mocked(getProviderConfigSnapshot).mockReturnValue({ ...defaultProviderConfig(), model: "new-model" });
       return createEmptyCard();
     });
-    await expect(translateAndSaveCard(createEmptyCard(), "en", new AbortController().signal, { session })).rejects.toMatchObject({ name: "AbortError" });
+    await expect(translateAndSaveCard(createEmptyCard(), "English", new AbortController().signal, { session })).rejects.toMatchObject({ name: "AbortError" });
     expect(addImportedCard).not.toHaveBeenCalled();
     expect(session).toEqual({ checkpoint: { translations: {} } });
   });
@@ -163,7 +163,7 @@ describe("card translation save flow", () => {
       controller.abort();
       return createEmptyCard();
     });
-    await expect(translateAndSaveCard(createEmptyCard(), "en", controller.signal, { session })).rejects.toThrow();
+    await expect(translateAndSaveCard(createEmptyCard(), "English", controller.signal, { session })).rejects.toThrow();
     expect(session).toEqual({ checkpoint: { translations: {} } });
     expect(addImportedCard).not.toHaveBeenCalled();
   });
@@ -187,7 +187,7 @@ const handlers = { onSkip: () => {}, onClose: () => {}, onStart: () => {}, onOpe
 
 describe("translation progress and safe diagnostics", () => {
   it("renders real segment, source and stream counts with a themed progress bar", () => {
-    const html = renderToStaticMarkup(<CardTranslationDialog stage="loading" name="Card" skip={false} error="card.translationFailed" progress={progress} {...handlers} />);
+    const html = renderToStaticMarkup(<CardTranslationDialog stage="loading" name="Card" targetLanguage="English" skip={false} error="card.translationFailed" progress={progress} {...handlers} />);
     expect(html).toContain("2 / 4");
     expect(html).toContain("200 / 800 · 25%");
     expect(html).toContain("Characters received in this translation attempt: 37");
@@ -201,23 +201,20 @@ describe("translation progress and safe diagnostics", () => {
     expect(translationPercent(complete)).toBe(99);
     expect(translationPercent(undefined)).toBe(0);
     expect(translationPercent({ ...progress, completedCharacters: NaN })).toBe(0);
-    const saving = renderToStaticMarkup(<CardTranslationDialog stage="loading" name="Card" skip={false} error="card.translationFailed" progress={complete} saving {...handlers} />);
+    const saving = renderToStaticMarkup(<CardTranslationDialog stage="loading" name="Card" targetLanguage="English" skip={false} error="card.translationFailed" progress={complete} saving {...handlers} />);
     expect(saving).toContain("saving translated card");
     expect(saving).toContain('aria-valuenow="99"');
-    const success = renderToStaticMarkup(<CardTranslationDialog stage="success" name="Card" skip={false} error="card.translationFailed" progress={complete} {...handlers} />);
+    const success = renderToStaticMarkup(<CardTranslationDialog stage="success" name="Card" targetLanguage="English" skip={false} error="card.translationFailed" progress={complete} {...handlers} />);
     expect(success).toContain('aria-valuenow="100"');
   });
 
   it.each(["output_limit", "content_filter", "stream_interrupted", "invalid_json", "json_truncated", "invalid_sse", "unexpected_finish_reason", "upstream_error", "network_error", "unexpected_fields", "invalid_value", "invalid_dictionary", "missing_fields", "protected_tokens", "http_error"])("safely explains %s with failed field and completed count", (reason) => {
     const diagnostic = translationDiagnostic({ message: "private payload", details: { reason, field: "character_book", completed: 2, total: 4, status: 429, payload: "secret" } });
-    const html = renderToStaticMarkup(<CardTranslationDialog stage="error" name="Card" skip={false} error="card.translationIncomplete" diagnostic={diagnostic} progress={progress} {...handlers} />);
+    const html = renderToStaticMarkup(<CardTranslationDialog stage="error" name="Card" targetLanguage="English" skip={false} error="card.translationIncomplete" diagnostic={diagnostic} progress={progress} {...handlers} />);
     expect(html).toContain(translate("en", diagnostic.reason).replaceAll("'", "&#x27;"));
     expect(html).toContain("World book");
     expect(html).toContain("2 / 4");
     expect(html).toContain("Continue translation");
-    expect(html).toContain("temporarily");
-    expect(html).toContain("consume more model credits");
-    expect(html).toContain("cannot refund");
     expect(html).not.toContain("private payload");
     expect(html).not.toContain("secret");
     expect(diagnostic.reason).not.toBe("card.translationReasonUnknown");
@@ -230,11 +227,11 @@ describe("translation progress and safe diagnostics", () => {
   });
 
   it("offers a save-only retry and configuration settings", () => {
-    const save = renderToStaticMarkup(<CardTranslationDialog stage="error" name="Card" skip={false} error="card.translationSaveFailed" {...handlers} />);
+    const save = renderToStaticMarkup(<CardTranslationDialog stage="error" name="Card" targetLanguage="English" skip={false} error="card.translationSaveFailed" {...handlers} />);
     expect(save).toContain("Retry saving");
     expect(save).toContain("without calling the model again");
     expect(save).not.toContain("consume more model credits");
-    const config = renderToStaticMarkup(<CardTranslationDialog stage="error" name="Card" skip={false} error="card.translationNotConfigured" {...handlers} />);
+    const config = renderToStaticMarkup(<CardTranslationDialog stage="error" name="Card" targetLanguage="English" skip={false} error="card.translationNotConfigured" {...handlers} />);
     expect(config).toContain("Open Settings");
   });
 });

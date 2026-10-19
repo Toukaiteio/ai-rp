@@ -3,13 +3,15 @@ import { Check } from "lucide-react";
 import { Dialog, PillButton } from "@/components/ui";
 import type { MessageKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/use-i18n";
-import { translationFieldKey, translationPercent, type TranslationDiagnostic, type TranslationProgress } from "./CardTranslationFlow";
+import { translationFieldKey, translationLanguageLabel, translationPercent, type TranslationDiagnostic, type TranslationProgress } from "./CardTranslationFlow";
 
 export type CardTranslationStage = "closed" | "confirm" | "loading" | "success" | "error";
 
-export function CardTranslationDialog({ stage, name, skip, error, diagnostic, progress, saving, onSkip, onClose, onStart, onOpenSettings }: {
+export function CardTranslationDialog({ stage, name, targetLanguage, skip, error, diagnostic, progress, saving, onSkip, onClose, onStart, onOpenSettings }: {
   stage: Exclude<CardTranslationStage, "closed">;
   name: string;
+  /** 目标语言（送进提示词的语言名），标题里显示成界面语言 */
+  targetLanguage: string;
   skip: boolean;
   error: MessageKey;
   diagnostic?: TranslationDiagnostic;
@@ -44,7 +46,7 @@ export function CardTranslationDialog({ stage, name, skip, error, diagnostic, pr
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }}>
-      <Dialog open onClose={onClose} closeLabel={t("common.close")} title={t("card.translate")}>
+      <Dialog open onClose={onClose} closeLabel={t("common.close")} title={t("card.translateToLanguage", { language: translationLanguageLabel(targetLanguage, t) })}>
         <p className="mb-3 text-[13px] font-bold text-ink">{name}</p>
         {stage === "confirm" ? (
           <>
@@ -81,11 +83,8 @@ export function CardTranslationDialog({ stage, name, skip, error, diagnostic, pr
         {stage === "error" && error !== "card.translationNotConfigured" && error !== "card.translationSaveFailed" ? (
           <p className="mt-3 text-[13px] text-danger">{t(diagnostic?.reason ?? "card.translationReasonUnknown")}{diagnostic?.status ? ` (HTTP ${diagnostic.status})` : ""}</p>
         ) : null}
-        {stage === "loading" || (stage === "error" && error !== "card.translationNotConfigured") ? (
-          <div className="mt-3 space-y-2 text-[12px] leading-relaxed text-ink-2">
-            <p>{t(error === "card.translationSaveFailed" && stage === "error" ? "card.translationSaveRetryNotice" : "card.translationTemporary")}</p>
-            {stage === "error" && error === "card.translationSaveFailed" ? null : <p>{t("card.translationContinueNotice")}</p>}
-          </div>
+        {stage === "error" && error === "card.translationSaveFailed" ? (
+          <p className="mt-3 text-[12px] leading-relaxed text-ink-2">{t("card.translationSaveRetryNotice")}</p>
         ) : null}
         <div className="mt-4 flex flex-wrap justify-end gap-2">
           <PillButton size="sm" onClick={onClose}>{t(stage === "confirm" || stage === "loading" ? "card.cancel" : "common.close")}</PillButton>

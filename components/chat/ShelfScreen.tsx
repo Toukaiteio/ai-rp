@@ -298,8 +298,8 @@ export function ShelfScreen({
           {filteredCards.map((entry) => {
             const playable = isPlayableCard(entry.card.data);
             return (
-              <div key={entry.id} className="flex flex-col gap-2">
               <CharacterCard
+                key={entry.id}
                 portrait={<Avatar name={entry.card.data.name} src={cardPortraitUrl(entry.card.data)} />}
                 name={entry.card.data.name}
                 description={firstSentence(applyMacros(entry.card.data.description, { char: entry.card.data.name, user: userName, card: entry.card.data }))}
@@ -314,6 +314,7 @@ export function ShelfScreen({
                 current={entry.id === currentCardId}
                 currentLabel={t("common.current")}
                 startLabel={t("common.start")}
+                startAccessory={<CardTranslation card={entry.card} onCardsChanged={onCardsChanged} onOpenSettings={onOpenSettings} />}
                 onStart={playable ? () => onSelect(entry.id) : undefined}
                 onReturn={entry.id === currentCardId ? onBack : undefined}
                 returnLabel={t("shelf.returnToChat", { name: entry.card.data.name })}
@@ -354,8 +355,6 @@ export function ShelfScreen({
                   </>
                 }
               />
-              <CardTranslation card={entry.card} onCardsChanged={onCardsChanged} onOpenSettings={onOpenSettings} />
-              </div>
             );
           })}
 

@@ -15,6 +15,11 @@ export { CardTranslationError, parseTranslationDictionary } from "./translation-
 export type { CardTranslationErrorCode, CardTranslationErrorDetails, CardTranslationProgress,
   CardTranslationCheckpoint } from "./translation-types";
 
+/** 菜单里的候选目标语言：键是语言码，值是送进提示词的语言名。 */
+export function translationLanguages(): Record<string, string> {
+  return settings.languages;
+}
+
 async function readTranslationStream(
   body: ReadableStream<Uint8Array>, onDelta: (text: string) => void, signal?: AbortSignal,
 ): Promise<string> {
@@ -87,7 +92,7 @@ async function readTranslationStream(
 
 export async function translateCharacterCard(
   card: CharacterCard,
-  locale: "zh" | "en",
+  targetLanguage: string,
   config: ProviderConfig,
   options?: { signal?: AbortSignal; onProgress?: (progress: CardTranslationProgress) => void; checkpoint?: CardTranslationCheckpoint },
 ): Promise<CharacterCard> {
@@ -112,7 +117,7 @@ export async function translateCharacterCard(
     const result = structuredClone(card);
     const segments = collectTranslationSegments(result);
     const checkpoint = options?.checkpoint ?? { translations: {} };
-    const signatureInput = JSON.stringify([card, locale, config.providerId, config.model.trim(),
+    const signatureInput = JSON.stringify([card, targetLanguage, config.providerId, config.model.trim(),
       resolved && "baseURL" in resolved ? resolved.baseURL : config.baseURL, local, settings]);
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureInput));
     checkAbort(signal);
@@ -156,7 +161,7 @@ export async function translateCharacterCard(
       checkAbort(signal);
       const source = Object.fromEntries(batch.map(({ key, text }) => [key, text]));
       const messages: ChatMessage[] = [
-        { role: "system", content: `${settings.systemPrompt}\nTarget language: ${settings.languages[locale]}.\n${batch[0].field === "name"
+        { role: "system", content: `${settings.systemPrompt}\nTarget language: ${targetLanguage}.\n${batch[0].field === "name"
           ? settings.namePrompt : `${settings.glossaryPrompt} ${JSON.stringify({ [card.data.name]: result.data.name })}`}` },
         { role: "user", content: JSON.stringify(source) },
       ];

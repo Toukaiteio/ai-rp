@@ -16,6 +16,8 @@ export function CharacterCard({
   current = false,
   currentLabel,
   startLabel,
+  /** 开始按钮左侧的圆形入口，和目标语言菜单这类次级动作共用一行 */
+  startAccessory,
   onStart,
   onReturn,
   returnLabel,
@@ -33,6 +35,8 @@ export function CharacterCard({
   current?: boolean;
   currentLabel?: ReactNode;
   startLabel: ReactNode;
+  /** 开始按钮左侧的圆形入口，和目标语言菜单这类次级动作共用一行 */
+  startAccessory?: ReactNode;
   onStart?: () => void;
   /** 当前角色卡的点击：回到对话。只有传了这个，整张卡才可点 */
   onReturn?: () => void;
@@ -66,34 +70,38 @@ export function CharacterCard({
 
       {/* 卡级操作压右上角，衬一层半透明底，压在什么画面上都看得见 */}
       {actions ? (
-        <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">{actions}</div>
+        <div className="absolute top-2.5 right-2.5 z-30 flex items-center gap-1.5">{actions}</div>
       ) : null}
 
       {/* 只负责把卡片撑到应有的高度，立绘在它下面 */}
       <div className="card-spacer aspect-[4/5] w-full shrink-0" aria-hidden="true" />
 
       {/* 标题与标签压在卡片下半部，垫一层由下往上的黑保证可读。
-          绝对定位钉在下缘：详情展开时只朝上吃立绘的区域，卡片尺寸不变 */}
-      <div className="card-scrim absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 px-3.5 pt-3 pb-3.5">
+          绝对定位钉在下缘：详情展开时只朝上吃立绘的区域，卡片尺寸不变。
+           整层不吃点击：底下的「整卡可点」覆盖层要继续能点，只有按钮行自己收回事件。 */}
+      <div className="card-scrim pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-2 px-3.5 pt-3 pb-3.5">
         <div className="card-name font-serif text-[15.5px] leading-tight font-black text-overlay-ink">
           <span>{name}</span>
         </div>
         {tags ? <div className="card-tags">{tags}</div> : null}
         {/* 详情：默认收起，悬停或键盘聚焦时从名字下面撑开 */}
         <div className="card-info">{info}</div>
-        <PillButton
-          size="sm"
-          variant={current ? "ghost" : "primary"}
-          disabled={current}
-          onClick={onStart}
-          className={cn("w-full", current && "border-transparent bg-surface-2 text-ink-2")}
-        >
-          {current ? currentLabel ?? "" : startLabel}
-        </PillButton>
+        <div className="card-start-row pointer-events-auto flex items-center gap-2">
+          {startAccessory}
+          <PillButton
+            size="sm"
+            variant={current ? "ghost" : "primary"}
+            disabled={current}
+            onClick={onStart}
+            className={cn("flex-1", current && "border-transparent bg-surface-2 text-ink-2")}
+          >
+            {current ? currentLabel ?? "" : startLabel}
+          </PillButton>
+        </div>
       </div>
 
       {/* 当前角色整张可点，盖在标题区上回到对话。
-          右上角操作是 z-20，在这层之上，不会被拦。键盘同样可达 */}
+          右上角操作是 z-30、卡尾按钮行靠 scrim 的 z-20 逃出这一层，都不会被拦。键盘同样可达 */}
       {current && onReturn ? (
         <button
           type="button"

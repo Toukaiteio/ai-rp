@@ -1,5 +1,5 @@
-import { translateCharacterCard, type CharacterCard, type CardTranslationCheckpoint, type CardTranslationProgress } from "@/lib/cards";
-import { type Locale, type MessageKey } from "@/lib/i18n";
+import { translateCharacterCard, translationLanguages, type CharacterCard, type CardTranslationCheckpoint, type CardTranslationProgress } from "@/lib/cards";
+import { hasMessage, type Locale, type MessageKey } from "@/lib/i18n";
 import { withImage } from "@/lib/providers/settings";
 import { addImportedCard } from "@/lib/storage/cards";
 import { getProviderConfigSnapshot } from "@/lib/storage/settings";
@@ -18,9 +18,25 @@ export function clearTranslationSession(session: TranslationSession): void {
   delete session.translated;
 }
 
-export function translationBinding(card: CharacterCard, locale: Locale, config: unknown): string {
+/** 界面语言对应的默认目标语言，数据表里没有时退回第一项。 */
+export function defaultTargetLanguage(locale: Locale): string {
+  const languages = translationLanguages();
+  return languages[locale] ?? Object.values(languages)[0];
+}
+
+/** 送进提示词的语言名 → 界面显示名。常见语言走文案表，自定义语言原样显示。 */
+export function translationLanguageLabel(language: string, t: (key: MessageKey) => string): string {
+  for (const [code, name] of Object.entries(translationLanguages())) {
+    if (name !== language) continue;
+    const key = `card.lang.${code}`;
+    if (hasMessage(key)) return t(key);
+  }
+  return language;
+}
+
+export function translationBinding(card: CharacterCard, targetLanguage: string, config: unknown): string {
   const configuration = JSON.stringify(config, (key, value) => key === "apiKey" ? undefined : value);
-  return JSON.stringify([card, locale, configuration]);
+  return JSON.stringify([card, targetLanguage, configuration]);
 }
 
 const fields: Record<string, MessageKey> = {
@@ -93,7 +109,7 @@ export function translationErrorKey(error: unknown): MessageKey {
 
 export async function translateAndSaveCard(
   card: CharacterCard,
-  locale: Locale,
+  targetLanguage: string,
   signal: AbortSignal,
   options?: {
     onProgress?: (progress: TranslationProgress) => void;
@@ -104,7 +120,7 @@ export async function translateAndSaveCard(
   signal.throwIfAborted();
   const config = withImage(getProviderConfigSnapshot());
   const session = options?.session;
-  const binding = translationBinding(card, locale, config);
+  const binding = translationBinding(card, targetLanguage, config);
   if (session && session.binding !== binding) {
     clearTranslationSession(session);
     session.binding = binding;
@@ -114,9 +130,9 @@ export async function translateAndSaveCard(
   try {
     const translationOptions = { signal, ...(options?.onProgress ? { onProgress: options.onProgress } : {}),
       ...(session ? { checkpoint: session.checkpoint } : {}) };
-    const translated = session?.translated ?? await translateCharacterCard(card, locale, config, translationOptions);
+    const translated = session?.translated ?? await translateCharacterCard(card, targetLanguage, config, translationOptions);
     signal.throwIfAborted();
-    if (translationBinding(card, locale, withImage(getProviderConfigSnapshot())) !== binding) {
+    if (translationBinding(card, targetLanguage, withImage(getProviderConfigSnapshot())) !== binding) {
       invalidate();
       throw new DOMException("Translation context changed", "AbortError");
     }

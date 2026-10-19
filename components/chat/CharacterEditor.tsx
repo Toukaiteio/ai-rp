@@ -4,10 +4,9 @@ import { useRef, useState } from "react";
 import { IconBack } from "@/components/icons";
 import { PillButton, ScreenHead } from "@/components/ui";
 import { addImportedCard, updateImportedCard, type ImportedCardRecord } from "@/lib/storage/cards";
-import { cardPortraitUrl, createEmptyCard, type CharacterCard } from "@/lib/cards";
+import { cardPortraitUrl, createEmptyCard, downloadCard, downloadCardPng, type CharacterCard } from "@/lib/cards";
 import {
   defaultVoiceProfile,
-  describeVoice,
   normalizeVoiceProfile,
   type CharacterVoiceProfile,
 } from "@/lib/voice";
@@ -265,6 +264,17 @@ export function CharacterEditor({
     reader.readAsDataURL(file);
   }
 
+  /** 导出当前编辑内容：不落盘，直接拿草稿组出的卡下载，JSON 与酒馆 PNG 各一份。 */
+  async function exportCard(format: "json" | "png") {
+    try {
+      const card = toCard(draft, baseCard);
+      if (format === "json") downloadCard(card);
+      else await downloadCardPng(card);
+    } catch {
+      setError(t("card.exportFail"));
+    }
+  }
+
   return (
     <div className="h-dvh overflow-y-auto bg-background">
       <div className="mx-auto max-w-[780px] px-6 py-8">
@@ -345,7 +355,6 @@ export function CharacterEditor({
                 <div className="sm:col-span-2 flex flex-col gap-4 rounded-lg border border-line bg-surface-2 p-4">
                   <div>
                     <p className="m-0 text-[13px] font-bold text-ink">{t("voice.title")}</p>
-                    <p className="m-0 mt-1 text-[11.5px] leading-relaxed text-ink-3">{t("voice.hint")}</p>
                   </div>
                   <ChoiceRow
                     label={t("voice.sentenceLength")}
@@ -400,17 +409,20 @@ export function CharacterEditor({
                     multiline
                     placeholder={t("voice.samplesPlaceholder")}
                   />
-                  <p className="m-0 rounded-md border border-line bg-surface px-3 py-2 text-[12px] leading-relaxed text-ink-2">
-                    {t("voice.preview")}：{describeVoice(draft.voice) || t("voice.previewEmpty")}
-                  </p>
                 </div>
               </>
             ) : null}
           </section>
 
-          <div className="flex justify-end gap-2 pb-4">
-            <PillButton type="button" onClick={onCancel} disabled={saving}>{t("card.cancel")}</PillButton>
-            <PillButton type="submit" variant="primary" disabled={saving}>{saving ? "…" : t("card.save")}</PillButton>
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-4">
+            <div className="flex flex-wrap gap-2">
+              <PillButton type="button" size="sm" onClick={() => void exportCard("json")}>{t("card.exportJson")}</PillButton>
+              <PillButton type="button" size="sm" onClick={() => void exportCard("png")}>{t("card.exportPng")}</PillButton>
+            </div>
+            <div className="flex gap-2">
+              <PillButton type="button" onClick={onCancel} disabled={saving}>{t("card.cancel")}</PillButton>
+              <PillButton type="submit" variant="primary" disabled={saving}>{saving ? "…" : t("card.save")}</PillButton>
+            </div>
           </div>
         </form>
       </div>

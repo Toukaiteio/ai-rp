@@ -9,7 +9,7 @@ export {
 export type { ParseResult } from "./validate";
 export { downloadCard, downloadCardPng, encodeCardPng, readCardFile } from "./io";
 export { extractCardJson } from "./png";
-export { translateCharacterCard, CardTranslationError } from "./translate";
+export { translateCharacterCard, translationLanguages, CardTranslationError } from "./translate";
 export type { CardTranslationErrorCode, CardTranslationErrorDetails, CardTranslationProgress, CardTranslationCheckpoint } from "./translate";
 export type { OnlineCardItem, OnlineCardSource } from "./online";
 export {
