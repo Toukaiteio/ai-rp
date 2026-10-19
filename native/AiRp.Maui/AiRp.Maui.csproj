@@ -18,13 +18,4 @@
     <PackageReference Include="Microsoft.Maui.Controls" Version="8.0.100" />
   </ItemGroup>
 
-  <Target Name="GenerateBuildConfiguration" BeforeTargets="BeforeCompile">
-    <WriteLinesToFile
-      File="$(IntermediateOutputPath)BuildConfiguration.g.cs"
-      Lines="namespace AiRp.Maui; internal static class BuildConfiguration { public const string Url = &quot;$(ApplicationUrl)&quot;; }"
-      Overwrite="true" />
-    <ItemGroup>
-      <Compile Include="$(IntermediateOutputPath)BuildConfiguration.g.cs" />
-    </ItemGroup>
-  </Target>
 </Project>

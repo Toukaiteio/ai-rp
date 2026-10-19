@@ -9,7 +9,7 @@ public static partial class NativeBridge
     public static void Attach(Microsoft.Maui.Controls.WebView browser, NativeStore store)
     {
         if (browser.Handler?.PlatformView is not WebView2 native) return;
-        native.CoreWebView2InitializationCompleted += async (_, _) =>
+        native.CoreWebView2Initialized += async (_, _) =>
         {
             if (native.CoreWebView2 is not null)
                 await native.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BootScript(store) + WindowsScript);
