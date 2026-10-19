@@ -1,4 +1,6 @@
 import { parseBlocks, type MessageBlock } from "@/lib/blocks";
+import { applyMacros } from "@/lib/prompt";
+import type { CharacterCardData } from "@/lib/cards";
 import type { ExportMessage } from "./chapters";
 
 export interface RenderOptions {
@@ -6,6 +8,7 @@ export interface RenderOptions {
   includeOoc: boolean;
   userName: string;
   charName: string;
+  card?: Partial<CharacterCardData>;
 }
 
 /** 玩家随手写的 OOC。默认不进书，开关打开才保留。 */
@@ -59,7 +62,10 @@ function blocksOf(message: ExportMessage, options: RenderOptions): MessageBlock[
     if (!options.includeNarration && block.kind === "narr") return false;
     return block.text.trim().length > 0;
   });
-  return blocks;
+  return blocks.map((block) => ({ ...block,
+    text: applyMacros(block.text, { char: options.charName, user: options.userName, card: options.card }),
+    ...(block.who === undefined ? {} : { who: applyMacros(block.who, { char: options.charName, user: options.userName, card: options.card }) }),
+  }));
 }
 
 function renderBlock(block: MessageBlock, options: RenderOptions): string {
@@ -88,7 +94,7 @@ export function renderChapterHtml(
   for (const message of messages) {
     if (message.role === "user") {
       const text = options.includeOoc ? message.content : stripOoc(message.content);
-      const plain = text.replace(/<\/?player>/g, "").trim();
+      const plain = applyMacros(text.replace(/<\/?player>/g, ""), { char: options.charName, user: options.userName, card: options.card }).trim();
       if (!plain) continue;
       parts.push(
         `<p class="player"><span class="who">${escapeHtml(options.userName)}</span> ${escapeHtml(plain)}</p>`,

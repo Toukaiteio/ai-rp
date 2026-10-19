@@ -199,12 +199,16 @@ export interface AssembleInput {
   cache?: boolean;
 }
 
-/** 组装器只需要这几个角色卡字段，多给不用。 */
+/** 提示词字段及只读宏可引用的角色卡上下文。 */
 export interface CharacterCardCore {
   name: string;
   description: string;
   personality: string;
   scenario: string;
+  first_mes?: string;
+  alternate_greetings?: string[];
+  character_version?: string;
+  extensions?: Record<string, unknown>;
   /** 卡作者写的额外系统提示，接在核心规则后面 */
   system_prompt?: string;
   /** 对话示例。稳定内容，进前缀，不进历史预算 */

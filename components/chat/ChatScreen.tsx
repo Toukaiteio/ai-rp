@@ -94,6 +94,8 @@ import {
   type ThreadPatchEntry,
 } from "@/lib/story";
 import { adaptGreeting } from "@/lib/cards/builder-opening";
+import { resolveBlockMacros } from "./message-macros";
+import type { MacroVars } from "@/lib/prompt";
 import { openingGreetings } from "@/lib/cards/greetings";
 import type { CharacterCardData } from "@/lib/cards/types";
 import type { ChatMessage } from "@/lib/prompt/types";
@@ -380,6 +382,7 @@ function normalizeChatBook(value: WorldBook | undefined): WorldBook | undefined 
  */
 function AssistantTurn({
   content,
+  macroVars,
   streaming,
   cardName,
   portraitUrl,
@@ -388,6 +391,7 @@ function AssistantTurn({
   stage,
 }: {
   content: string;
+  macroVars: MacroVars;
   streaming: boolean;
   cardName: string;
   /** 这张卡的立绘地址。没有就不画头像槽 */
@@ -415,7 +419,8 @@ function AssistantTurn({
   const stageText = stage ? stageInfo[stage] : null;
   // 解析和续接判断都按 content 缓存：输入时整个界面会重渲染，
   // 不能让每一回合都把整段重新解析一遍。
-  const blocks: MessageBlock[] = useMemo(() => parseBlocks(content), [content]);
+  const parsedBlocks = useMemo(() => parseBlocks(content), [content]);
+  const blocks: MessageBlock[] = useMemo(() => resolveBlockMacros(parsedBlocks, macroVars), [parsedBlocks, macroVars]);
   const lastIsDialogue = blocks.length > 0 && blocks[blocks.length - 1].kind === "dlg";
   const continuedFlags = useMemo(
     () => blocks.map((_, index) => dialogueContinues(blocks, index, cardName)),
@@ -608,11 +613,8 @@ export function ChatScreen({
   const storySystems = config.storySystems ?? defaultStorySystemSettings();
   const greetings = useMemo(
     () =>
-      openingGreetings(card).map((text) =>
-        // 开场白也要走一遍宏：界面上和发给模型的历史里都不能留 {{user}}
-        applyMacros(adaptGreeting(text, locale), { char: card.name, user: userName }),
-      ),
-    [card, locale, userName],
+      openingGreetings(card).map((text) => adaptGreeting(text, locale)),
+    [card, locale],
   );
   const [greetingIndex, setGreetingIndex] = useState(0);
   /** 建议输入由模型看着当前对话现生成，不写死在卡里 */
@@ -620,6 +622,12 @@ export function ChatScreen({
   const [turns, setTurns] = useState<Turn[]>(() => [
     { id: "opening", role: "assistant", content: greetings[0] ?? card.first_mes },
   ]);
+  const macroVars = useMemo(() => ({
+    char: card.name,
+    user: userName,
+    card,
+    history: turns,
+  }), [card, userName, turns]);
   const [composerReset, setComposerReset] = useState(0);
   const [streaming, setStreaming] = useState(false);
   const [generationStage, setGenerationStage] = useState<GenerationStage | null>(null);
@@ -864,7 +872,7 @@ export function ChatScreen({
     async (history: Turn[]) => {
       if (!isConfigured(config) || suggestingRef.current) return;
       const messages = buildSuggestionMessages(
-        history.map((turn) => ({ role: turn.role, content: turn.content })),
+        history.map((turn) => ({ role: turn.role, content: applyMacros(turn.content, { ...macroVars, history }) })),
       );
 
       suggestingRef.current = true;
@@ -887,7 +895,7 @@ export function ChatScreen({
         });
         if (!response.ok || !response.body) return;
 
-        const list = parseSuggestions(await readSseText(response.body));
+        const list = parseSuggestions(await readSseText(response.body)).map((text) => applyMacros(text, { ...macroVars, history }));
         if (list.length > 0) setSuggestions(list);
       } catch {
         // 建议生成失败不影响对话
@@ -895,7 +903,7 @@ export function ChatScreen({
         suggestingRef.current = false;
       }
     },
-    [config],
+    [config, macroVars, chatRoute.baseURL, chatRoute.model],
   );
 
   // 恢复这张卡上次的会话与长期记忆；没有就从开场白建一个。
@@ -930,17 +938,10 @@ export function ChatScreen({
         setBranches(branchTreeRef.current.branches);
         setActiveBranch(existing.activeBranch ?? MAIN_BRANCH);
         activeBranchRef.current = existing.activeBranch ?? MAIN_BRANCH;
-        const restored = existing.messages.map((m, index) => ({
+        const restored = existing.messages.map((m) => ({
           id: m.id,
           role: m.role,
-          // 开场白是卡里来的，可能带 {{user}} / {{char}}；旧存档也要补上这一步
-          content:
-            index === 0
-              ? applyMacros(adaptGreeting(m.content, locale), {
-                  char: card.name,
-                  user: userName,
-                })
-              : adaptGreeting(m.content, locale),
+          content: m.content,
           cg: m.cg,
           image: m.image,
           imageNote: m.imageNote,
@@ -952,19 +953,9 @@ export function ChatScreen({
         setTurns(restored);
         // 占用百分比只在发送时由服务端带回。刷新后用同一套组装再算一次，环才不会归零。
         const assembled = assemble({
-          card: {
-            name: card.name,
-            description: card.description,
-            personality: card.personality,
-            scenario: card.scenario,
-            system_prompt: card.system_prompt,
-            mes_example: card.mes_example,
-            post_history_instructions: card.post_history_instructions,
-            author_note: card.author_note,
-            ...(card.voice ? { voice: card.voice } : {}),
-          },
+          card,
           lorebook: card.character_book ? { entries: card.character_book.entries } : undefined,
-          history: restored.map((turn) => ({ role: turn.role, content: historyContent(turn) })),
+          history: restored.map((turn, index) => ({ role: turn.role, content: index === 0 ? adaptGreeting(historyContent(turn), locale) : historyContent(turn) })),
           seed: hashSeed(existing.id),
           turn: turnRef.current,
           summary: summaryRef.current ?? undefined,
@@ -995,7 +986,7 @@ export function ChatScreen({
     return () => {
       cancelled = true;
     };
-  }, [cardId, card.name, card.first_mes, greetings, locale, userName]);
+  }, [cardId, card, greetings, locale, userName, storySystems.events, style]);
 
   /**
    * 每次回复落地后刷新建议。
@@ -1157,7 +1148,7 @@ export function ChatScreen({
     }
 
     const history: ChatMessage[] = [
-      ...baseTurns.map((turn) => ({ role: turn.role, content: historyContent(turn) })),
+      ...baseTurns.map((turn, index) => ({ role: turn.role, content: index === 0 ? adaptGreeting(historyContent(turn), locale) : historyContent(turn) })),
       ...userTurnsAsMessages(userTurn),
     ];
 
@@ -1188,18 +1179,7 @@ export function ChatScreen({
      */
     const assembleFor = (mode?: ResponseMode) => {
       const assembled = assemble({
-        card: {
-          name: card.name,
-          description: card.description,
-          personality: card.personality,
-          scenario: card.scenario,
-          system_prompt: card.system_prompt,
-          mes_example: card.mes_example,
-          post_history_instructions: card.post_history_instructions,
-          author_note: card.author_note,
-          // 角色声音（Phase 9）：压成一句话进前缀
-          ...(card.voice ? { voice: card.voice } : {}),
-        },
+        card,
         ...(Object.keys(lorebooks).length > 0 ? { lorebooks } : {}),
         history,
         seed,
@@ -1384,17 +1364,7 @@ export function ChatScreen({
             tools: allowTools,
             ...(outboundImage ? { image: outboundImage } : {}),
             context: {
-              card: {
-                name: card.name,
-                description: card.description,
-                personality: card.personality,
-                scenario: card.scenario,
-                system_prompt: card.system_prompt,
-                mes_example: card.mes_example,
-                post_history_instructions: card.post_history_instructions,
-                author_note: card.author_note,
-                ...(card.voice ? { voice: card.voice } : {}),
-              },
+              card,
               // 三来源世界书：和服务端直连路径用同一份原料，两条路结果一致
               ...(Object.keys(lorebooks).length > 0 ? { lorebooks } : {}),
               history,
@@ -2206,7 +2176,7 @@ export function ChatScreen({
 
   /** 复制一条消息的正文。剪贴板 API 在不安全来源下没有，退回到老办法。 */
   async function copyMessage(id: string, text: string) {
-    const body = text.trim();
+    const body = applyMacros(text, macroVars).trim();
     if (!body) return;
     let ok = false;
     try {
@@ -2365,6 +2335,7 @@ export function ChatScreen({
           includeOoc,
           userName,
           charName: card.name,
+          card,
         },
         messages: turns.map((turn) => ({
           role: turn.role,
@@ -2597,7 +2568,7 @@ export function ChatScreen({
                         {turn.document ? (
                           <p className="mb-1 truncate text-[12px] text-ink-2">{turn.document.name}</p>
                         ) : null}
-                        <MarkdownText tone="bubble" text={playerText(turn.content)} />
+                        <MarkdownText tone="bubble" text={applyMacros(playerText(turn.content), macroVars)} />
                       </PlayerBubble>
                       {/* 生成中不给改，改到一半重跑会把这一轮弄乱 */}
                       {!streaming ? (
@@ -2687,7 +2658,8 @@ export function ChatScreen({
             return (
               <Fragment key={turn.id}>
                 <AssistantTurn
-                  content={turn.content}
+                  content={index === 0 ? adaptGreeting(turn.content, locale) : turn.content}
+                  macroVars={macroVars}
                   streaming={streaming && isLastTurn}
                   stage={streaming && isLastTurn ? generationStage ?? undefined : undefined}
                   cardName={card.name}

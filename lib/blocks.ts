@@ -7,7 +7,7 @@ export interface MessageBlock {
   text: string;
 }
 
-const BLOCK_TAG = /<\s*(\/?)\s*(narr|act|dlg|scene|player)\b([^>]*)>/gi;
+const BLOCK_TAG = /<\s*(\/?)\s*(narr|act|dlg|scene|player)\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi;
 const WHO_ATTRIBUTE = /\bwho\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
 
 /**

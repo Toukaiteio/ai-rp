@@ -45,6 +45,19 @@ describe("分章", () => {
 });
 
 describe("选中的 swipe 与 OOC、旁白", () => {
+  it("阅读导出展开宏后转义，原始消息和角色卡不被改写", () => {
+    const messages = [{ role: "assistant" as const, content: '<dlg who="<CHAR>">{{description}} {{user}}</dlg>' },
+      { role: "user" as const, content: "<player>Hi {{char}}</player>" }];
+    const card = { description: "{{char}} says <script>no</script>" };
+    const snapshot = structuredClone({ messages, card });
+    const html = renderChapterHtml(messages, { ...options, card }, new Map());
+    expect(html).toContain('class="who">林晚晴</span>');
+    expect(html).toContain("林晚晴 says &lt;script&gt;no&lt;/script&gt; 你");
+    expect(html).toContain("Hi 林晚晴");
+    expect(html).not.toContain("{{");
+    expect(html).not.toContain("<script>");
+    expect({ messages, card }).toEqual(snapshot);
+  });
   it("只导出当前选中的那条，没选中的不进正文", () => {
     const content = selectedSwipe({
       content: "旧的",

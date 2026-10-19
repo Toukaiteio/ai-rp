@@ -191,6 +191,11 @@ function parseBody(raw: unknown): ParsedRequest {
         description: typeof card.description === "string" ? card.description : "",
         personality: typeof card.personality === "string" ? card.personality : "",
         scenario: typeof card.scenario === "string" ? card.scenario : "",
+        first_mes: asString(card.first_mes),
+        alternate_greetings: Array.isArray(card.alternate_greetings)
+          ? card.alternate_greetings.filter((value): value is string => typeof value === "string") : undefined,
+        character_version: asString(card.character_version),
+        extensions: isRecord(card.extensions) ? card.extensions : undefined,
         system_prompt: asString(card.system_prompt),
         mes_example: asString(card.mes_example),
         post_history_instructions: asString(card.post_history_instructions),

@@ -43,7 +43,7 @@ import type {
 /* ---------------------------------------------------------------- 类型导出 */
 
 export * from "./types";
-export { applyMacros } from "./macros";
+export { applyMacros, type MacroVars } from "./macros";
 export {
   parseBlocks,
   blocksToRaw,
@@ -216,7 +216,7 @@ export function assemble(input: AssembleInput): AssembleResult {
     lorebook,
     lorebooks,
     persona,
-    history,
+    history: rawHistory,
     seed,
     turn = 0,
     summary,
@@ -234,8 +234,34 @@ export function assemble(input: AssembleInput): AssembleResult {
     userName = "你",
   } = input;
 
-  const apply = (text: string) =>
-    applyMacros(text, { char: card.name, user: userName });
+  const note = selectAuthorNote(
+    resolveAuthorNote({
+      temporary: temporaryNote,
+      session: authorNote,
+      card: card.author_note?.trim() ? { text: card.author_note } : undefined,
+    }),
+    turn,
+  );
+  const macroVars = {
+    char: card.name,
+    user: userName,
+    card,
+    persona,
+    history: rawHistory,
+    summary: summary?.text,
+    authorsNote: note?.text,
+    input: lastUserText(rawHistory),
+  };
+  const apply = (text: string) => applyMacros(text, macroVars);
+  const history = normalizeHistory(rawHistory).map((message) => ({ ...message, content: apply(message.content) }));
+  const expandBook = (book: WorldBook): WorldBook => ({
+    ...book,
+    entries: book.entries.map((entry) => ({
+      ...entry,
+      keys: entry.keys.map(apply),
+      content: apply(entry.content),
+    })),
+  });
 
   /*
    * 世界书（Phase 8）：三本来来源合并成一次匹配。
@@ -252,24 +278,16 @@ export function assemble(input: AssembleInput): AssembleResult {
     .filter(Boolean)
     .join(" ");
   const book = matchWorldBook({
-    ...(lorebooks ? { books: toSourcedBooks(lorebooks) } : { lorebook }),
+    ...(lorebooks
+      ? { books: toSourcedBooks(lorebooks).map(({ source, book }) => ({ source, book: expandBook(book) })) }
+      : { lorebook: lorebook ? expandBook(lorebook) : undefined }),
     history,
     userMessage: lastUserText(history),
-    sceneText: sceneScan,
+    sceneText: apply(sceneScan),
     seed,
     budgetCap: budgetCapOf(lorebooks, lorebook),
     tokenCap: tokenCapOf(lorebooks, lorebook),
   });
-
-  // 三层来源：本轮临时注记（重新生成纠偏）> 会话注记 > 角色卡默认
-  const note = selectAuthorNote(
-    resolveAuthorNote({
-      temporary: temporaryNote,
-      session: authorNote,
-      card: card.author_note?.trim() ? { text: card.author_note } : undefined,
-    }),
-    turn,
-  );
 
   /* ---- 稳定层：字节级稳定 ---- */
 
@@ -294,7 +312,9 @@ export function assemble(input: AssembleInput): AssembleResult {
   // 1. 核心规则。卡上的 system_prompt 覆盖默认核心规则，但不覆盖输出协议。
   push(prefix, { section: "system", layer: "prefix", detail: "core_rules" }, {
     role: "system",
-    content: card.system_prompt?.trim() ? apply(card.system_prompt) : BASE_RULES,
+    content: card.system_prompt?.trim()
+      ? applyMacros(card.system_prompt, { ...macroVars, original: BASE_RULES })
+      : BASE_RULES,
   });
   push(prefix, { section: "system", layer: "prefix", detail: "output_contract" }, {
     role: "system",
@@ -311,7 +331,7 @@ export function assemble(input: AssembleInput): AssembleResult {
         detail: "worldbook.before_char（常驻）",
         ...(lorebookOrigin(book.matched, text) ?? {}),
       },
-      { role: "system", content: apply(text) },
+      { role: "system", content: text },
     );
   }
 
@@ -342,7 +362,7 @@ export function assemble(input: AssembleInput): AssembleResult {
   if (voice) {
     push(prefix, { section: "voice", layer: "prefix", detail: "describeVoice 压缩后的一句话" }, {
       role: "system",
-      content: `她说话的样子：${voice}`,
+      content: `她说话的样子：${apply(voice)}`,
     });
   }
 
@@ -374,7 +394,7 @@ export function assemble(input: AssembleInput): AssembleResult {
         detail: "worldbook.after_char（常驻）",
         ...(lorebookOrigin(book.matched, text) ?? {}),
       },
-      { role: "system", content: apply(text) },
+      { role: "system", content: text },
     );
   }
 
@@ -396,7 +416,7 @@ export function assemble(input: AssembleInput): AssembleResult {
         detail: "worldbook.before_scene（常驻）",
         ...(lorebookOrigin(book.matched, text) ?? {}),
       },
-      { role: "system", content: apply(text) },
+      { role: "system", content: text },
     );
   }
   for (const text of stableContents(book.group.after_scene)) {
@@ -408,7 +428,7 @@ export function assemble(input: AssembleInput): AssembleResult {
         detail: "worldbook.after_scene（常驻）",
         ...(lorebookOrigin(book.matched, text) ?? {}),
       },
-      { role: "system", content: apply(text) },
+      { role: "system", content: text },
     );
   }
 
@@ -426,7 +446,7 @@ export function assemble(input: AssembleInput): AssembleResult {
     if (text) {
       push(prefix, { section: "worldbook", layer: "prefix", detail: "关键事实（facts）" }, {
         role: "system",
-        content: `已确认的事实：\n${text}`,
+        content: `已确认的事实：\n${apply(text)}`,
       });
     }
   }
@@ -462,7 +482,7 @@ export function assemble(input: AssembleInput): AssembleResult {
         detail: "worldbook（关键词命中）",
         ...(lorebookOrigin(book.matched, text) ?? {}),
       },
-      { role: "system", content: apply(text) },
+      { role: "system", content: text },
     );
   }
   for (const text of contents(book.group.in_chat)) {
@@ -474,7 +494,7 @@ export function assemble(input: AssembleInput): AssembleResult {
         detail: "worldbook.in_chat",
         ...(lorebookOrigin(book.matched, text) ?? {}),
       },
-      { role: "system", content: apply(text) },
+      { role: "system", content: text },
     );
   }
 
@@ -501,15 +521,15 @@ export function assemble(input: AssembleInput): AssembleResult {
       language,
       scene: apply(scene ?? card.scenario ?? ""),
       // 结构化场景状态优先：它每轮更新，比角色卡里那句静态场景更贴近此刻
-      ...(sceneState ? { sceneState: formatSceneState(sceneState) } : {}),
+      ...(sceneState ? { sceneState: apply(formatSceneState(sceneState)) } : {}),
       // 状态只记变化，地点没变就不在里面——补一句角色卡的场景，别让模型失去空间感
-      ...(sceneState && !sceneState.location.trim() ? { sceneFallback: card.scenario } : {}),
+      ...(sceneState && !sceneState.location.trim() ? { sceneFallback: apply(card.scenario) } : {}),
       // 有剧情线列表就用挑选结果；没有就退回旧的「场景状态 + 关键事实」合并
       threads: pickedThreads.length
-        ? pickedThreads.map((item) => item.thread.title)
+        ? pickedThreads.map((item) => apply(item.thread.title))
         : (threads ?? activeThreads(facts, undefined, sceneState?.unresolvedThreads)).map(apply),
       // 选中理由更详细的那一段（含 summary）单独拼，附在剧情线标题之后
-      ...(pickedThreads.length ? { threadDetail: formatThreads(pickedThreads) } : {}),
+      ...(pickedThreads.length ? { threadDetail: apply(formatThreads(pickedThreads)) } : {}),
       mode: modeInstruction(responseMode),
     }),
   };
@@ -532,7 +552,7 @@ export function assemble(input: AssembleInput): AssembleResult {
     { section: "worldbook", layer: "post", detail: "记忆目录 / 工具结果" },
     {
       role: "system",
-      content: traceNote ? `${memoryNote}\n\n${traceNote}` : memoryNote,
+      content: apply(traceNote ? `${memoryNote}\n\n${traceNote}` : memoryNote),
     },
   );
 
@@ -563,7 +583,7 @@ export function assemble(input: AssembleInput): AssembleResult {
   const historyBudget = Math.max(0, input.budget - prefixTokens - postTokens - noteTokens);
   // 玩家那几轮在存储里带 <player> 标记（导出时要能区分），
   // 但模型只需要看到玩家说了什么，role 已经说明是谁说的了
-  const trimmed = trimHistory(normalizeHistory(history), historyBudget);
+  const trimmed = trimHistory(history, historyBudget);
   const kept = noteMessage
     ? insertNote(trimmed.kept, noteMessage, note?.depth)
     : trimmed.kept;

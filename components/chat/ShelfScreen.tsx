@@ -29,6 +29,7 @@ import { OnlineCards } from "./OnlineCards";
 import { Avatar } from "./Avatar";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
 import { CardTranslation } from "./CardTranslation";
+import { applyMacros } from "@/lib/prompt";
 
 /** 简介只在悬停面板里出现，留得下一段完整的设定开头。 */
 function firstSentence(text: string, limit = 120): string {
@@ -40,6 +41,7 @@ function firstSentence(text: string, limit = 120): string {
 export function ShelfScreen({
   cards,
   currentCardId,
+  userName = "你",
   onSelect,
   onBack,
   onCardsChanged,
@@ -49,6 +51,7 @@ export function ShelfScreen({
 }: {
   cards: CardEntry[];
   currentCardId: string;
+  userName?: string;
   onSelect: (cardId: string) => void;
   onBack?: () => void;
   /** 新卡到位。用来把「本来没有卡、被迫留在角色架」的状态续上 */
@@ -299,7 +302,7 @@ export function ShelfScreen({
               <CharacterCard
                 portrait={<Avatar name={entry.card.data.name} src={cardPortraitUrl(entry.card.data)} />}
                 name={entry.card.data.name}
-                description={firstSentence(entry.card.data.description)}
+                description={firstSentence(applyMacros(entry.card.data.description, { char: entry.card.data.name, user: userName, card: entry.card.data }))}
                 tags={
                   <>
                     {entry.source === "imported" ? <Tag>{t("shelf.imported")}</Tag> : null}

@@ -1,15 +1,21 @@
+import type { CharacterCardData } from "@/lib/cards/types";
+import { expandMacros } from "./macro-engine";
+
 export interface MacroVars {
   char: string;
   user: string;
+  card?: Partial<CharacterCardData>;
+  persona?: string;
+  history?: readonly { role: string; content: string }[];
+  summary?: string;
+  authorsNote?: string;
+  original?: string;
+  input?: string;
+  group?: readonly { name: string; muted?: boolean }[];
+  /** Already formatted by the caller's instruct-mode template. */
+  mesExamples?: string;
 }
 
-/**
- * 替换 {{char}} / {{user}}。只认这两个宏，其余原样保留。
- * 用函数式 replace，避免角色名里的 $& 之类被当成替换模式。
- */
 export function applyMacros(text: string, vars: MacroVars): string {
-  if (!text) return "";
-  return text.replace(/\{\{\s*(char|user)\s*\}\}/gi, (_match, key: string) =>
-    key.toLowerCase() === "char" ? vars.char : vars.user,
-  );
+  return expandMacros(text, vars);
 }

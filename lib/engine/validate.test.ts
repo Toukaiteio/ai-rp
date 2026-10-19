@@ -23,6 +23,17 @@ function codes(raw: string, options = {}): IssueCode[] {
 /* ------------------------------------------------------------------ 1.1 块合法性 */
 
 describe("质量门：块合法性", () => {
+  it("名称宏按实际身份检查，但保留存储中的原宏", () => {
+    for (const who of ["{{char}}", "<BOT>"]) {
+      const raw = `<dlg who="${who}">欢迎。</dlg>`;
+      expect(validate(raw).decision).toBe("accepted");
+      expect(validate(raw).content).toBe(raw);
+    }
+    for (const who of ["{{user}}", "<USER>"]) {
+      const result = validate(`<dlg who="${who}">欢迎。</dlg>`);
+      expect(result.hardIssues.map((issue) => issue.code)).toContain("player_control");
+    }
+  });
   it("关闭质量门时保留原始结果，不执行角色名拒收", () => {
     const result = bypassResponseValidation('<dlg who="晚晴">住店？</dlg>');
     expect(result.decision).toBe("accepted");

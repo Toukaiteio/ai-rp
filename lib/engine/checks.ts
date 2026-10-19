@@ -10,6 +10,7 @@
  * 决定是自动修复还是直接判不合格。
  */
 import { ACT_MAX_LENGTH, type MessageBlock } from "@/lib/blocks";
+import { applyMacros } from "@/lib/prompt";
 import { checkVoice, type CharacterVoiceProfile } from "@/lib/voice";
 import type { GenerationIssue, IssueCode } from "./types";
 import {
@@ -360,7 +361,7 @@ export function checkWho(
 
   blocks.forEach((block, index) => {
     if (block.kind !== "dlg" && block.kind !== "act") return;
-    const who = block.who?.trim();
+    const who = block.who === undefined ? undefined : applyMacros(block.who, { char: context.cardName, user: context.userName }).trim();
     if (!who) return;
 
     if (PRONOUN_WHO.test(who)) {
@@ -449,7 +450,7 @@ export function checkPlayerControl(
   );
 
   blocks.forEach((block, index) => {
-    const who = block.who?.trim();
+    const who = block.who === undefined ? undefined : applyMacros(block.who, { char: context.cardName, user: context.userName }).trim();
     if (who && names.has(who.toLowerCase())) {
       issues.push({
         code: "player_control",

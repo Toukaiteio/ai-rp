@@ -46,4 +46,19 @@ describe("complete route translation parameters", () => {
     expect((await POST(request(value))).status).toBe(400);
     expect(open).not.toHaveBeenCalled();
   });
+  it("preserves card macro context in the server fallback", async () => {
+    const response = await POST(new Request("https://app.example/api/chat", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer sk-offline-test" },
+      body: JSON.stringify({ providerId: "custom", model: "test-model", baseURL: "https://provider.example/v1", tools: false,
+        context: { card: { name: "Alice", description: "{{charFirstMessage::1}} / {{charVersion}} / {{charDepthPrompt}} / {{charCreatorNotes}}",
+          personality: "", scenario: "", first_mes: "Hello {{user}}", alternate_greetings: ["Welcome {{user}}"], character_version: "v2",
+          extensions: { depth_prompt: { prompt: "Depth {{char}}" }, _unmapped: { creator_notes: "Notes {{char}}" } } },
+          userName: "Bob", history: [{ role: "user", content: "Hello" }], seed: 1 },
+      }),
+    }));
+    expect(response.status).toBe(200);
+    await response.text();
+    const messages = open.mock.calls.at(-1)![0].messages as { content: string }[];
+    expect(messages.some((message) => message.content.includes("Welcome Bob / v2 / Depth Alice / Notes Alice"))).toBe(true);
+  });
 });

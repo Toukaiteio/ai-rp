@@ -8,6 +8,8 @@ The AI acts as narrator and relays everything that happens in the world, includi
 
 BYOK: players supply their own API key in the browser. The server does not store keys or chat content, and no database is used.
 
+Common SillyTavern read-only card macros are expanded for display and model requests while original card templates are preserved. See [macro compatibility and limitations](doc/macros-compatibility.md); this is not a full STscript or variable runtime.
+
 ## Deployment
 
 Requirements: Node.js 22.19.0 (`.nvmrc`), pnpm 10.14.0.
