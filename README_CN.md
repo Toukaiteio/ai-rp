@@ -6,16 +6,33 @@
 
 ## 部署
 
-环境要求：Node.js >= 20.9，pnpm 10.14.0。
+环境要求：Node.js 22.19.0（见 `.nvmrc`），pnpm 10.14.0。
 
 ### 本地开发
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
 打开 <http://localhost:3000>。首次使用点右上角齿轮进入「连接设置」，选择提供商、粘贴 Key、选择模型。
+
+### 角色卡翻译
+
+在角色架的「本地」页签，点击卡片下方的「翻译为中文」（英文界面显示 `Translate to English`）。目标语言跟随当前界面，使用当前配置的模型。译卡加上语言后缀并加密另存，原卡和已有会话不变；保留名字、作者、头像与元数据，翻译设定、开场白和世界书正文。
+
+首次确认框提示模型额度与卡片内容发送，并提供主题样式的「以后不再提示」复选框，仅勾选并确认后在本浏览器记住。大卡会分批调用，取消不会退回已发生的模型用量；格式错误或输出不完整时不保存。世界书 OR 关键词保留原词并补充译词，AND 关键词保持原样，避免改变匹配条件。
+
+### 测试与 Docker
+
+安装依赖后，`pnpm test` 是统一离线测试命令，不需要模型 Key 或联网。发布前另跑 `pnpm lint` 和 `pnpm build`；全新构建需要联网下载 Next.js 使用的 Google 字体。
+
+```bash
+docker build -t ai-rp .
+docker run --rm -p 3000:3000 ai-rp
+```
+
+Dockerfile 固定 Node 与 pnpm 版本，用锁文件安装项目依赖、执行测试并构建生产应用，无需额外系统包。首次镜像构建需要联网，启动后访问 <http://localhost:3000>，模型配置仍在浏览器内填写，不写进镜像。
 
 ### Vercel
 
@@ -99,4 +116,3 @@ pnpm test:roleplay:live  # 同上但调模型，出三族指标并和基线比�
 [doc/phase10-prompt-inspector.md](doc/phase10-prompt-inspector.md)、
 [doc/phase11-regenerate-edit-branch.md](doc/phase11-regenerate-edit-branch.md)、
 [doc/phase12-eval-regression.md](doc/phase12-eval-regression.md)。
-

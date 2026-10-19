@@ -10,16 +10,41 @@ BYOK: players supply their own API key in the browser. The server does not store
 
 ## Deployment
 
-Requirements: Node.js >= 20.9, pnpm 10.14.0.
+Requirements: Node.js 22.19.0 (`.nvmrc`), pnpm 10.14.0.
 
 ### Local development
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
 Open <http://localhost:3000>. On first run, open Settings from the gear icon, choose a provider, paste a key, and select a model.
+
+### Local card translation
+
+Open the shelf's **Local** tab and choose **Translate to English** (or **翻译为中文** in the Chinese interface) beneath a card. The target follows the current interface language. Translation uses the currently configured model and saves a separate, encrypted local card, leaving the original and conversations unchanged. Names, attribution, portraits and metadata are preserved; text, greetings and worldbook contents are translated.
+
+The confirmation explains model-credit usage and content sharing. Its themed **Don't remind me again** checkbox remembers consent in this browser only after confirmation. Large cards use multiple requests. Cancel stops further work but cannot refund any provider usage already incurred. Invalid or incomplete output is not saved. Worldbook OR keywords gain translated synonyms; AND keywords stay unchanged to preserve matching semantics.
+
+### Tests
+
+After installing dependencies, the single offline test command is:
+
+```bash
+pnpm test
+```
+
+No model key or network access is needed for these tests. Also run `pnpm lint` and `pnpm build` before deployment. A clean build needs network access to download the Google fonts used by Next.js.
+
+### Docker (Linux)
+
+```bash
+docker build -t ai-rp .
+docker run --rm -p 3000:3000 ai-rp
+```
+
+The Dockerfile pins Node and pnpm, installs the frozen lockfile locally in the image, runs offline tests, and builds the production app. No extra OS packages or server-side model secrets are required. Open <http://localhost:3000> and configure your provider in the browser. The first image build requires network access for dependencies and fonts.
 
 ### Vercel
 
