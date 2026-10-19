@@ -27,6 +27,8 @@ Open the shelf's **Local** tab and choose **Translate to English** (or **翻译�
 
 The confirmation explains model-credit usage and content sharing. Its themed **Don't remind me again** checkbox remembers consent in this browser only after confirmation. Large cards use multiple requests. Cancel stops further work but cannot refund any provider usage already incurred. Invalid or incomplete output is not saved. Worldbook OR keywords gain translated synonyms; AND keywords stay unchanged to preserve matching semantics.
 
+The dialog shows the current field, verified segments, completed source-character percentage and output characters received in this attempt. Only successful persistence reaches 100%. Segments prefer paragraph and sentence boundaries. Translation requests use low reasoning effort with no automatic paid retries. Errors distinguish output limits, content filtering, interrupted streams, truncated JSON, missing fields and damaged protected markers. Keep the dialog open and choose **Continue translation** to reuse verified segments. **Retry saving** reuses the complete translated card without another model call. This cache lives only in memory and is cleared on close, cancellation, or changes to the card, language or model configuration.
+
 ### Tests
 
 After installing dependencies, the single offline test command is:

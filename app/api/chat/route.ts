@@ -88,6 +88,7 @@ interface CompleteRequestBody {
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: "low" | "medium" | "high";
   baseURL?: string;
 }
 
@@ -146,6 +147,10 @@ function parseBody(raw: unknown): ParsedRequest {
   if (raw.mode === "complete") {
     const messages = parseMessages(raw.messages);
     if (!messages || messages.length === 0) return { error: "messages 为空" };
+    const reasoningEffort = raw.reasoningEffort;
+    if (reasoningEffort !== undefined && reasoningEffort !== "low" && reasoningEffort !== "medium" && reasoningEffort !== "high") {
+      return { error: "reasoningEffort 必须是 low、medium 或 high" };
+    }
     return {
       kind: "complete",
       body: {
@@ -154,6 +159,7 @@ function parseBody(raw: unknown): ParsedRequest {
         messages,
         temperature: typeof raw.temperature === "number" ? raw.temperature : undefined,
         maxTokens: typeof raw.maxTokens === "number" ? raw.maxTokens : undefined,
+        reasoningEffort,
         baseURL: asString(raw.baseURL),
       },
     };
@@ -592,6 +598,7 @@ async function complete(request: Request, body: CompleteRequestBody): Promise<Re
     apiKey: apiKey ?? "",
     baseURL,
     timeoutMs: UPSTREAM_TIMEOUT_MS,
+    ...(body.reasoningEffort === "low" ? { maxRetries: 0 } : {}),
   });
 
   let events: Awaited<ReturnType<typeof provider.open>>;
@@ -601,6 +608,7 @@ async function complete(request: Request, body: CompleteRequestBody): Promise<Re
       model: body.model,
       temperature: body.temperature,
       maxTokens: body.maxTokens,
+      reasoningEffort: body.reasoningEffort,
       signal: controller.signal,
     });
   } catch (error) {
