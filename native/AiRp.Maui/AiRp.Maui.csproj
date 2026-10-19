@@ -12,6 +12,7 @@
     <ApplicationUrl Condition="'$(ApplicationUrl)' == ''">https://rp.dys.asia/</ApplicationUrl>
     <AndroidPackageFormat Condition="'$(AndroidPackageFormat)' == ''">apk</AndroidPackageFormat>
     <WindowsPackageType Condition="'$(WindowsPackageType)' == ''">None</WindowsPackageType>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <ItemGroup>
