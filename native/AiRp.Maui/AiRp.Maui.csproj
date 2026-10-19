@@ -12,8 +12,11 @@
     <ApplicationUrl Condition="'$(ApplicationUrl)' == ''">https://rp.dys.asia/</ApplicationUrl>
     <AndroidPackageFormat Condition="'$(AndroidPackageFormat)' == ''">apk</AndroidPackageFormat>
     <WindowsPackageType Condition="'$(WindowsPackageType)' == ''">None</WindowsPackageType>
-    <RuntimeIdentifiers>win-x64;android-arm64;android-arm;android-x86;android-x64</RuntimeIdentifiers>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="8.0.100" />
+  </ItemGroup>
 
   <Target Name="GenerateBuildConfiguration" BeforeTargets="BeforeCompile">
     <WriteLinesToFile
