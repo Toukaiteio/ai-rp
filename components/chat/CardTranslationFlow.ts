@@ -24,6 +24,7 @@ export function translationBinding(card: CharacterCard, locale: Locale, config: 
 }
 
 const fields: Record<string, MessageKey> = {
+  name: "card.translationFieldName",
   description: "card.translationFieldDescription", personality: "card.translationFieldPersonality",
   scenario: "card.translationFieldScenario", first_mes: "card.translationFieldGreeting",
   mes_example: "card.translationFieldExamples", system_prompt: "card.translationFieldSystem",

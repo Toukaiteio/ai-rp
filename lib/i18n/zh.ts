@@ -72,6 +72,7 @@ export const zh = {
   "card.translationReasonHttp": "模型服务返回 HTTP 错误，请检查连接、额度或模型设置。",
   "card.translationReasonUnknown": "模型请求或校验失败，未收到可用的完整翻译。",
   "card.translationFieldDescription": "角色描述",
+  "card.translationFieldName": "角色名",
   "card.translationFieldPersonality": "性格",
   "card.translationFieldScenario": "场景",
   "card.translationFieldGreeting": "开场白",

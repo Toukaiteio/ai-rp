@@ -25,7 +25,7 @@ function lastBoundary(positions: number[], start: number, end: number): number |
 export function splitTranslationText(text: string, limit = settings.segmentCharacters): string[] {
   const safe = [0];
   let offset = 0;
-  for (const token of text.match(/\{\{[\s\S]*?\}\}|<[^>]*>|[^]/gu) ?? []) {
+  for (const token of text.match(/\{\{[\s\S]*?\}\}|<(?:"[^"]*"|'[^']*'|[^'">])*>|[^]/gu) ?? []) {
     offset += token.length;
     safe.push(offset);
   }
@@ -48,7 +48,7 @@ export function collectTranslationSegments(card: CharacterCard): TranslationSegm
   const segments: TranslationSegment[] = [];
   function add(text: string | undefined, field: CardTranslationField, write: (text: string) => void) {
     if (!text?.trim()) return;
-    const parts = splitTranslationText(text);
+    const parts = field === "name" ? [text] : splitTranslationText(text);
     const translated = [...parts];
     let remaining = parts.filter((part) => part.trim()).length;
     parts.forEach((part, index) => {
@@ -64,7 +64,7 @@ export function collectTranslationSegments(card: CharacterCard): TranslationSegm
   }
   const data = card.data;
   for (const field of settings.fields as (keyof Pick<typeof data,
-    "description" | "personality" | "scenario" | "first_mes" | "mes_example" |
+    "name" | "description" | "personality" | "scenario" | "first_mes" | "mes_example" |
     "system_prompt" | "post_history_instructions" | "author_note">)[]) {
     add(data[field], field, (text) => { data[field] = text; });
   }

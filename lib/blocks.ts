@@ -10,6 +10,20 @@ export interface MessageBlock {
 const BLOCK_TAG = /<\s*(\/?)\s*(narr|act|dlg|scene|player)\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi;
 const WHO_ATTRIBUTE = /\bwho\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
 
+export function encodeBlockAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+export function decodeBlockAttribute(value: string): string {
+  const entities: Record<string, string> = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" };
+  return value.replace(/&(#x[\da-f]+|#\d+|amp|quot|apos|lt|gt);/gi, (entity, key: string) => {
+    if (!key.startsWith("#")) return entities[key.toLowerCase()] ?? entity;
+    const code = key[1].toLowerCase() === "x" ? parseInt(key.slice(2), 16) : Number(key.slice(1));
+    return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : entity;
+  });
+}
+
 /**
  * 模型没走工具通道时，会把函数调用写成 XML 标签：
  *   <remember_character">Fuka Shikuzaki\n同班同学。\n你\n图书馆</remember_character>
@@ -94,9 +108,10 @@ function parseBlocksInternal(raw: string, degradeAct: boolean): MessageBlock[] {
     }
 
     const whoMatch = WHO_ATTRIBUTE.exec(match[3]);
+    const who = whoMatch?.[1] ?? whoMatch?.[2];
     open = {
       kind,
-      who: whoMatch?.[1] ?? whoMatch?.[2] ?? undefined,
+      who: who === undefined ? undefined : decodeBlockAttribute(who),
       textStart: match.index + match[0].length,
     };
   }
@@ -191,7 +206,7 @@ export function blocksToRaw(blocks: MessageBlock[]): string {
   return blocks
     .map((block) => {
       if (block.kind === "dlg" || block.kind === "act") {
-        return `<${block.kind} who="${block.who ?? ""}">${block.text}</${block.kind}>`;
+        return `<${block.kind} who="${encodeBlockAttribute(block.who ?? "")}">${block.text}</${block.kind}>`;
       }
       return `<${block.kind}>${block.text}</${block.kind}>`;
     })

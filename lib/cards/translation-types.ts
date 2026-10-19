@@ -1,5 +1,7 @@
+import { decodeBlockAttribute, encodeBlockAttribute } from "@/lib/blocks";
+
 export type CardTranslationField =
-  | "description" | "personality" | "scenario" | "first_mes" | "mes_example"
+  | "name" | "description" | "personality" | "scenario" | "first_mes" | "mes_example"
   | "system_prompt" | "post_history_instructions" | "author_note"
   | "alternate_greetings" | "character_book" | "voice";
 
@@ -43,7 +45,26 @@ export function checkTranslationAbort(signal?: AbortSignal): void {
 }
 
 export function translationMarkers(text: string): string[] {
-  return text.match(/\{\{[\s\S]*?\}\}|<[^>]*>/g) ?? [];
+  return text.match(/\{\{[\s\S]*?\}\}|<(?:"[^"]*"|'[^']*'|[^'">])*>/g) ?? [];
+}
+
+export function synchronizeTranslationSpeakers(text: string, originalName: string, translatedName: string): string {
+  if (!originalName || originalName === translatedName) return text;
+  const escaped = encodeBlockAttribute(translatedName);
+  return text.replace(/\{\{[\s\S]*?\}\}|<(?:"[^"]*"|'[^']*'|[^'">])*>/g, (tag) => {
+    const opening = tag.match(/^<(?:dlg|act)(?=\s|\/?>)/);
+    if (!opening) return tag;
+    return opening[0] + tag.slice(opening[0].length).replace(
+      /(\s+)([^\s=/>]+)(\s*=\s*)("[^"]*"|'[^']*'|[^\s>]+)/g,
+      (attribute, space: string, key: string, equals: string, value: string) => {
+        const quote = value[0];
+        if (key !== "who" || (quote !== '"' && quote !== "'")) return attribute;
+        const speaker = value.slice(1, -1);
+        if (speaker.includes("{{") || decodeBlockAttribute(speaker) !== originalName) return attribute;
+        return `${space}${key}${equals}${quote}${escaped}${quote}`;
+      },
+    );
+  });
 }
 
 function isTruncatedJson(text: string): boolean {

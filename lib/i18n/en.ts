@@ -74,6 +74,7 @@ export const en: Record<MessageKey, string> = {
   "card.translationReasonHttp": "The model service returned an HTTP error. Check connectivity, credits or model settings.",
   "card.translationReasonUnknown": "The model request or validation failed without a usable complete translation.",
   "card.translationFieldDescription": "Description",
+  "card.translationFieldName": "Character name",
   "card.translationFieldPersonality": "Personality",
   "card.translationFieldScenario": "Scenario",
   "card.translationFieldGreeting": "First greeting",

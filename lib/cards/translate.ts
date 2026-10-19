@@ -8,6 +8,7 @@ import { decodeSseBuffer } from "@/lib/wire";
 import type { CharacterCard } from "./types";
 import { collectTranslationSegments, type TranslationSegment } from "./translation-segments";
 import { CardTranslationError, checkTranslationAbort as checkAbort, parseTranslationDictionary,
+  synchronizeTranslationSpeakers,
   type CardTranslationProgress, type CardTranslationCheckpoint } from "./translation-types";
 
 export { CardTranslationError, parseTranslationDictionary } from "./translation-types";
@@ -92,7 +93,7 @@ export async function translateCharacterCard(
 ): Promise<CharacterCard> {
   const signal = options?.signal;
   let progress: CardTranslationProgress = { phase: "preparing", completed: 0, total: 0,
-    field: "description", receivedCharacters: 0, completedCharacters: 0, totalCharacters: 0 };
+    field: "name", receivedCharacters: 0, completedCharacters: 0, totalCharacters: 0 };
   const emit = (patch: Partial<CardTranslationProgress>) => {
     progress = { ...progress, ...patch };
     options?.onProgress?.({ ...progress });
@@ -122,28 +123,32 @@ export async function translateCharacterCard(
     }
     emit({ total: segments.length, totalCharacters: segments.reduce((sum, segment) => sum + segment.characters, 0),
       field: segments[0]?.field ?? "description" });
-    const pending: TranslationSegment[] = [];
-    for (const segment of segments) {
-      if (!Object.hasOwn(checkpoint.translations, segment.key)) { pending.push(segment); continue; }
-      let translation: string;
-      try {
-        translation = parseTranslationDictionary(JSON.stringify({ [segment.key]: checkpoint.translations[segment.key] }),
-          { [segment.key]: segment.text })[segment.key];
-      } catch {
-        delete checkpoint.translations[segment.key];
-        pending.push(segment);
-        continue;
-      }
-      segment.write(translation);
-      emit({ completed: progress.completed + 1, completedCharacters: progress.completedCharacters + segment.characters, field: segment.field });
-    }
-    for (let index = 0; index < pending.length;) {
+    const write = (segment: TranslationSegment, translation: string) => segment.write(segment.field === "name"
+      ? translation : synchronizeTranslationSpeakers(translation, card.data.name, result.data.name));
+    for (let index = 0; index < segments.length;) {
       checkAbort(signal);
+      const current = segments[index];
+      if (Object.hasOwn(checkpoint.translations, current.key)) {
+        let cached: string | undefined;
+        try {
+          cached = parseTranslationDictionary(JSON.stringify({ [current.key]: checkpoint.translations[current.key] }),
+            { [current.key]: current.text })[current.key];
+        } catch {
+          delete checkpoint.translations[current.key];
+        }
+        if (cached !== undefined) {
+          write(current, cached);
+          emit({ completed: progress.completed + 1, completedCharacters: progress.completedCharacters + current.characters, field: current.field });
+          index++;
+          continue;
+        }
+      }
       const batch: TranslationSegment[] = [];
       let size = 0;
-      while (index < pending.length && (!batch.length ||
-        pending[index].field === batch[0].field && size + pending[index].text.length <= settings.batchCharacters)) {
-        const segment = pending[index++];
+      while (index < segments.length && (!batch.length ||
+        !Object.hasOwn(checkpoint.translations, segments[index].key) && segments[index].field === batch[0].field
+        && size + segments[index].text.length <= settings.batchCharacters)) {
+        const segment = segments[index++];
         batch.push(segment);
         size += segment.text.length;
       }
@@ -151,7 +156,8 @@ export async function translateCharacterCard(
       checkAbort(signal);
       const source = Object.fromEntries(batch.map(({ key, text }) => [key, text]));
       const messages: ChatMessage[] = [
-        { role: "system", content: `${settings.systemPrompt}\nTarget language: ${settings.languages[locale]}. Preserve the character name: ${JSON.stringify(card.data.name)}.` },
+        { role: "system", content: `${settings.systemPrompt}\nTarget language: ${settings.languages[locale]}.\n${batch[0].field === "name"
+          ? settings.namePrompt : `${settings.glossaryPrompt} ${JSON.stringify({ [card.data.name]: result.data.name })}`}` },
         { role: "user", content: JSON.stringify(source) },
       ];
       const onDelta = (delta: string) => emit({ receivedCharacters: progress.receivedCharacters + delta.length });
@@ -178,7 +184,7 @@ export async function translateCharacterCard(
       checkAbort(signal);
       const translated = parseTranslationDictionary(text, source);
       for (const segment of batch) {
-        segment.write(translated[segment.key]);
+        write(segment, translated[segment.key]);
         checkpoint.translations[segment.key] = translated[segment.key];
       }
       emit({ completed: progress.completed + batch.length,

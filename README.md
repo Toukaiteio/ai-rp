@@ -25,7 +25,7 @@ Open <http://localhost:3000>. On first run, open Settings from the gear icon, ch
 
 ### Local card translation
 
-Open the shelf's **Local** tab and choose **Translate to English** (or **翻译为中文** in the Chinese interface) beneath a card. The target follows the current interface language. Translation uses the currently configured model and saves a separate, encrypted local card, leaving the original and conversations unchanged. Names, attribution, portraits and metadata are preserved; text, greetings and worldbook contents are translated.
+Open the shelf's **Local** tab and choose **Translate to English** (or **翻译为中文** in the Chinese interface) beneath a card. The target follows the current interface language. Translation uses the currently configured model and saves a separate, encrypted local card, leaving the original and conversations unchanged. The character name is translated first and supplied as a fixed glossary for text, greetings and worldbook contents. Matching dialogue speaker attributes are synchronized; `{{char}}` macros are retained. Attribution, portraits and other metadata are preserved. Names already appropriate in the target language may remain unchanged.
 
 The confirmation explains model-credit usage and content sharing. Its themed **Don't remind me again** checkbox remembers consent in this browser only after confirmation. Large cards use multiple requests. Cancel stops further work but cannot refund any provider usage already incurred. Invalid or incomplete output is not saved. Worldbook OR keywords gain translated synonyms; AND keywords stay unchanged to preserve matching semantics.
 
