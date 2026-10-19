@@ -1,5 +1,5 @@
 import { translateCharacterCard, type CharacterCard, type CardTranslationCheckpoint, type CardTranslationProgress } from "@/lib/cards";
-import { translate, type Locale, type MessageKey } from "@/lib/i18n";
+import { type Locale, type MessageKey } from "@/lib/i18n";
 import { withImage } from "@/lib/providers/settings";
 import { addImportedCard } from "@/lib/storage/cards";
 import { getProviderConfigSnapshot } from "@/lib/storage/settings";
@@ -123,10 +123,7 @@ export async function translateAndSaveCard(
     if (session) session.translated = translated;
     options?.onSaving?.();
     signal.throwIfAborted();
-    const copy = {
-      ...translated,
-      data: { ...translated.data, name: `${translated.data.name}${translate(locale, "card.translationSuffix")}` },
-    };
+    const copy = translated;
     try {
       await addImportedCard(copy, { strict: true, signal });
     } catch (error) {

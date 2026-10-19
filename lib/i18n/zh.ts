@@ -90,7 +90,6 @@ export const zh = {
   "card.translationIncomplete": "当前段未能完整生成或接收，未保存新卡。具体原因如下。",
   "card.translationNotConfigured": "请先在设置中配置可用的模型。",
   "card.translationSaveFailed": "翻译已完成，但新卡保存失败。请检查本地存储后重试。",
-  "card.translationSuffix": "（中文译本）",
   "card.translationSettings": "前往设置",
 
   "loader.image": "正在生成",

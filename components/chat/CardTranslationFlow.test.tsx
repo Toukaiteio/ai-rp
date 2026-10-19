@@ -34,7 +34,7 @@ describe("card translation save flow", () => {
     await translateAndSaveCard(card, locale, controller.signal);
     expect(translateCharacterCard).toHaveBeenCalledWith(card, locale, withImage(getProviderConfigSnapshot()), { signal: controller.signal });
     expect(addImportedCard).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ name: locale === "zh" ? "Translated（中文译本）" : "Translated (English translation)" }),
+      data: expect.objectContaining({ name: "Translated" }),
     }), { strict: true, signal: controller.signal });
     expect(card.data.name).toBe("Original");
     expect(result.data.name).toBe("Translated");

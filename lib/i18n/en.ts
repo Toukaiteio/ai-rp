@@ -92,7 +92,6 @@ export const en: Record<MessageKey, string> = {
   "card.translationIncomplete": "The current segment was not fully generated or received. No new card was saved. See the reason below.",
   "card.translationNotConfigured": "Configure an available model in Settings first.",
   "card.translationSaveFailed": "Translation finished, but the new card could not be saved. Check local storage and try again.",
-  "card.translationSuffix": " (English translation)",
   "card.translationSettings": "Open Settings",
 
   "loader.image": "Generating",
