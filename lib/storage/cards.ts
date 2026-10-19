@@ -90,12 +90,27 @@ export async function ensureImportedCardsLoaded(): Promise<ImportedCardRecord[]>
   return getImportedCardsSnapshot();
 }
 
-export async function addImportedCard(card: CharacterCard): Promise<ImportedCardRecord> {
+export async function addImportedCard(
+  card: CharacterCard,
+  options: { strict?: boolean; signal?: AbortSignal } = {},
+): Promise<ImportedCardRecord> {
   const record: ImportedCardRecord = {
     id: createId(),
     card,
     importedAt: Date.now(),
   };
+  if (options.strict) {
+    const gen = generation;
+    options.signal?.throwIfAborted();
+    await writeSlot("data", `${PREFIX}${record.id}`, record);
+    if (options.signal?.aborted || gen !== generation) {
+      await removeSlot("data", `${PREFIX}${record.id}`);
+      throw new DOMException("Cancelled", "AbortError");
+    }
+    cached = [record, ...getImportedCardsSnapshot()];
+    notify();
+    return record;
+  }
   const next = [record, ...getImportedCardsSnapshot()];
   cached = next;
   notify();

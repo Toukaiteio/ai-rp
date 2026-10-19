@@ -28,6 +28,7 @@ import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
 import { OnlineCards } from "./OnlineCards";
 import { Avatar } from "./Avatar";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
+import { CardTranslation } from "./CardTranslation";
 
 /** 简介只在悬停面板里出现，留得下一段完整的设定开头。 */
 function firstSentence(text: string, limit = 120): string {
@@ -294,8 +295,8 @@ export function ShelfScreen({
           {filteredCards.map((entry) => {
             const playable = isPlayableCard(entry.card.data);
             return (
+              <div key={entry.id} className="flex flex-col gap-2">
               <CharacterCard
-                key={entry.id}
                 portrait={<Avatar name={entry.card.data.name} src={cardPortraitUrl(entry.card.data)} />}
                 name={entry.card.data.name}
                 description={firstSentence(entry.card.data.description)}
@@ -350,6 +351,8 @@ export function ShelfScreen({
                   </>
                 }
               />
+              <CardTranslation card={entry.card} onCardsChanged={onCardsChanged} onOpenSettings={onOpenSettings} />
+              </div>
             );
           })}
 
