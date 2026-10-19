@@ -9,7 +9,7 @@ import {
   ScreenHead,
   Tag,
 } from "@/components/ui";
-import { IconBack, IconDownload, IconEdit, IconImage, IconTrash } from "@/components/icons";
+import { IconBack, IconDownload, IconEdit, IconGear, IconImage, IconTrash } from "@/components/icons";
 import {
   downloadCard,
   downloadCardPng,
@@ -44,6 +44,7 @@ export function ShelfScreen({
   onCardsChanged,
   onCreate,
   onEdit,
+  onOpenSettings,
 }: {
   cards: CardEntry[];
   currentCardId: string;
@@ -53,6 +54,7 @@ export function ShelfScreen({
   onCardsChanged?: () => void;
   onCreate?: () => void;
   onEdit?: (cardId: string) => void;
+  onOpenSettings?: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -180,6 +182,11 @@ export function ShelfScreen({
               <div className="flex items-center gap-2">
                 <PwaInstallButton />
                 <AnnouncementBell onClick={() => setAnnounceOpen(true)} />
+                {onOpenSettings ? (
+                  <IconButton aria-label={t("settings.title")} title={t("settings.title")} onClick={onOpenSettings}>
+                    <IconGear />
+                  </IconButton>
+                ) : null}
               </div>
             }
           />

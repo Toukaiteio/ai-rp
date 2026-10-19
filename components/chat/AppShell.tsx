@@ -299,11 +299,12 @@ export function AppShell() {
 
   // 一张卡都没有时没有对话可显示，只能留在角色架。
   // 玩家正在挑卡，所以新卡到位后也留在角色架，想聊就点卡片上的「开始」。
-  if (!current) {
+  if (!current && screen !== "settings") {
     return (
       <ShelfScreen
         cards={cards}
         currentCardId=""
+        onOpenSettings={() => setScreen("settings")}
         onSelect={(id) => {
           setCardId(id);
           rememberLastCardId(id);
@@ -321,7 +322,7 @@ export function AppShell() {
   return (
     <div className="relative">
       {/* 用 hidden 而不是卸载：切去角色架或设置再回来，对话和流式状态都还在 */}
-      <div className={screen === "chat" ? undefined : "hidden"}>
+      {current ? <div className={screen === "chat" ? undefined : "hidden"}>
         {/* key 用卡 id：换角色即重新挂载，开场白、会话、输入框提示一起换掉 */}
         <ChatScreen
           key={current.id}
@@ -332,12 +333,13 @@ export function AppShell() {
           onOpenSettings={() => setScreen("settings")}
           onOpenShelf={() => setScreen("shelf")}
         />
-      </div>
+      </div> : null}
 
-      {screen === "shelf" ? (
+      {screen === "shelf" && current ? (
         <ShelfScreen
           cards={cards}
           currentCardId={current.id}
+          onOpenSettings={() => setScreen("settings")}
           onSelect={(id) => {
             setCardId(id);
             rememberLastCardId(id);
@@ -374,7 +376,7 @@ export function AppShell() {
           onImport={handleImport}
           archiveBusy={archiveBusy}
           archiveMessage={archiveMessage ?? archiveNote}
-          onBack={() => setScreen("chat")}
+          onBack={() => setScreen("shelf")}
         />
       ) : null}
     </div>

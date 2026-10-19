@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Image as ImageIcon, Moon, Sun } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   BackPill,
   Field,
@@ -34,6 +34,7 @@ import { useI18n } from "@/lib/i18n/use-i18n";
 import { useTheme } from "@/lib/use-theme";
 import type { MessageKey } from "@/lib/i18n";
 import { BACKUP_INTERVAL_HOURS } from "@/lib/storage/backup";
+import { getUnfiltered, getUnfilteredServerSnapshot, setUnfiltered, subscribeUnfiltered } from "@/lib/cards/unfiltered";
 
 /* 只从 config / settings 导入，不要从 @/lib/providers 导入：
    那个入口会带出 openai SDK，整个打进浏览器包。 */
@@ -71,6 +72,7 @@ export function SettingsScreen({
   const fileRef = useRef<HTMLInputElement>(null);
   const { t, locale, setLocale } = useI18n();
   const { theme, setTheme } = useTheme();
+  const unfiltered = useSyncExternalStore(subscribeUnfiltered, getUnfiltered, getUnfilteredServerSnapshot);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,7 +130,7 @@ export function SettingsScreen({
               key={tab}
               type="button"
               onClick={() => setActiveTab(tab)}
-              className={`shrink-0 rounded-pill px-3 py-2 text-[12px] transition-colors ${activeTab === tab ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-surface-3"}`}
+              className={`flex-1 whitespace-nowrap rounded-pill px-3 py-2 text-center text-[12px] transition-colors ${activeTab === tab ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-surface-3"}`}
             >
               {t(`settings.tab.${tab}` as MessageKey)}
             </button>
@@ -160,6 +162,24 @@ export function SettingsScreen({
                 {t("settings.themeLight")}
               </OptChip>
             </OptRow>
+          </FormGroup>
+
+          <FormGroup title={t("settings.networkContent")}>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={unfiltered}
+              onClick={() => setUnfiltered(!unfiltered)}
+              className="flex w-full items-center justify-between rounded-lg border border-line bg-surface-2 px-4 py-3 text-left text-[13px] text-ink"
+            >
+              <span>
+                <span className="block">{t("settings.unfiltered")}</span>
+                <span className="mt-1 block text-[12px] text-ink-2">{t("settings.unfilteredHelp")}</span>
+              </span>
+              <span aria-hidden="true" className={`flex h-[22px] w-10 shrink-0 items-center rounded-pill p-0.5 ${unfiltered ? "justify-end bg-accent" : "justify-start bg-surface-3"}`}>
+                <span className={`size-[18px] rounded-pill shadow-raised ${unfiltered ? "bg-accent-ink" : "bg-ink"}`} />
+              </span>
+            </button>
           </FormGroup>
 
           </> : null}

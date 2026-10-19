@@ -16,7 +16,6 @@ import {
 import {
   getUnfiltered,
   getUnfilteredServerSnapshot,
-  setUnfiltered,
   subscribeUnfiltered,
 } from "@/lib/cards/unfiltered";
 import { useI18n } from "@/lib/i18n/use-i18n";
@@ -409,34 +408,6 @@ export function OnlineCards({ onAdded, compact = false, feed = false, localCards
           <p className="m-0 mb-3 text-[12.5px] leading-[1.7] text-ink-3">
             {t("online.disclaimer", { source: sourceName })}
           </p>
-
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <span className="text-[12.5px] text-ink-2">{t("online.includeAdult")}</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={includeAdult}
-              onClick={() => {
-                const next = !includeAdult;
-                setUnfiltered(next);
-                void load(applied, tags, next, true);
-              }}
-              className={cn(
-                "flex h-[22px] w-10 shrink-0 items-center justify-start rounded-pill p-0.5",
-                "transition-colors duration-200 ease-out motion-reduce:transition-none",
-                includeAdult ? "bg-accent" : "bg-surface-3",
-              )}
-            >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "size-4 rounded-pill transition-transform duration-200 ease-out motion-reduce:transition-none",
-                  includeAdult ? "bg-accent-ink" : "bg-ink",
-                )}
-                style={{ transform: includeAdult ? "translateX(20px)" : "translateX(0)" }}
-              />
-            </button>
-          </div>
 
           {tags.length > 0 ? (
             <div className="mb-2 flex flex-wrap gap-1.5">
