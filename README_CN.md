@@ -57,6 +57,20 @@ pnpm start
 
 仅限个人 / 非商业使用。
 
+### Windows 与 Android 应用
+
+`native/AiRp.Maui` 是 .NET 8 MAUI 原生应用，使用系统 WebView 直接打开固定服务地址 <https://rp.dys.asia/>，没有地址输入框。前端的 `__AI_RP_CALL__` 存储桥把 `data` 和 `local` 数据写入应用私有目录，使用临时文件替换和 UTF-8 十六进制文件名。浏览器 PWA 的 IndexedDB 也能跨重启保存数据，但仍受浏览器配额和用户清理站点数据影响；原生版本的核心加密数据使用应用私有文件存储。
+
+安装 .NET 8 SDK 以及目标平台的 MAUI workload：
+
+```bash
+dotnet workload install maui-android       # Android
+dotnet workload install maui-windows       # Windows，仅 Windows 主机
+dotnet build native/AiRp.Maui/AiRp.Maui.csproj -f net8.0-windows10.0.19041.0
+```
+
+默认地址写在工程配置中。`.github/workflows/native-apps.yml` 会自动构建 Windows 和 Android 包并上传为 Actions artifact；推送 `v*` 标签时还会把两个包附加到 GitHub Release。只有确实需要更换部署站点时，才通过 `-p:ApplicationUrl=...` 覆盖默认值。
+
 ## 文本引擎观测
 
 角色卡中的常用酒馆文本宏会在显示和发送时展开，原卡保留模板。支持列表、示例及不支持的变量/脚本边界见 [酒馆宏兼容说明](doc/macros-compatibility.md)。

@@ -69,4 +69,18 @@ pnpm build
 pnpm start
 ```
 
+### Windows and Android app shell
+
+The .NET 8 MAUI project in `native/AiRp.Maui` loads the fixed `https://rp.dys.asia/` service in the platform WebView. It has no address editor. The frontend `__AI_RP_CALL__` storage bridge persists `data` and `local` values under the app-private directory using temporary-file replacement and UTF-8 hex-encoded filenames. Browser PWA storage can persist across restarts, but it remains subject to browser quota and site-data cleanup; the native builds use the application-private filesystem for the core encrypted data instead.
+
+Install the .NET 8 SDK and the MAUI workload for the target platform, then build with:
+
+```bash
+dotnet workload install maui-android       # Android
+dotnet workload install maui-windows       # Windows, on Windows
+dotnet build native/AiRp.Maui/AiRp.Maui.csproj -f net8.0-windows10.0.19041.0
+```
+
+The checked-in default is `https://rp.dys.asia/`. CI builds both targets in `.github/workflows/native-apps.yml`, uploads the two packages as workflow artifacts, and attaches them to a GitHub release when a `v*` tag is pushed. The build accepts `-p:ApplicationUrl=...` for a deliberate deployment override.
+
 Personal / non-commercial use only.
