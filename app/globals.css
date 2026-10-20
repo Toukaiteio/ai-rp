@@ -403,8 +403,8 @@
     }
 
     .character-card .card-portrait {
-      inset: 0 auto 0 0;
-      width: 42%;
+      inset: 0;
+      width: 100%;
     }
 
     .character-card .card-spacer {
@@ -419,8 +419,8 @@
       background: linear-gradient(
         to right,
         transparent 0%,
-        color-mix(in srgb, var(--overlay-strong) 70%, transparent) 30%,
-        var(--overlay-strong) 48%,
+        color-mix(in srgb, var(--overlay-strong) 18%, transparent) 36%,
+        color-mix(in srgb, var(--overlay-strong) 68%, transparent) 68%,
         var(--overlay-strong) 100%
       );
     }
