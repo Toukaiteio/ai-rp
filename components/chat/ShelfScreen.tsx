@@ -30,6 +30,7 @@ import { Avatar } from "./Avatar";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
 import { CardTranslation } from "./CardTranslation";
 import { applyMacros } from "@/lib/prompt";
+import { hasNativeFilePicker, isAndroidApp, pickNativeFile } from "@/lib/storage/native";
 
 /** 简介只在悬停面板里出现，留得下一段完整的设定开头。 */
 function firstSentence(text: string, limit = 120): string {
@@ -158,6 +159,22 @@ export function ShelfScreen({
     }
     await addImportedCard(result.card);
     onCardsChanged?.();
+  }
+
+  async function chooseCardFile() {
+    if (isAndroidApp()) {
+      if (!hasNativeFilePicker()) {
+        setError(t("native.filePickerUnavailable"));
+        return;
+      }
+      try {
+        await handleFile((await pickNativeFile("application/json,.json,image/png,.png")) ?? undefined);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : t("shelf.importFail", { error: "文件读取失败" }));
+      }
+      return;
+    }
+    fileRef.current?.click();
   }
 
   /* 外层只负责定位，不滚动：公告抽屉挂在它上面，才不会跟着内容一起滚。
@@ -379,7 +396,7 @@ export function ShelfScreen({
       <div className="fixed right-5 bottom-5 z-30 flex flex-col items-end gap-2 sm:right-8 sm:bottom-8">
         {quickMenuOpen ? (
           <div className="flex flex-col items-end gap-2 rounded-card border border-line bg-surface p-2 shadow-pop">
-            <button type="button" onClick={() => { setQuickMenuOpen(false); fileRef.current?.click(); }} className="flex items-center gap-2 rounded-pill px-3 py-2 text-[13px] text-ink hover:bg-surface-2">
+         <button type="button" onClick={() => { setQuickMenuOpen(false); void chooseCardFile(); }} className="flex items-center gap-2 rounded-pill px-3 py-2 text-[13px] text-ink hover:bg-surface-2">
               <Upload className="size-4" aria-hidden="true" />
               {t("card.import")}
             </button>

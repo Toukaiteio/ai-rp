@@ -114,6 +114,7 @@ export const zh = {
   "topbar.export": "导出为 EPUB",
   "topbar.settings": "连接设置",
   "topbar.battery": "电量",
+  "native.filePickerUnavailable": "Android 文件选择器尚未接入。",
 
   "composer.more": "更多功能",
   "composer.upload": "上传图片或文档",

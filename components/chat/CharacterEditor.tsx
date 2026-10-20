@@ -12,6 +12,7 @@ import {
 } from "@/lib/voice";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { Avatar } from "./Avatar";
+import { hasNativeFilePicker, isAndroidApp, pickNativeFile } from "@/lib/storage/native";
 
 type Draft = {
   name: string;
@@ -264,6 +265,22 @@ export function CharacterEditor({
     reader.readAsDataURL(file);
   }
 
+  async function choosePortraitFile() {
+    if (!isAndroidApp()) {
+      portraitRef.current?.click();
+      return;
+    }
+    if (!hasNativeFilePicker()) {
+      setError(t("native.filePickerUnavailable"));
+      return;
+    }
+    try {
+      choosePortrait((await pickNativeFile("image/*")) ?? undefined);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("native.filePickerUnavailable"));
+    }
+  }
+
   /** 导出当前编辑内容：不落盘，直接拿草稿组出的卡下载，JSON 与酒馆 PNG 各一份。 */
   async function exportCard(format: "json" | "png") {
     try {
@@ -294,7 +311,7 @@ export function CharacterEditor({
               <div className="flex min-h-[112px] flex-col justify-end gap-2">
                 <span className="text-[13px] font-bold text-ink">{t("card.cover")}</span>
                 <div className="flex flex-wrap gap-2">
-                  <PillButton type="button" size="sm" onClick={() => portraitRef.current?.click()}>{t("card.coverUpload")}</PillButton>
+                  <PillButton type="button" size="sm" onClick={() => void choosePortraitFile()}>{t("card.coverUpload")}</PillButton>
                   {draft.portrait ? <PillButton type="button" size="sm" onClick={() => { set("portrait", ""); set("coverUrl", ""); }}>{t("card.coverRemove")}</PillButton> : null}
                 </div>
                 <input

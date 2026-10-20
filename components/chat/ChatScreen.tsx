@@ -40,7 +40,7 @@ import {
 } from "@/components/ui";
 import { IconBookmark, IconBranch, IconCheck, IconCopy, IconEdit, IconImage, IconRefresh } from "@/components/icons";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
-import { isAndroidApp } from "@/lib/storage/native";
+import { hasNativeFilePicker, isAndroidApp, pickNativeFile } from "@/lib/storage/native";
 import { cn } from "@/components/ui/cn";
 import { hashSeed } from "@/lib/seed";
 import {
@@ -2133,6 +2133,22 @@ export function ChatScreen({
     }
   }
 
+  async function chooseAttachment() {
+    if (!isAndroidApp()) {
+      imageInputRef.current?.click();
+      return;
+    }
+    if (!hasNativeFilePicker()) {
+      setError({ status: 0, code: "file", message: t("native.filePickerUnavailable") });
+      return;
+    }
+    try {
+      await pickFile((await pickNativeFile("image/*,.txt,.md,.markdown,.csv,.json,.log,.docx")) ?? undefined);
+    } catch (caught) {
+      setError({ status: 0, code: "file", message: caught instanceof Error ? caught.message : t("native.filePickerUnavailable") });
+    }
+  }
+
   /** 开场白换一条：在 first_mes 与 alternate_greetings 之间轮换。 */
   function cycleGreeting() {
     if (greetings.length <= 1 || !memoryReadyRef.current) return;
@@ -2469,7 +2485,7 @@ export function ChatScreen({
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
       <TopBar
         className={cn(
-          "absolute inset-x-0 top-0 z-20",
+          androidApp ? "relative z-20" : "absolute inset-x-0 top-0 z-20",
           androidApp && "pt-[max(12px,env(safe-area-inset-top))]",
         )}
         avatar={<Avatar name={card.name} src={portraitUrl} />}
@@ -2544,7 +2560,6 @@ export function ChatScreen({
 
       <ChatScroll
         ref={scrollRef}
-        className={androidApp ? "pt-[calc(88px+env(safe-area-inset-top))]" : undefined}
         onScroll={() => {
           const element = scrollRef.current;
           if (!element) return;
@@ -2870,7 +2885,7 @@ export function ChatScreen({
         <ChatComposer
           key={composerReset}
           hasExtra={!!attachment}
-          onPlus={() => imageInputRef.current?.click()}
+           onPlus={() => void chooseAttachment()}
           onSend={send}
           onStop={() => abortRef.current?.abort()}
           placeholder={t("chat.sayTo", { name: card.name })}

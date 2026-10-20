@@ -35,6 +35,7 @@ import { useTheme } from "@/lib/use-theme";
 import type { MessageKey } from "@/lib/i18n";
 import { BACKUP_INTERVAL_HOURS } from "@/lib/storage/backup";
 import { getUnfiltered, getUnfilteredServerSnapshot, setUnfiltered, subscribeUnfiltered } from "@/lib/cards/unfiltered";
+import { hasNativeFilePicker, isAndroidApp, pickNativeFile } from "@/lib/storage/native";
 
 /* 只从 config / settings 导入，不要从 @/lib/providers 导入：
    那个入口会带出 openai SDK，整个打进浏览器包。 */
@@ -68,6 +69,7 @@ export function SettingsScreen({
   const [showKey, setShowKey] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [browserReady, setBrowserReady] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"general" | "model" | "image" | "story" | "data">("general");
   const fileRef = useRef<HTMLInputElement>(null);
   const { t, locale, setLocale } = useI18n();
@@ -83,6 +85,23 @@ export function SettingsScreen({
       cancelled = true;
     };
   }, []);
+
+  async function chooseArchiveFile() {
+    setFileError(null);
+    if (!isAndroidApp()) {
+      fileRef.current?.click();
+      return;
+    }
+    if (!hasNativeFilePicker()) {
+      setFileError(t("native.filePickerUnavailable"));
+      return;
+    }
+    try {
+      onImport?.(await pickNativeFile("application/json,.json") ?? undefined);
+    } catch (caught) {
+      setFileError(caught instanceof Error ? caught.message : t("native.filePickerUnavailable"));
+    }
+  }
 
   const remoteProviders = getProvidersConfig().providers;
   const browserPreset: ProviderPreset = {
@@ -490,13 +509,13 @@ export function SettingsScreen({
               icon={<IconDownload className="size-[17px] rotate-180" />}
               note={t("settings.sameKey")}
               disabled={archiveBusy}
-              onClick={() => fileRef.current?.click()}
+               onClick={() => void chooseArchiveFile()}
             >
               {t("settings.importArchive")}
             </MenuRow>
-            {archiveMessage ? (
+            {archiveMessage || fileError ? (
               <div className="rounded-md bg-danger-soft px-4 py-2.5 text-[13px] text-danger">
-                {archiveMessage}
+                {archiveMessage ?? fileError}
               </div>
             ) : null}
             <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 px-4 py-3">
@@ -545,6 +564,7 @@ export function SettingsScreen({
               accept="application/json,.json"
               className="hidden"
               onChange={(event) => {
+                setFileError(null);
                 onImport?.(event.target.files?.[0]);
                 // 清空，同一个文件连选两次也要能触发
                 event.target.value = "";

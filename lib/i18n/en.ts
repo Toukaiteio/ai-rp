@@ -116,6 +116,7 @@ export const en: Record<MessageKey, string> = {
   "topbar.export": "Export as EPUB",
   "topbar.settings": "Connection settings",
   "topbar.battery": "Battery",
+  "native.filePickerUnavailable": "The Android file picker is not connected.",
 
   "composer.more": "More",
   "composer.upload": "Upload an image or a document",

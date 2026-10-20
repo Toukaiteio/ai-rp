@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
 import { IconGithub, IconLock } from "@/components/icons";
 import { PillButton } from "@/components/ui";
@@ -8,6 +8,7 @@ import { cn } from "@/components/ui/cn";
 import { explainError } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import type { MessageKey } from "@/lib/i18n";
+import { hasNativeFilePicker, isAndroidApp, pickNativeFile } from "@/lib/storage/native";
 import {
   MAX_ATTEMPTS,
   MIN_PASSPHRASE_LENGTH,
@@ -61,6 +62,7 @@ export function VaultGate({
   const [archiveManualKdf, setArchiveManualKdf] = useState(false);
   const [archiveSalt, setArchiveSalt] = useState("");
   const [archiveIterations, setArchiveIterations] = useState("600000");
+  const archiveFileRef = useRef<HTMLInputElement>(null);
   const { t } = useI18n();
   const rememberMs = useSyncExternalStore(
     subscribeRememberPref,
@@ -98,6 +100,23 @@ export function VaultGate({
       setError(explainError(caught, t));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function chooseArchiveFile() {
+    if (!isAndroidApp()) {
+      archiveFileRef.current?.click();
+      return;
+    }
+    if (!hasNativeFilePicker()) {
+      setError(t("native.filePickerUnavailable"));
+      return;
+    }
+    try {
+      setArchiveFile(await pickNativeFile("application/json,.json"));
+      setArchiveManualKdf(false);
+    } catch (caught) {
+      setError(explainError(caught, t));
     }
   }
 
@@ -210,6 +229,7 @@ export function VaultGate({
             <div className="mt-2 border-t border-line pt-3">
               <input
                 id="vault-archive-file"
+                ref={archiveFileRef}
                 type="file"
                 accept="application/json,.json"
                 className="hidden"
@@ -219,12 +239,13 @@ export function VaultGate({
                   event.target.value = "";
                 }}
               />
-              <label
-                htmlFor="vault-archive-file"
-                className="block cursor-pointer rounded-pill border border-line bg-surface px-4 py-2.5 text-center text-[13px] text-ink-2 hover:border-line-strong hover:text-ink"
+              <button
+                type="button"
+                onClick={() => void chooseArchiveFile()}
+                className="block w-full cursor-pointer rounded-pill border border-line bg-surface px-4 py-2.5 text-center text-[13px] text-ink-2 hover:border-line-strong hover:text-ink"
               >
                 {archiveFile ? archiveFile.name : t("vault.chooseArchive")}
-              </label>
+              </button>
               {archiveFile ? (
                 <>
                   <p className="mt-2 mb-2 text-center text-[12px] leading-relaxed text-ink-3">
