@@ -407,25 +407,22 @@
       width: 42%;
     }
 
-    .character-card .card-portrait::after {
-      position: absolute;
-      inset: 0 -58px 0 auto;
-      width: 76px;
-      background: linear-gradient(to right, transparent, var(--overlay-strong));
-      content: "";
-      pointer-events: none;
-    }
-
     .character-card .card-spacer {
       display: none;
     }
 
     .character-card .card-scrim {
-      inset: 0 0 0 30%;
+      inset: 0;
       justify-content: center;
       gap: 6px;
-      padding: 14px 12px 12px 16px;
-      background: var(--overlay-strong);
+      padding: 14px 12px 12px calc(30% + 16px);
+      background: linear-gradient(
+        to right,
+        transparent 0%,
+        color-mix(in srgb, var(--overlay-strong) 70%, transparent) 30%,
+        var(--overlay-strong) 48%,
+        var(--overlay-strong) 100%
+      );
     }
 
     .character-card .card-info-text {
