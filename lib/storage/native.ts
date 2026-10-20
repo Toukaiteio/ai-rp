@@ -19,6 +19,10 @@ function bridge(): AndroidBridge | null {
   return window.AndroidBridge ?? null;
 }
 
+export function isAndroidApp(): boolean {
+  return bridge() !== null;
+}
+
 function createNativeBackend(scope: "data" | "local", api: AndroidBridge): StorageAdapter {
   return {
     kind: "native",

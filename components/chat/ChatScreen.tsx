@@ -40,6 +40,7 @@ import {
 } from "@/components/ui";
 import { IconBookmark, IconBranch, IconCheck, IconCopy, IconEdit, IconImage, IconRefresh } from "@/components/icons";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
+import { isAndroidApp } from "@/lib/storage/native";
 import { cn } from "@/components/ui/cn";
 import { hashSeed } from "@/lib/seed";
 import {
@@ -610,7 +611,32 @@ export function ChatScreen({
   onDisableQualityGate: () => void;
 }) {
   const { t, locale } = useI18n();
+  const androidApp = useSyncExternalStore(() => () => {}, isAndroidApp, () => false);
+  const [batteryPercent, setBatteryPercent] = useState<number | null>(null);
   const storySystems = config.storySystems ?? defaultStorySystemSettings();
+
+  useEffect(() => {
+    if (!androidApp) return;
+    const batteryApi = navigator as Navigator & {
+      getBattery?: () => Promise<{
+        level: number;
+        addEventListener: (type: "levelchange", listener: () => void) => void;
+        removeEventListener: (type: "levelchange", listener: () => void) => void;
+      }>;
+    };
+    let battery: Awaited<ReturnType<NonNullable<typeof batteryApi.getBattery>>> | null = null;
+    let onLevelChange: (() => void) | null = null;
+    void batteryApi.getBattery?.().then((next) => {
+      battery = next;
+      const update = () => setBatteryPercent(Math.round(next.level * 100));
+      onLevelChange = update;
+      update();
+      next.addEventListener("levelchange", update);
+    });
+    return () => {
+      if (battery && onLevelChange) battery.removeEventListener("levelchange", onLevelChange);
+    };
+  }, [androidApp]);
   const greetings = useMemo(
     () =>
       openingGreetings(card).map((text) => adaptGreeting(text, locale)),
@@ -2436,7 +2462,10 @@ export function ChatScreen({
 
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
       <TopBar
-        className="absolute inset-x-0 top-0 z-20"
+        className={cn(
+          "absolute inset-x-0 top-0 z-20",
+          androidApp && "pt-[max(12px,env(safe-area-inset-top))]",
+        )}
         avatar={<Avatar name={card.name} src={portraitUrl} />}
         name={card.name}
         subtitle={card.tags?.join(" · ")}
@@ -2453,6 +2482,12 @@ export function ChatScreen({
         onHistory={() => setResetOpen(true)}
         onExport={() => setExportOpen(true)}
         onSettings={onOpenSettings}
+        androidStatus={androidApp ? (
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="min-w-0 flex-1 truncate">{t("topbar.world")}: {sceneRef.current.location || t("topbar.worldUnknown")}</span>
+            <span className="shrink-0">{t("topbar.battery")}: {batteryPercent == null ? "--" : `${batteryPercent}%`}</span>
+          </div>
+        ) : null}
         extra={
           <>
             <PwaInstallButton />
@@ -2503,6 +2538,7 @@ export function ChatScreen({
 
       <ChatScroll
         ref={scrollRef}
+        className={androidApp ? "pt-[calc(88px+env(safe-area-inset-top))]" : undefined}
         onScroll={() => {
           const element = scrollRef.current;
           if (!element) return;

@@ -22,6 +22,7 @@ export function TopBar({
   onHistory,
   onExport,
   onSettings,
+  androidStatus,
   /** 跟右侧圆按钮放在一起，尺寸由调用方对齐到 40px */
   extra,
   compact = false,
@@ -42,6 +43,7 @@ export function TopBar({
   onHistory?: () => void;
   onExport?: () => void;
   onSettings?: () => void;
+  androidStatus?: ReactNode;
   extra?: ReactNode;
   compact?: boolean;
   className?: string;
@@ -52,7 +54,7 @@ export function TopBar({
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center gap-1.5 bg-[linear-gradient(to_bottom,var(--bar-scrim),transparent)] px-3 py-3 md:gap-3 md:px-4",
+        "flex shrink-0 flex-wrap items-center gap-1.5 bg-[linear-gradient(to_bottom,var(--bar-scrim),transparent)] px-3 py-3 md:gap-3 md:px-4",
         className,
       )}
     >
@@ -90,6 +92,11 @@ export function TopBar({
         </IconButton>
         {extra}
       </div>
+      {androidStatus ? (
+        <div className="basis-full border-t border-line/60 pt-1 text-[10.5px] leading-4 text-ink-2">
+          {androidStatus}
+        </div>
+      ) : null}
     </div>
   );
 }
