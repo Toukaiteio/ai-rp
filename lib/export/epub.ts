@@ -83,7 +83,7 @@ export async function buildEpub(input: EpubInput): Promise<Blob> {
 
 /** jepub 的 add() 接收 body 片段，因此把样式移入每个 XHTML 的 head。 */
 async function injectChapterStyles(source: Blob): Promise<Blob> {
-  const zip = await JSZip.loadAsync(source);
+  const zip = await JSZip.loadAsync(await source.arrayBuffer());
   const style = `<style type="text/css">${CHAPTER_CSS}</style>`;
   const files = Object.keys(zip.files).filter((name) => /\.(?:html|xhtml)$/i.test(name));
   for (const name of files) {

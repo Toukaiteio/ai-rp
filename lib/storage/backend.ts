@@ -1,14 +1,11 @@
 /**
  * 存储后端。只存已经加密好的字符串，不理解内容。
  *
- * 桌面 / 安卓壳在时走应用目录里的文件。
- * 浏览器里 IndexedDB 优先，打不开就回退到 localStorage，两个都没有就用内存。
+ * IndexedDB 优先，打不开就回退到 localStorage，两个都没有就用内存。
  * 回退对上层完全透明：接口一样，只是容量不同。
  */
 
-import { createNativeBackend, isNativeApp } from "./native";
-
-export type BackendKind = "file" | "indexeddb" | "localstorage" | "memory";
+export type BackendKind = "indexeddb" | "localstorage" | "memory";
 
 export interface VaultBackend {
   readonly kind: BackendKind;
@@ -206,7 +203,6 @@ export async function getDataBackend(): Promise<VaultBackend> {
   if (configuredData) return configuredData;
   if (!dataPromise) {
     dataPromise = (async () => {
-      if (isNativeApp()) return createNativeBackend("data");
       const idb = await createIndexedDbBackend();
       if (idb) return idb;
       return createLocalStorageBackend() ?? createMemoryBackend();
@@ -215,10 +211,9 @@ export async function getDataBackend(): Promise<VaultBackend> {
   return dataPromise;
 }
 
-/** 连接设置这类小但敏感的数据。浏览器里固定放 localStorage，壳里跟数据放在一起。 */
+/** 连接设置这类小但敏感的数据，固定放 localStorage。 */
 export async function getLocalBackend(): Promise<VaultBackend> {
   if (configuredLocal) return configuredLocal;
-  if (isNativeApp()) return createNativeBackend("local");
   return createLocalStorageBackend() ?? createMemoryBackend();
 }
 

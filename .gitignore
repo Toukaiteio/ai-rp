@@ -44,7 +44,3 @@ next-env.d.ts
 /probe-raw*.txt
 /fuka-tmp.json
 /.opencode/
-
-# .NET MAUI 编译中间产物
-/native/AiRp.Maui/bin/
-/native/AiRp.Maui/obj/

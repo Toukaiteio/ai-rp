@@ -8,10 +8,8 @@ export const en: Record<MessageKey, string> = {
   "common.retry": "Retry",
   "common.start": "Start",
   "common.current": "Current",
-  "pwa.install": "Download app",
-  "pwa.desktop": "Desktop",
-  "pwa.android": "Android",
-  "pwa.installHelp": "The native apps open rp.dys.asia directly and keep app data in their private storage.",
+  "pwa.install": "Install app",
+  "pwa.installHelp": "Use your browser menu to choose “Add to Home Screen” or “Install app”.",
 
   "card.import": "Import character card",
   "card.create": "New character card",

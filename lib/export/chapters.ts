@@ -63,26 +63,31 @@ export function splitChapters(
   const chapters: ExportChapter[] = [];
   let current: ExportChapter = { title: uniqueTitle("开场", used), messages: [] };
   let userTurns = 0;
+  let currentScene: string | null = null;
 
   const open = (title: string) => {
     if (current.messages.length > 0) chapters.push(current);
     current = { title: uniqueTitle(title, used), messages: [] };
     userTurns = 0;
+    currentScene = null;
   };
 
   for (const message of messages) {
     const scene = message.role === "assistant" ? sceneTitle(message.content) : null;
     const hitLimit =
       message.role === "user" && userTurns >= every && current.messages.length > 0;
-    const hitScene = !!scene && current.messages.length > 0;
+    const hitScene = !!scene && current.messages.length > 0 && scene !== currentScene;
     if (message.chapterBreak || hitLimit || hitScene) {
       const fallback = `第 ${chapters.length + 2} 章`;
+      const previousScene: string | null = currentScene;
       open(message.chapterBreak ? scene ?? fallback : hitScene ? scene! : fallback);
+      if (!hitScene) currentScene = previousScene;
     } else if (scene && current.messages.length === 0) {
       current = { ...current, title: uniqueTitle(scene, used) };
     }
 
     current.messages.push(message);
+    if (scene) currentScene = scene;
     if (message.role === "user") userTurns += 1;
   }
 

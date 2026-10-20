@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import EpubBuilder from "jepub/dist/jepub.es.js";
 import JSZip from "jszip";
 import { buildEpub } from "./epub";
@@ -41,6 +41,21 @@ describe("分章", () => {
     expect(chapters[0]?.messages).toHaveLength(CHAPTER_TURN_LIMIT);
     expect(chapters[1]?.messages).toHaveLength(1);
     expect(chapters[1]?.title).toBe("第 2 章");
+  });
+
+  it("同一场景重复出现不会无意义地拆章，场景真的变化才拆章", () => {
+    const messages = [
+      { role: "assistant" as const, content: "<scene>客厅</scene>\n<dlg>坐。</dlg>" },
+      { role: "user" as const, content: "我坐下。" },
+      { role: "assistant" as const, content: "<scene>客厅</scene>\n<dlg>茶好了。</dlg>" },
+      { role: "user" as const, content: "谢谢。" },
+      { role: "assistant" as const, content: "<scene>厨房</scene>\n<dlg>水开了。</dlg>" },
+    ];
+    const chapters = splitChapters(messages);
+    expect(chapters).toHaveLength(2);
+    expect(chapters[0]?.title).toBe("客厅");
+    expect(chapters[0]?.messages).toHaveLength(4);
+    expect(chapters[1]?.title).toBe("厨房");
   });
 });
 
@@ -152,7 +167,23 @@ describe("EPUB 容器", () => {
     expect(page).not.toContain("没选中的另一条");
   });
 
-  it.skip("正式导出时把样式放进 head，并安全写入简介", async () => {
+  it("正式导出包含合法容器、导航、章节 XHTML 和样式", async () => {
+    const context = {
+      fillStyle: "",
+      textAlign: "",
+      font: "",
+      fillRect: vi.fn(),
+      fillText: vi.fn(),
+    };
+    vi.stubGlobal("document", {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => context,
+        toBlob: (callback: (blob: Blob) => void) =>
+          callback(new Uint8Array([255, 216, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0]).buffer as unknown as Blob),
+      }),
+    });
     const out = await buildEpub({
       title: "晚星",
       author: "作者",
@@ -160,7 +191,17 @@ describe("EPUB 容器", () => {
       messages: [{ role: "assistant", content: "<narr>雨还在下。</narr>" }],
       options,
     });
-    const zip = await JSZip.loadAsync(out);
+    const zip = await JSZip.loadAsync(await out.arrayBuffer());
+    expect(await zip.file("mimetype")?.async("string")).toBe("application/epub+zip");
+    expect(Object.keys(zip.files)[0]).toBe("mimetype");
+    expect(zip.file("META-INF/container.xml")).toBeTruthy();
+    const container = await zip.file("META-INF/container.xml")?.async("string");
+    const opf = await zip.file("book.opf")?.async("string");
+    const ncx = await zip.file("toc.ncx")?.async("string");
+    expect(container).toContain('full-path="book.opf"');
+    expect(opf).toContain('href="OEBPS/page-1.html"');
+    expect(opf).toContain('media-type="application/xhtml+xml"');
+    expect(ncx).toContain("开场");
     const pages = Object.keys(zip.files).filter((name) => /\.html$/i.test(name));
     expect(pages.length).toBeGreaterThan(0);
     for (const name of pages) {
@@ -173,6 +214,8 @@ describe("EPUB 容器", () => {
       pages.map(async (name) => (await zip.file(name)?.async("string")) ?? ""),
     );
     expect(all.join("\n")).toContain("雨夜 &lt;危险&gt;");
+    expect(all.join("\n")).toContain("雨还在下。");
+    vi.unstubAllGlobals();
   });
 });
 

@@ -131,44 +131,6 @@ describe("后端选择", () => {
     expect(await backend.get("a")).toBe("密文");
   });
 
-  it("原生壳里数据与本地设置都走文件桥，不打开 IndexedDB", async () => {
-    installIndexedDb("ok");
-    const files = { data: new Map<string, string>(), local: new Map<string, string>() };
-    const host = window as Window & {
-      __AI_RP_NATIVE__?: boolean;
-      __AI_RP_CALL__?: (message: { op: string; bucket: "data" | "local"; key?: string; value?: string | null }) => Promise<{ ok: boolean; value?: string | null; keys?: string[] }>;
-    };
-    host.__AI_RP_NATIVE__ = true;
-    host.__AI_RP_CALL__ = async (message) => {
-      const bucket = files[message.bucket];
-      if (message.op === "get") return { ok: true, value: bucket.get(message.key ?? "") ?? null };
-      if (message.op === "set") {
-        bucket.set(message.key ?? "", message.value ?? "");
-        return { ok: true };
-      }
-      if (message.op === "remove") {
-        bucket.delete(message.key ?? "");
-        return { ok: true };
-      }
-      if (message.op === "keys") return { ok: true, keys: [...bucket.keys()] };
-      bucket.clear();
-      return { ok: true };
-    };
-
-    const data = await getDataBackend();
-    const local = await getLocalBackend();
-    expect(data.kind).toBe("file");
-    expect(local.kind).toBe("file");
-    await data.set("session:1", "密文");
-    expect(await data.get("session:1")).toBe("密文");
-    expect(await data.keys()).toEqual(["session:1"]);
-    await local.set("settings", "设置");
-    expect(files.local.get("settings")).toBe("设置");
-    await data.clear();
-    expect(await data.keys()).toEqual([]);
-    expect(files.local.get("settings")).toBe("设置");
-  });
-
   it("local 范围固定用 localStorage，且只清自己的键", async () => {
     installIndexedDb("ok");
     const backend = await getLocalBackend();

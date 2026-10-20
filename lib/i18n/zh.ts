@@ -6,10 +6,8 @@ export const zh = {
   "common.retry": "重试",
   "common.start": "开始",
   "common.current": "当前角色",
-  "pwa.install": "下载应用",
-  "pwa.desktop": "桌面版",
-  "pwa.android": "安卓版",
-  "pwa.installHelp": "原生应用会直接打开 rp.dys.asia，并将应用数据保存在应用私有存储中。",
+  "pwa.install": "安装到设备",
+  "pwa.installHelp": "请在浏览器菜单中选择“添加到主屏幕”或“安装应用”。",
 
   "card.import": "导入角色卡",
   "card.create": "新建角色卡",

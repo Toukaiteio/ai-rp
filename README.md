@@ -1,86 +1,133 @@
 # ai-rp
 
-English | [中文](README_CN.md)
+ai-rp is a browser-based role-playing writing environment for producing a genuinely personal novel through immersive dialogue. You bring the character, setting, and player decisions; the model provides narration, character dialogue, scene movement, and continuity. The result is not a generic chat transcript but a story that develops around the choices made in one specific session.
 
-Through immersive dialogue, run an adventure, write a novel, learn about a character, or live through a story. Built with Next.js and deployable directly to Vercel.
+The application is built with Next.js and is deployable to Vercel or any compatible Node.js host. It uses a BYOK model configuration: provider credentials are entered by the user, encrypted locally, and are not stored by the server.
 
-The AI acts as narrator and relays everything that happens in the world, including the actions and words of characters. It never takes a role; the first person belongs to the player only.
+## What it does
 
-BYOK: players supply their own API key in the browser. The server does not store keys or chat content, and no database is used.
+- **Immersive dialogue as the primary writing interface**: play a scene turn by turn and let the story become a novel organically.
+- **Character cards**: import and export Character Card V2 JSON/PNG data, including greetings, lorebooks, macros, and voice profiles.
+- **Continuity controls**: maintain scene state, unfinished story threads, layered long-term memory, author notes, and branch conversations.
+- **Generation quality gates**: validate structured response blocks, detect player-action violations and repetition, and repair structural failures before they enter history.
+- **Prompt observability**: inspect the assembled prompt, token budget, activated lorebook entries, scene state, story threads, and turn plan in development mode.
+- **Novel export**: select the current swipe, remove or retain OOC text and narration, split the session into chapters, and export a standards-compatible EPUB with a cover, table of contents, formatted dialogue, and embedded scene images.
+- **Local-first data**: encrypted sessions, cards, settings, memories, and branches remain on the client. Use archive export/import for backup and migration.
 
-Common SillyTavern read-only card macros are expanded for display and model requests while original card templates are preserved. See [macro compatibility and limitations](doc/macros-compatibility.md); this is not a full STscript or variable runtime.
+Common read-only SillyTavern macros are expanded for display and model requests while the original card templates remain unchanged. This is intentionally not a full STscript or variable-runtime implementation; see [macro compatibility](doc/macros-compatibility.md).
 
-## Deployment
+## Requirements
 
-Requirements: Node.js 22.19.0 (`.nvmrc`), pnpm 10.14.0.
+- Node.js 22.19.0, pinned in `.nvmrc`
+- pnpm 10.14.0, pinned in `package.json`
+- A model provider and API key configured in the application for live generation
 
-### Local development
+## Development
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open <http://localhost:3000>. On first run, open Settings from the gear icon, choose a provider, paste a key, and select a model.
+Open <http://localhost:3000>. Configure a provider from Settings, then create or import a character card and start a session.
 
-### Local card translation
+## Tests and validation
 
-Open the shelf's **Local** tab and choose **Translate to English** (or **翻译为中文** in the Chinese interface) beneath a card. The target follows the current interface language. Translation uses the currently configured model and saves a separate, encrypted local card, leaving the original and conversations unchanged. The character name is translated first and supplied as a fixed glossary for text, greetings and worldbook contents. Matching dialogue speaker attributes are synchronized; `{{char}}` macros are retained. Attribution, portraits and other metadata are preserved. Names already appropriate in the target language may remain unchanged.
-
-The confirmation explains model-credit usage and content sharing. Its themed **Don't remind me again** checkbox remembers consent in this browser only after confirmation. Large cards use multiple requests. Cancel stops further work but cannot refund any provider usage already incurred. Invalid or incomplete output is not saved. Worldbook OR keywords gain translated synonyms; AND keywords stay unchanged to preserve matching semantics. The saved card uses the translated character name without an edition suffix.
-
-The dialog shows the current field, verified segments, completed source-character percentage and output characters received in this attempt. Only successful persistence reaches 100%. Segments prefer paragraph and sentence boundaries. Translation requests use low reasoning effort with no automatic paid retries. Errors distinguish output limits, content filtering, interrupted streams, truncated JSON, missing fields and damaged protected markers. Keep the dialog open and choose **Continue translation** to reuse verified segments. **Retry saving** reuses the complete translated card without another model call. This cache lives only in memory and is cleared on close, cancellation, or changes to the card, language or model configuration.
-
-### Tests
-
-After installing dependencies, the single offline test command is:
+The offline test suite does not require a model key or network access:
 
 ```bash
 pnpm test
 ```
 
-No model key or network access is needed for these tests. Also run `pnpm lint` and `pnpm build` before deployment. A clean build needs network access to download the Google fonts used by Next.js.
+Before deployment, run the complete application checks:
 
-### Docker (Linux)
+```bash
+pnpm lint
+pnpm build
+```
+
+The role-play regression checks are also offline unless the `--live` variant is used:
+
+```bash
+pnpm test:roleplay
+pnpm repair-check
+pnpm state-check
+pnpm lorebook-check
+pnpm voice-check
+pnpm regenerate-check
+```
+
+Live evaluation reads the key from `YOSEI_API_KEY` or `BASELINE_API_KEY` and never writes it to result files:
+
+```bash
+pnpm test:roleplay:live
+```
+
+## EPUB export
+
+EPUB export runs in the browser and does not upload the session. The exporter:
+
+1. Uses the selected swipe for each assistant message;
+2. Starts chapters on an explicit chapter marker, a real scene change, or every 30 player turns when no stronger boundary exists;
+3. Renders narration, actions, dialogue, scenes, and player turns as separate semantic blocks;
+4. Escapes generated text before inserting it into XHTML;
+5. Adds a generated or scene-image cover, a title page, a table of contents, EPUB metadata, and embedded JPEG assets;
+6. Keeps OOC filtering and narration inclusion under explicit export options.
+
+The generated file is an EPUB 2 container produced with `jepub` and `JSZip`, with the required `mimetype`, `META-INF/container.xml`, OPF package, NCX navigation, XHTML pages, and image manifest entries.
+
+## Docker
 
 ```bash
 docker build -t ai-rp .
 docker run --rm -p 3000:3000 ai-rp
 ```
 
-The Dockerfile pins Node and pnpm, installs the frozen lockfile locally in the image, runs offline tests, and builds the production app. No extra OS packages or server-side model secrets are required. Open <http://localhost:3000> and configure your provider in the browser. The first image build requires network access for dependencies and fonts.
+The Dockerfile pins Node and pnpm, installs from the lockfile, runs the offline tests, and builds the production application. Provider keys remain runtime user configuration and are not copied into the image.
+
+## Deployment
 
 ### Vercel
 
-1. Push the repository to GitHub or GitLab.
-2. Import it at <https://vercel.com/new>. Vercel detects Next.js and selects pnpm from `pnpm-lock.yaml`.
-3. `maxDuration` is set in `vercel.json`: 300 seconds for `app/api/chat/route.ts` and `app/api/image/route.ts`.
-4. No environment variables are required. `NEXT_PUBLIC_VAULT_SALT` and `NEXT_PUBLIC_VAULT_ITERATIONS` are optional defaults for the archive importer; see `.env.example`.
+Import the repository at <https://vercel.com/new>. Vercel detects Next.js and uses `pnpm-lock.yaml`. API route duration is configured in `vercel.json`.
 
-```bash
-pnpm dlx vercel        # preview deployment
-pnpm dlx vercel --prod # production deployment
-```
-
-### Self-hosted
+### Self-hosted Node.js
 
 ```bash
 pnpm build
 pnpm start
 ```
 
-### Windows and Android app shell
+The server assembles and streams model requests but does not persist keys, sessions, or chat content. The client is responsible for encrypted local storage and archive backups.
 
-The .NET 8 MAUI project in `native/AiRp.Maui` loads the fixed `https://rp.dys.asia/` service in the platform WebView. It has no address editor. The frontend `__AI_RP_CALL__` storage bridge persists `data` and `local` values under the app-private directory using temporary-file replacement and UTF-8 hex-encoded filenames. Browser PWA storage can persist across restarts, but it remains subject to browser quota and site-data cleanup; the native builds use the application-private filesystem for the core encrypted data instead.
+## Evaluation and observability
 
-Install the .NET 8 SDK and the MAUI workload for the target platform, then build with:
+Development mode exposes a QA panel with generation reports and prompt structure. Reports track block validity, `act` compliance, player-action violations, repetition, language alignment, and the final quality-gate decision without persisting message content.
 
-```bash
-dotnet workload install maui-android       # Android
-dotnet workload install maui-windows       # Windows, on Windows
-dotnet build native/AiRp.Maui/AiRp.Maui.csproj -f net8.0-windows10.0.19041.0
-```
+The design is deliberately layered:
 
-The checked-in default is `https://rp.dys.asia/`. CI builds both targets in `.github/workflows/native-apps.yml`, uploads the two packages as workflow artifacts, and attaches them to a GitHub release when a `v*` tag is pushed. The build accepts `-p:ApplicationUrl=...` for a deliberate deployment override.
+- stable prompt rules and card context are separated from turn-local instructions;
+- scene state records current facts without silently converting model guesses into canon;
+- story threads are selected by scene relevance and budget;
+- memory writes require an explicit reason and preserve conflicts rather than overwriting established facts;
+- voice profiles constrain delivery without turning the prompt into a checklist.
+
+Detailed design notes and regression baselines are in [`doc/`](doc/).
+
+## Privacy and backups
+
+The browser stores encrypted application data locally. Browser storage is persistent across normal restarts but remains subject to browser quota and site-data cleanup. Export archives regularly if the session is valuable, and keep a copy outside the browser profile.
+
+## Next development tasks
+
+The following work is planned and is not represented as completed functionality in the current web build:
+
+- **PC application**: provide a dedicated desktop client with a stable application data directory and a native packaging/update path.
+- **Android app**: provide a dedicated Android client with native lifecycle handling, application-private storage, and a reproducible release build.
+
+## Known issues
+
+- **Archive persistence is not yet reliable enough**: the current browser storage path is still subject to browser quota, privacy mode behavior, site-data cleanup, and implementation differences between browsers. Export archives should be treated as the reliable backup mechanism until the native storage plan is implemented.
+- **Images do not yet have a durable persistence strategy**: generated scene images currently depend on client-side data storage and are not covered by a dedicated asset store, backup policy, or cross-device synchronization mechanism. Image persistence needs to be designed together with the desktop and Android clients.
 
 Personal / non-commercial use only.
