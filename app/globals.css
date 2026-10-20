@@ -405,6 +405,8 @@
     .character-card .card-portrait {
       inset: 0;
       width: 100%;
+      -webkit-mask-image: linear-gradient(to right, #000 0%, #000 28%, transparent 100%);
+      mask-image: linear-gradient(to right, #000 0%, #000 28%, transparent 100%);
     }
 
     .character-card .card-spacer {
@@ -419,8 +421,7 @@
       background: linear-gradient(
         to right,
         transparent 0%,
-        color-mix(in srgb, var(--overlay-strong) 18%, transparent) 36%,
-        color-mix(in srgb, var(--overlay-strong) 68%, transparent) 68%,
+        color-mix(in srgb, var(--overlay-strong) 24%, transparent) 42%,
         var(--overlay-strong) 100%
       );
     }
