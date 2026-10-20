@@ -6,9 +6,13 @@ export function resolveMessageBlocks(content: string, vars: MacroVars): MessageB
 }
 
 export function resolveBlockMacros(blocks: readonly MessageBlock[], vars: MacroVars): MessageBlock[] {
-  return blocks.map((block) => ({
-    ...block,
-    text: applyMacros(block.text, vars),
-    ...(block.who === undefined ? {} : { who: applyMacros(block.who, vars) }),
-  }));
+  return blocks.flatMap((block) => {
+    const text = applyMacros(block.text, vars).trim();
+    if (!text) return [];
+    return [{
+      ...block,
+      text,
+      ...(block.who === undefined ? {} : { who: applyMacros(block.who, vars) }),
+    }];
+  });
 }

@@ -46,6 +46,7 @@ import { loadUnfiltered } from "@/lib/cards/unfiltered";
 import { watchRememberedSession } from "@/lib/vault/remember";
 import { isBackupDue } from "@/lib/storage/backup";
 import { useI18n } from "@/lib/i18n/use-i18n";
+import { configureAndroidStorage } from "@/lib/storage/native";
 import { ChatScreen } from "./ChatScreen";
 import { SettingsScreen } from "./SettingsScreen";
 import { ShelfScreen } from "./ShelfScreen";
@@ -108,6 +109,7 @@ export function AppShell() {
   );
 
   useEffect(() => {
+    configureAndroidStorage();
     loadLocale();
     loadTheme();
     loadUnfiltered();

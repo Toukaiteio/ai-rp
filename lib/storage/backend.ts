@@ -5,9 +5,9 @@
  * 回退对上层完全透明：接口一样，只是容量不同。
  */
 
-export type BackendKind = "indexeddb" | "localstorage" | "memory";
+export type BackendKind = "indexeddb" | "localstorage" | "memory" | "native";
 
-export interface VaultBackend {
+export interface StorageAdapter {
   readonly kind: BackendKind;
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
@@ -16,6 +16,8 @@ export interface VaultBackend {
   /** 清掉这个后端自己写的全部键，别人的键不动 */
   clear(): Promise<void>;
 }
+
+export type VaultBackend = StorageAdapter;
 
 const DB_NAME = "ai-rp";
 const DB_VERSION = 1;

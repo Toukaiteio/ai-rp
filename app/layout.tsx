@@ -22,6 +22,10 @@ const themeBootScript = `(function(){try{var t=localStorage.getItem("${THEME_STO
 export const metadata: Metadata = {
   title: "ai-rp",
   description: "极简的 Serverless AI 角色扮演游戏",
+  icons: {
+    icon: "/brand/favicon.ico",
+    apple: "/brand/desktop-icon-192.png",
+  },
 };
 
 /* 默认深色的浏览器界面色。切换主题后由 lib/theme.ts 从令牌里改这个 meta。 */

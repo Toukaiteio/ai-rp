@@ -31,4 +31,8 @@ describe("聊天宏展示", () => {
       { kind: "dlg", who: vars.char, text: `Hello ${vars.user}` },
     ]);
   });
+
+  it("宏展开为空时丢弃空块，避免只显示头像和姓名", () => {
+    expect(resolveMessageBlocks('<dlg who="Fuka">{{user}}</dlg>', { ...vars, user: "" })).toEqual([]);
+  });
 });

@@ -114,6 +114,10 @@ The design is deliberately layered:
 
 Detailed design notes and regression baselines are in [`doc/`](doc/).
 
+## Brand assets
+
+The processed desktop/PWA icon is in [`public/brand/`](public/brand/) and is currently used for the favicon and application icon. The extracted logo and chibi assets are kept there for possible future placement; the unused lower-left draft was omitted.
+
 ## Privacy and backups
 
 The browser stores encrypted application data locally. Browser storage is persistent across normal restarts but remains subject to browser quota and site-data cleanup. Export archives regularly if the session is valuable, and keep a copy outside the browser profile.
@@ -122,12 +126,12 @@ The browser stores encrypted application data locally. Browser storage is persis
 
 The following work is planned and is not represented as completed functionality in the current web build:
 
-- **PC application**: provide a dedicated desktop client with a stable application data directory and a native packaging/update path.
-- **Android app**: provide a dedicated Android client with native lifecycle handling, application-private storage, and a reproducible release build.
+- **PC application**: provide a dedicated desktop client with a stable application data directory and a native packaging/update path using the existing storage adapter boundary.
+- **Android app**: provide a dedicated Android client with native lifecycle handling, application-private storage, and a reproducible release build using the same adapter boundary.
 
 ## Known issues
 
 - **Archive persistence is not yet reliable enough**: the current browser storage path is still subject to browser quota, privacy mode behavior, site-data cleanup, and implementation differences between browsers. Export archives should be treated as the reliable backup mechanism until the native storage plan is implemented.
-- **Images do not yet have a durable persistence strategy**: generated scene images currently depend on client-side data storage and are not covered by a dedicated asset store, backup policy, or cross-device synchronization mechanism. Image persistence needs to be designed together with the desktop and Android clients.
+- **Images do not yet have a dedicated asset store**: generated scene images are still represented inside encrypted application data and are not yet separated into independently managed asset files or synchronized across devices.
 
 Personal / non-commercial use only.
