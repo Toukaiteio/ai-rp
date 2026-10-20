@@ -113,8 +113,6 @@ export const zh = {
   "topbar.history": "回退消息与重置会话",
   "topbar.export": "导出为 EPUB",
   "topbar.settings": "连接设置",
-  "topbar.world": "世界",
-  "topbar.worldUnknown": "未知",
   "topbar.battery": "电量",
 
   "composer.more": "更多功能",

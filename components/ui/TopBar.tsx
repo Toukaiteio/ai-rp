@@ -54,49 +54,51 @@ export function TopBar({
   return (
     <div
       className={cn(
-        "flex shrink-0 flex-wrap items-center gap-1.5 bg-[linear-gradient(to_bottom,var(--bar-scrim),transparent)] px-3 py-3 md:gap-3 md:px-4",
+        "flex shrink-0 flex-col gap-1.5 bg-[linear-gradient(to_bottom,var(--bar-scrim),transparent)] px-3 py-3 md:gap-3 md:px-4",
         className,
       )}
     >
-      <button
-        type="button"
-        onClick={onWho}
-        aria-label={whoLabel}
-        className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-pill border border-line bg-surface p-0 text-left transition-colors hover:border-line-strong md:h-auto md:w-auto md:max-w-[46%] md:min-w-0 md:justify-start md:gap-2.5 md:py-1 md:pr-4 md:pl-1"
-      >
-        <span className="size-full shrink-0 overflow-hidden rounded-pill bg-surface-2 md:size-10">
-          {avatar}
-        </span>
-        <span className="hidden min-w-0 py-0.5 pr-1 md:block">
-          <span className="block truncate font-serif text-[15.5px] leading-tight font-black text-ink">
-            {name}
-          </span>
-          {subtitle && !compact ? (
-            <span className="block truncate text-[12px] leading-tight text-ink-2">{subtitle}</span>
-          ) : null}
-        </span>
-      </button>
-
-      <span className="flex-1" />
-
-      <div className="flex shrink-0 items-center gap-1 md:gap-2">
-        <MemoryButton percent={used} label={memoryLabel} onClick={onMemory} />
-        <IconButton onClick={onHistory} aria-label={historyLabel}>
-          <IconHistory />
-        </IconButton>
-        <IconButton onClick={onExport} aria-label={exportLabel}>
-          <IconBook />
-        </IconButton>
-        <IconButton onClick={onSettings} aria-label={settingsLabel}>
-          <IconGear />
-        </IconButton>
-        {extra}
-      </div>
       {androidStatus ? (
-        <div className="basis-full border-t border-line/60 pt-1 text-[10.5px] leading-4 text-ink-2">
+        <div className="w-full border-b border-line/60 pb-1 text-[11px] leading-4 text-ink-2">
           {androidStatus}
         </div>
       ) : null}
+      <div className="flex w-full items-center gap-1.5 md:gap-3">
+        <button
+          type="button"
+          onClick={onWho}
+          aria-label={whoLabel}
+          className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-pill border border-line bg-surface p-0 text-left transition-colors hover:border-line-strong md:h-auto md:w-auto md:max-w-[46%] md:min-w-0 md:justify-start md:gap-2.5 md:py-1 md:pr-4 md:pl-1"
+        >
+          <span className="size-full shrink-0 overflow-hidden rounded-pill bg-surface-2 md:size-10">
+            {avatar}
+          </span>
+          <span className="hidden min-w-0 py-0.5 pr-1 md:block">
+            <span className="block truncate font-serif text-[15.5px] leading-tight font-black text-ink">
+              {name}
+            </span>
+            {subtitle && !compact ? (
+              <span className="block truncate text-[12px] leading-tight text-ink-2">{subtitle}</span>
+            ) : null}
+          </span>
+        </button>
+
+        <span className="flex-1" />
+
+        <div className="flex shrink-0 items-center gap-1 md:gap-2">
+          <MemoryButton percent={used} label={memoryLabel} onClick={onMemory} />
+          <IconButton onClick={onHistory} aria-label={historyLabel}>
+            <IconHistory />
+          </IconButton>
+          <IconButton onClick={onExport} aria-label={exportLabel}>
+            <IconBook />
+          </IconButton>
+          <IconButton onClick={onSettings} aria-label={settingsLabel}>
+            <IconGear />
+          </IconButton>
+          {extra}
+        </div>
+      </div>
     </div>
   );
 }

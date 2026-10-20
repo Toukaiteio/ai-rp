@@ -613,10 +613,14 @@ export function ChatScreen({
   const { t, locale } = useI18n();
   const androidApp = useSyncExternalStore(() => () => {}, isAndroidApp, () => false);
   const [batteryPercent, setBatteryPercent] = useState<number | null>(null);
+  const [currentTime, setCurrentTime] = useState("");
   const storySystems = config.storySystems ?? defaultStorySystemSettings();
 
   useEffect(() => {
     if (!androidApp) return;
+    const updateTime = () => setCurrentTime(new Date().toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit", hour12: false }));
+    const initialTime = window.setTimeout(updateTime, 0);
+    const timeTimer = window.setInterval(updateTime, 30_000);
     const batteryApi = navigator as Navigator & {
       getBattery?: () => Promise<{
         level: number;
@@ -634,9 +638,11 @@ export function ChatScreen({
       next.addEventListener("levelchange", update);
     });
     return () => {
+      window.clearTimeout(initialTime);
+      window.clearInterval(timeTimer);
       if (battery && onLevelChange) battery.removeEventListener("levelchange", onLevelChange);
     };
-  }, [androidApp]);
+  }, [androidApp, locale]);
   const greetings = useMemo(
     () =>
       openingGreetings(card).map((text) => adaptGreeting(text, locale)),
@@ -2483,9 +2489,9 @@ export function ChatScreen({
         onExport={() => setExportOpen(true)}
         onSettings={onOpenSettings}
         androidStatus={androidApp ? (
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="min-w-0 flex-1 truncate">{t("topbar.world")}: {sceneRef.current.location || t("topbar.worldUnknown")}</span>
-            <span className="shrink-0">{t("topbar.battery")}: {batteryPercent == null ? "--" : `${batteryPercent}%`}</span>
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <span>{currentTime}</span>
+            <span>{t("topbar.battery")}: {batteryPercent == null ? "--" : `${batteryPercent}%`}</span>
           </div>
         ) : null}
         extra={

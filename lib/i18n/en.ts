@@ -115,8 +115,6 @@ export const en: Record<MessageKey, string> = {
   "topbar.history": "Rewind and reset",
   "topbar.export": "Export as EPUB",
   "topbar.settings": "Connection settings",
-  "topbar.world": "World",
-  "topbar.worldUnknown": "Unknown",
   "topbar.battery": "Battery",
 
   "composer.more": "More",
