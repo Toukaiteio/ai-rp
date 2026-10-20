@@ -403,10 +403,10 @@
     }
 
     .character-card .card-portrait {
-      inset: 0;
-      width: 100%;
-      -webkit-mask-image: linear-gradient(to right, #000 0%, #000 28%, transparent 100%);
-      mask-image: linear-gradient(to right, #000 0%, #000 28%, transparent 100%);
+      inset: 0 auto 0 0;
+      width: 42%;
+      -webkit-mask-image: linear-gradient(to right, #000 0%, #000 38%, transparent 100%);
+      mask-image: linear-gradient(to right, #000 0%, #000 38%, transparent 100%);
     }
 
     .character-card .card-spacer {
