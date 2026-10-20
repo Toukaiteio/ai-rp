@@ -16,6 +16,7 @@ export function CharacterCard({
   current = false,
   currentLabel,
   startLabel,
+  startDisabled = false,
   /** 开始按钮左侧的圆形入口，和目标语言菜单这类次级动作共用一行 */
   startAccessory,
   onStart,
@@ -35,6 +36,7 @@ export function CharacterCard({
   current?: boolean;
   currentLabel?: ReactNode;
   startLabel: ReactNode;
+  startDisabled?: boolean;
   /** 开始按钮左侧的圆形入口，和目标语言菜单这类次级动作共用一行 */
   startAccessory?: ReactNode;
   onStart?: () => void;
@@ -91,7 +93,7 @@ export function CharacterCard({
           <PillButton
             size="sm"
             variant={current ? "ghost" : "primary"}
-            disabled={current}
+            disabled={current || startDisabled}
             onClick={onStart}
             className={cn("flex-1", current && "border-transparent bg-surface-2 text-ink-2")}
           >

@@ -52,6 +52,8 @@ const TAG_SUGGESTIONS = [
   "Roleplay",
 ];
 
+const onlineCardAddsInFlight = new Set<string>();
+
 function cleanTag(raw: string): string {
   return raw.replace(/,/g, " ").replace(/\s+/g, " ").trim().slice(0, 24);
 }
@@ -267,6 +269,8 @@ export function OnlineCards({ onAdded, compact = false, feed = false, localCards
   }
 
   async function add(item: OnlineCardItem) {
+    if (onlineCardAddsInFlight.has(item.path)) return;
+    onlineCardAddsInFlight.add(item.path);
     setAdding(item.path);
     setError(null);
     try {
@@ -285,6 +289,7 @@ export function OnlineCards({ onAdded, compact = false, feed = false, localCards
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("online.addFail"));
     } finally {
+      onlineCardAddsInFlight.delete(item.path);
       setAdding(null);
     }
   }
@@ -317,24 +322,27 @@ export function OnlineCards({ onAdded, compact = false, feed = false, localCards
           </Field>
         </form>
         <div className="grid gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3">
-          {feedItems.map((item) => (
-            (() => {
-              const local = localCards?.find((entry) => entry.card.data.name.trim().toLocaleLowerCase() === item.name.trim().toLocaleLowerCase());
-              return <CharacterCard
-              key={item.id}
-              portrait={<Avatar name={item.name} src={item.avatarUrl} />}
-              name={item.name}
-              description={item.tagline || item.topics.join(" · ")}
-              tags={item.topics.slice(0, 3).map((topic) => <span key={topic}>{topic}</span>)}
-              startLabel={local ? t("online.downloaded") : added === item.path ? t("online.added") : t("online.add")}
-              onStart={local || added === item.path ? undefined : () => void add(item)}
-              current={false}
-              currentLabel={t("online.added")}
-              onCardClick={local && onSelectLocal ? () => onSelectLocal(local.id) : undefined}
-              cardClickLabel={t("online.openDownloaded")}
-            />
-            })()
-          ))}
+          {feedItems.map((item) => {
+            const local = localCards?.find((entry) => entry.card.data.name.trim().toLocaleLowerCase() === item.name.trim().toLocaleLowerCase());
+            const busy = adding === item.path;
+            const done = Boolean(local) || added === item.path;
+            return (
+              <CharacterCard
+                key={item.id}
+                portrait={<Avatar name={item.name} src={item.avatarUrl} />}
+                name={item.name}
+                description={item.tagline || item.topics.join(" · ")}
+                tags={item.topics.slice(0, 3).map((topic) => <span key={topic}>{topic}</span>)}
+                startLabel={done ? (local ? t("online.downloaded") : t("online.added")) : busy ? t("online.downloading") : t("online.add")}
+                startDisabled={busy}
+                onStart={done ? undefined : () => void add(item)}
+                current={false}
+                currentLabel={t("online.added")}
+                onCardClick={local && onSelectLocal ? () => onSelectLocal(local.id) : undefined}
+                cardClickLabel={t("online.openDownloaded")}
+              />
+            );
+          })}
         </div>
         <div ref={feedEndRef} className="min-h-12 py-4 text-center text-[12px] text-ink-3" aria-live="polite">
           {feedLoading ? t("online.loading") : feedHasMore ? "" : t("online.empty")}
