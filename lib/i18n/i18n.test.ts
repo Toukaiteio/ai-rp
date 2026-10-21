@@ -9,7 +9,7 @@ describe("i18n", () => {
   });
 
   it("替换占位符，缺的语言退回中文", () => {
-    expect(translate("zh", "topbar.memory", { percent: 40 })).toBe("记忆占用 40%");
+    expect(translate("zh", "shelf.count", { count: 3 })).toBe("(3 张)");
     expect(translate("en", "vault.attempts", { left: 3, max: 5 })).toContain("3");
     expect(translate("en", "chat.sayTo", { name: "Lin" })).toBe("Send a message to Lin");
   });

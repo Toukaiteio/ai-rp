@@ -23,6 +23,8 @@ export interface ProviderPreset {
   hideEndpoint?: boolean;
   /** 模型已经定死，设置页不再展示模型选择。 */
   hideModel?: boolean;
+  /** 已下线的模型名。旧配置命中后迁移到 models[0]。 */
+  deprecatedModels?: string[];
   /** 预设角标。free 表示免费额度，界面上画红底白字。 */
   badge?: "free";
   /** 「获取 Key」跳转地址 */

@@ -8,12 +8,13 @@
       "name": "YoseiRouter",
       "baseURL": "https://router.dys.asia/v1",
       "models": [
-        { "id": "deepseek-v4-flash-200k", "vision": false },
-        { "id": "u2-flash", "vision": false },
+        { "id": "dots3-note-prev", "vision": true },
+        { "id": "step-3.7-flash", "vision": true },
         { "id": "deepseek-v4.1-flash", "vision": true },
         { "id": "glm-5.3-flash", "vision": true },
         { "id": "step-5-preview", "vision": true }
       ],
+      "deprecatedModels": ["deepseek-v4-flash-200k"],
       "hideEndpoint": true,
       "keyUrl": "https://router.dys.asia/",
       "docUrl": "https://router.dys.asia/"

@@ -24,7 +24,7 @@ import { createOpenAIProvider } from "@/lib/providers/openai";
 import { planRegenerate, regenerateNote } from "@/lib/chat";
 
 const API_KEY = process.env.YOSEI_API_KEY ?? process.env.BASELINE_API_KEY ?? "";
-const MODEL = process.env.BASELINE_MODEL ?? "deepseek-v4-flash-200k";
+const MODEL = process.env.BASELINE_MODEL ?? "dots3-note-prev";
 const BASE_URL = process.env.BASELINE_BASE_URL ?? "https://router.dys.asia/v1";
 const OUT = process.env.REGEN_OUT ?? path.join("doc", "phase11-regenerate-check.json");
 /**

@@ -80,6 +80,7 @@ function downloadText(text: string, filename: string): void {
  */
 export function AppShell() {
   const [screen, setScreen] = useState<Screen>("chat");
+  const [settingsReturnScreen, setSettingsReturnScreen] = useState<"chat" | "shelf">("chat");
   /** 没有默认卡：进来先进角色架，挑一张或在线拉一张再开聊 */
   const [cardId, setCardId] = useState<string | null>(null);
   /** 启动时那一次「上次是哪张卡」判完没有。判完之前不挂任何一屏，见下面的 useEffect */
@@ -164,6 +165,10 @@ export function AppShell() {
     setEdited(next);
     void saveProviderConfig(next);
   }, []);
+
+  const handleVaultSetup = useCallback((userName: string) => {
+    updateConfig({ ...config, userName });
+  }, [config, updateConfig]);
 
   const disableQualityGate = useCallback(() => {
     updateConfig({ ...config, qualityGate: false });
@@ -264,6 +269,7 @@ export function AppShell() {
               attemptsLeft={vault.attemptsLeft}
               notice={vault.notice}
               onImportArchive={handleInitialArchiveImport}
+              onSetupComplete={handleVaultSetup}
             />
         </div>
       </div>
@@ -306,7 +312,11 @@ export function AppShell() {
       <ShelfScreen
         cards={cards}
         currentCardId=""
-        onOpenSettings={() => setScreen("settings")}
+        userName={config.userName}
+        onOpenSettings={() => {
+          setSettingsReturnScreen("shelf");
+          setScreen("settings");
+        }}
         onSelect={(id) => {
           setCardId(id);
           rememberLastCardId(id);
@@ -331,8 +341,13 @@ export function AppShell() {
           cardId={current.id}
           card={current.card.data}
           config={config}
+          userName={config.userName}
+          onUserNameChange={(next) => updateConfig({ ...config, userName: next })}
           onDisableQualityGate={disableQualityGate}
-          onOpenSettings={() => setScreen("settings")}
+          onOpenSettings={() => {
+            setSettingsReturnScreen("chat");
+            setScreen("settings");
+          }}
           onOpenShelf={() => setScreen("shelf")}
         />
       </div> : null}
@@ -341,7 +356,11 @@ export function AppShell() {
         <ShelfScreen
           cards={cards}
           currentCardId={current.id}
-          onOpenSettings={() => setScreen("settings")}
+          userName={config.userName}
+          onOpenSettings={() => {
+            setSettingsReturnScreen("shelf");
+            setScreen("settings");
+          }}
           onSelect={(id) => {
             setCardId(id);
             rememberLastCardId(id);
@@ -378,7 +397,8 @@ export function AppShell() {
           onImport={handleImport}
           archiveBusy={archiveBusy}
           archiveMessage={archiveMessage ?? archiveNote}
-          onBack={() => setScreen("shelf")}
+          onBack={() => setScreen(settingsReturnScreen)}
+          backLabel={settingsReturnScreen === "chat" ? t("settings.backToChat") : t("settings.backToShelf")}
         />
       ) : null}
     </div>

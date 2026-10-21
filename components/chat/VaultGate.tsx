@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
 import { IconGithub, IconLock } from "@/components/icons";
-import { PillButton } from "@/components/ui";
+import { Field, FieldInput, PillButton } from "@/components/ui";
 import { cn } from "@/components/ui/cn";
 import { explainError } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/use-i18n";
@@ -20,6 +20,10 @@ import {
 } from "@/lib/vault";
 import { getDeploymentVaultKdf } from "@/lib/vault/config";
 import {
+  DEFAULT_USER_NAME,
+  normalizeUserName,
+} from "@/lib/providers/settings";
+import {
   REMEMBER_OPTIONS,
   getRememberPref,
   getRememberPrefServer,
@@ -34,7 +38,7 @@ import {
  *
  * 这个画面不加载任何聊天内容、不显示任何配置，
  * 因为那些数据全在密文里，没有密钥本来也读不出来。
- * 画面只留三样：一把锁、一个输入框、一个按钮。公告在右上角。
+ * 画面只留用户名、密码、一个按钮。公告在右上角。
  */
 
 export function VaultGate({
@@ -42,6 +46,7 @@ export function VaultGate({
   attemptsLeft,
   notice,
   onImportArchive,
+  onSetupComplete,
 }: {
   status: VaultState;
   attemptsLeft: number;
@@ -52,9 +57,11 @@ export function VaultGate({
     params: VaultKdfParams,
     rememberMs: number,
   ) => Promise<{ sessions: number; cards: number }>;
+  onSetupComplete?: (userName: string) => void | Promise<void>;
 }) {
   const [value, setValue] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [userName, setUserName] = useState(DEFAULT_USER_NAME);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [announceOpen, setAnnounceOpen] = useState(false);
@@ -92,6 +99,7 @@ export function VaultGate({
         throw new Error(t("vault.archiveIterationsInvalid"));
       }
       const result = await onImportArchive(archiveFile, value, params, rememberMs);
+      await onSetupComplete?.(normalizeUserName(userName));
       setArchiveFile(null);
       setValue("");
       setError(t("vault.archiveImported", result));
@@ -130,6 +138,7 @@ export function VaultGate({
     try {
       if (isSetup) {
         await setupVault(value, confirm, rememberMs);
+        await onSetupComplete?.(normalizeUserName(userName));
         setValue("");
         setConfirm("");
       } else {
@@ -170,6 +179,20 @@ export function VaultGate({
             if (!busy) void submit();
           }}
         >
+          {isSetup ? (
+            <Field>
+              <FieldInput
+                type="text"
+                autoComplete="name"
+                spellCheck={false}
+                placeholder={t("vault.userNamePlaceholder")}
+                aria-label={t("vault.userName")}
+                value={userName}
+                onChange={(event) => setUserName(event.target.value)}
+              />
+            </Field>
+          ) : null}
+
           <div className="flex items-center gap-2 rounded-pill border border-line bg-surface pr-1.5 pl-4 transition-colors focus-within:border-line-strong">
             <IconLock className="size-[17px] shrink-0 text-ink-2" />
             <input

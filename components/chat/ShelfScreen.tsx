@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { PenLine, Plus, Upload } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ArrowUp, PenLine, Plus, Undo2, Upload } from "lucide-react";
 import {
   CharacterCard,
   Dialog,
@@ -25,6 +25,7 @@ import {
 import { addImportedCard, removeImportedCard } from "@/lib/storage/cards";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
+import { AndroidStatus } from "./AndroidStatus";
 import { OnlineCards } from "./OnlineCards";
 import { Avatar } from "./Avatar";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
@@ -71,7 +72,12 @@ export function ShelfScreen({
   const [tagDialogOpen, setTagDialogOpen] = useState(false);
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
   const [shelfTab, setShelfTab] = useState<"network" | "local">("network");
+  const [scrollAction, setScrollAction] = useState<"top" | "return" | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const returnScrollTopRef = useRef(0);
+  const jumpingRef = useRef(false);
   const { t } = useI18n();
+  const androidApp = useSyncExternalStore(() => () => {}, isAndroidApp, () => false);
 
   const tags = useMemo(
     () => {
@@ -112,6 +118,41 @@ export function ShelfScreen({
       return matchesSearch && matchesTag;
     });
   }, [activeTag, cards, search]);
+
+  function selectShelfTab(next: "network" | "local"): void {
+    setShelfTab(next);
+    setScrollAction(null);
+    returnScrollTopRef.current = 0;
+    scrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }
+
+  function handleScroll(): void {
+    const element = scrollRef.current;
+    if (!element || shelfTab !== "network" || jumpingRef.current) return;
+    const top = element.scrollTop;
+    if (scrollAction === "return") {
+      if (top > 72) setScrollAction(null);
+      return;
+    }
+    setScrollAction(top > 180 ? "top" : null);
+  }
+
+  function jumpToSavedPosition(): void {
+    const element = scrollRef.current;
+    if (!element) return;
+    const target = scrollAction === "top" ? 0 : returnScrollTopRef.current;
+    if (scrollAction === "top") returnScrollTopRef.current = element.scrollTop;
+    jumpingRef.current = true;
+    element.scrollTo({ top: target, behavior: "auto" });
+    if (scrollAction === "top") {
+      setScrollAction("return");
+    } else {
+      setScrollAction(element.scrollTop > 180 ? "top" : null);
+    }
+    window.setTimeout(() => {
+      jumpingRef.current = false;
+    }, 0);
+  }
 
   function toggleTagFromSearch(): void {
     const keyword = search.trim().toLocaleLowerCase();
@@ -181,15 +222,22 @@ export function ShelfScreen({
      里层才是真正滚动的那一屏。 */
   return (
     <div className="relative h-dvh">
-      <div className="h-dvh overflow-y-auto bg-background">
+      <div ref={scrollRef} onScroll={handleScroll} className="scrollbar-hidden h-dvh overflow-y-auto bg-background">
+        {androidApp ? (
+          <div className="shelf-device-status">
+            <AndroidStatus enabled={androidApp} />
+          </div>
+        ) : null}
         <div className="mx-auto w-full max-w-[1100px] px-4 py-6 sm:px-6 sm:py-8">
           <ScreenHead
             title={
-              <span className="flex items-baseline gap-2">
-                {t("shelf.title")}
-                <span className="font-sans text-[13px] font-medium text-ink-2">
-                  {t("shelf.count", { count: cards.length })}
-                </span>
+              <span className="flex items-baseline gap-2 whitespace-nowrap">
+                {shelfTab === "network" ? t("shelf.networkTitle") : t("shelf.title")}
+                {shelfTab === "local" ? (
+                  <span className="font-sans text-[13px] font-medium text-ink-2">
+                    {t("shelf.count", { count: cards.length })}
+                  </span>
+                ) : null}
               </span>
             }
             before={
@@ -224,21 +272,23 @@ export function ShelfScreen({
             </div>
           ) : null}
 
-          <div className="mb-5 flex gap-1 rounded-pill border border-line bg-surface-2 p-1">
-            <button
-              type="button"
-              onClick={() => setShelfTab("network")}
-              className={`flex-1 rounded-pill px-4 py-2 text-[13px] transition-colors ${shelfTab === "network" ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-surface-3"}`}
-            >
-              {t("shelf.tabNetwork")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShelfTab("local")}
-              className={`flex-1 rounded-pill px-4 py-2 text-[13px] transition-colors ${shelfTab === "local" ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-surface-3"}`}
-            >
-              {t("shelf.tabLocal")}
-            </button>
+          <div className={`shelf-tabs-sticky${androidApp ? " shelf-tabs-sticky-android" : ""} isolate z-20 mb-5`}>
+            <div className="flex gap-1 rounded-pill border border-line bg-surface p-1 shadow-raised">
+              <button
+                type="button"
+                onClick={() => selectShelfTab("network")}
+                className={`flex-1 rounded-pill px-4 py-2 text-[13px] transition-colors ${shelfTab === "network" ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-surface-3"}`}
+              >
+                {t("shelf.tabNetwork")}
+              </button>
+              <button
+                type="button"
+                onClick={() => selectShelfTab("local")}
+                className={`flex-1 rounded-pill px-4 py-2 text-[13px] transition-colors ${shelfTab === "local" ? "bg-accent text-accent-ink" : "text-ink-2 hover:bg-surface-3"}`}
+              >
+                {t("shelf.tabLocal")}
+              </button>
+            </div>
           </div>
 
           {shelfTab === "network" && chubAvailabilityChecked && !chubRegionRestricted ? (
@@ -266,7 +316,7 @@ export function ShelfScreen({
               aria-label={t("shelf.searchPlaceholder")}
               className="min-w-0 flex-1 rounded-pill border border-line bg-surface px-4 py-2.5 text-[13.5px] text-ink outline-none placeholder:text-ink-3 focus:border-line-strong"
             />
-            <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5">
+            <div className="scrollbar-hidden flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5">
               <button
                 type="button"
                 onClick={() => setActiveTag(null)}
@@ -394,6 +444,17 @@ export function ShelfScreen({
 
       <AnnouncementDialog open={announceOpen} onClose={() => setAnnounceOpen(false)} />
       <div className="fixed right-5 bottom-5 z-30 flex flex-col items-end gap-2 sm:right-8 sm:bottom-8">
+        {shelfTab === "network" && scrollAction ? (
+          <button
+            type="button"
+            aria-label={scrollAction === "top" ? t("shelf.scrollToTop") : t("shelf.returnToPosition")}
+            title={scrollAction === "top" ? t("shelf.scrollToTop") : t("shelf.returnToPosition")}
+            onClick={jumpToSavedPosition}
+            className="grid size-12 place-items-center rounded-pill border border-line bg-surface text-ink shadow-pop transition-colors hover:border-line-strong"
+          >
+            {scrollAction === "top" ? <ArrowUp className="size-5" aria-hidden="true" /> : <Undo2 className="size-5" aria-hidden="true" />}
+          </button>
+        ) : null}
         {quickMenuOpen ? (
           <div className="flex flex-col items-end gap-2 rounded-card border border-line bg-surface p-2 shadow-pop">
          <button type="button" onClick={() => { setQuickMenuOpen(false); void chooseCardFile(); }} className="flex items-center gap-2 rounded-pill px-3 py-2 text-[13px] text-ink hover:bg-surface-2">

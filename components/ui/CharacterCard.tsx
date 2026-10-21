@@ -63,7 +63,9 @@ export function CharacterCard({
   return (
     <div
       className={cn(
-        "character-card group relative flex flex-col overflow-hidden rounded-card border border-line bg-surface-2",
+        /* isolate：把卡内的 z-30 / z-20 关在卡片自己的层叠上下文里，
+           否则它们会逃到外层，和角色架吸顶的一排 tab 抢同一层，DOM 在后的卡就盖住 tab。 */
+        "character-card group relative isolate flex flex-col overflow-hidden rounded-card border border-line bg-surface-2",
         className,
       )}
     >

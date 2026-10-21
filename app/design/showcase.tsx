@@ -32,7 +32,6 @@ import {
   NarratorBlock,
   OptChip,
   OptRow,
-  Panel,
   PillButton,
   PlayerBubble,
   Prose,
@@ -47,12 +46,10 @@ import {
   Tag,
   Toast,
   TopBar,
-  TotalRow,
   TypingCursor,
   VaultStatus,
   VaultWarn,
   Veil,
-  MemoryLayer,
 } from "@/components/ui";
 import {
   IconBack,
@@ -61,7 +58,6 @@ import {
   IconEye,
   IconHistory,
   IconImage,
-  IconLayers,
   IconSearch,
   IconTrash,
   IconX,
@@ -157,7 +153,6 @@ export function Showcase() {
   const [draft, setDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [sheet, setSheet] = useState<"more" | "history" | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
 
   const phone = device === "phone";
 
@@ -575,14 +570,11 @@ export function Showcase() {
               avatar={<Avatar initial="林" />}
               name="林晚晴"
               subtitle="晚星旅店老板娘"
-              memoryUsed={62}
-              memoryLabel="记忆占用 62%"
               whoLabel="切换角色"
               historyLabel="回退消息与重置会话"
               exportLabel="导出为 EPUB"
               settingsLabel="连接设置"
               compact={phone}
-              onMemory={() => setPanelOpen(true)}
               onHistory={() => setSheet("history")}
               onExport={() => setSheet("more")}
               onSettings={() => setSheet("more")}
@@ -595,9 +587,6 @@ export function Showcase() {
                 <PillButton size="sm" onClick={() => setSheet("more")}>
                   更多功能抽屉
                 </PillButton>
-                <PillButton size="sm" onClick={() => setPanelOpen(true)}>
-                  记忆与上下文面板
-                </PillButton>
                 <PillButton
                   size="sm"
                   variant="danger"
@@ -609,11 +598,10 @@ export function Showcase() {
             </div>
 
             <Veil
-              open={sheet !== null || panelOpen}
-              onClose={() => {
-                setSheet(null);
-                setPanelOpen(false);
-              }}
+               open={sheet !== null}
+               onClose={() => {
+                 setSheet(null);
+               }}
             />
 
             <Sheet
@@ -640,16 +628,6 @@ export function Showcase() {
                 note="按场景分章"
               >
                 导出为 EPUB
-              </MenuRow>
-              <MenuRow
-                icon={<IconLayers className="size-[18px]" />}
-                note="占用 62%"
-                onClick={() => {
-                  setSheet(null);
-                  setPanelOpen(true);
-                }}
-              >
-                记忆与上下文
               </MenuRow>
               <MenuRow
                 tone="danger"
@@ -679,37 +657,7 @@ export function Showcase() {
               </div>
             </Sheet>
 
-            <Panel open={panelOpen} aria-label="记忆与上下文">
-              <h3 className="m-0 mb-1 text-[16.5px] font-bold text-ink">
-                记忆与上下文
-              </h3>
-              <p className="m-0 mb-[18px] text-[13px] text-ink-2">
-                前缀稳定优先：前两层字节级不变，缓存才打得中。
-              </p>
-              <MemoryLayer
-                name="固定前缀"
-                tokens="3,240 tok"
-                percent={100}
-                badge={<Badge tone="ok">缓存命中 92%</Badge>}
-              >
-                系统提示 + 角色卡 + 常驻世界书。顺序与内容锁定，改卡才换版本。
-              </MemoryLayer>
-              <MemoryLayer name="滚动摘要" tokens="1,180 tok" percent={36}>
-                长剧情的增量摘要。超过阈值才更新一次，不每轮重写。
-              </MemoryLayer>
-              <MemoryLayer name="近期对话" tokens="5,460 tok" percent={68}>
-                最新优先填入。超限先丢中段，永远保留开场与最近。
-              </MemoryLayer>
-              <TotalRow total="合计 9,880 tok" limit="上限 16,000" />
-              <PillButton variant="ghost" block>
-                立即压缩一次
-              </PillButton>
-              <p className="mt-3.5 mb-0 text-[13px] text-ink-2">
-                压缩只动摘要与中段对话，固定前缀与最近三轮不动。
-              </p>
-            </Panel>
-
-            <Toast open={toast !== null}>{toast}</Toast>
+             <Toast open={toast !== null}>{toast}</Toast>
           </Frame>
 
           <Demo className="min-w-[260px] flex-1">

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { findProvider, imageProviderForModel, listProviders, presetChat } from "./config";
+import { DEFAULT_USER_NAME, defaultProviderConfig, normalizeUserName, withImage } from "./settings";
 import { resolveBaseURL } from "./validate";
 
 describe("提供商预设", () => {
@@ -13,6 +14,7 @@ describe("提供商预设", () => {
       "agnes-2.5-flash",
     ]);
     expect(findProvider("dots")?.models[0]).toEqual({ id: "dots3-note-prev", vision: true });
+    expect(findProvider("yosei-router")?.models[0]).toEqual({ id: "dots3-note-prev", vision: true });
     expect(findProvider("yosei-router")?.hideEndpoint).toBe(true);
     expect(findProvider("agnes")?.hideModel).toBe(true);
     expect(findProvider("dots")?.hideModel).toBe(true);
@@ -30,6 +32,27 @@ describe("提供商预设", () => {
     expect(
       presetChat({ providerId: "deepseek", model: "deepseek-chat", baseURL: "https://example.com/v1" }).baseURL,
     ).toBe("https://example.com/v1");
+  });
+
+  it("把旧的 YoseiRouter 模型配置迁移到首选视觉模型", () => {
+    expect(
+      withImage({
+        providerId: "yosei-router",
+        model: "deepseek-v4-flash-200k",
+        vision: false,
+      }),
+    ).toMatchObject({
+      providerId: "yosei-router",
+      model: "dots3-note-prev",
+      vision: true,
+    });
+  });
+
+  it("旧配置缺少用户名时使用安全默认值，并清理空白用户名", () => {
+    expect(defaultProviderConfig().userName).toBe(DEFAULT_USER_NAME);
+    expect(withImage({ providerId: "openai", model: "gpt-6-luna" }).userName).toBe(DEFAULT_USER_NAME);
+    expect(withImage({ userName: "  Lin  " }).userName).toBe("Lin");
+    expect(normalizeUserName("   ")).toBe(DEFAULT_USER_NAME);
   });
 
   it("Agnes 的生图模型沿用它自己的地址，不借用对话提供商的自定义地址", () => {

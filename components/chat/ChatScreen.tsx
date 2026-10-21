@@ -26,6 +26,8 @@ import {
   MarkdownText,
   MessageActions,
   NarratorBlock,
+  Field,
+  FieldInput,
   PillButton,
   PlayerBubble,
   SceneEvent,
@@ -40,6 +42,7 @@ import {
 } from "@/components/ui";
 import { IconBookmark, IconBranch, IconCheck, IconCopy, IconEdit, IconImage, IconRefresh } from "@/components/icons";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
+import { AndroidStatus } from "./AndroidStatus";
 import { hasNativeFilePicker, isAndroidApp, pickNativeFile } from "@/lib/storage/native";
 import { cn } from "@/components/ui/cn";
 import { hashSeed } from "@/lib/seed";
@@ -48,7 +51,6 @@ import {
   parseBlocks,
   parseRawBlocks,
   stripPseudoToolTags,
-  type MessageBlock,
 } from "@/lib/blocks";
 import { bypassResponseValidation, reportForValidation, resolveGeneration, validateResponseBlocks } from "@/lib/engine";
 import { commitTurn } from "@/lib/engine/history";
@@ -95,12 +97,12 @@ import {
   type ThreadPatchEntry,
 } from "@/lib/story";
 import { adaptGreeting } from "@/lib/cards/builder-opening";
-import { resolveBlockMacros } from "./message-macros";
+import { markMacroText, resolveBlockMacroSegments, type MacroMarkdownMarker } from "./message-macros";
 import type { MacroVars } from "@/lib/prompt";
 import { openingGreetings } from "@/lib/cards/greetings";
 import type { CharacterCardData } from "@/lib/cards/types";
 import type { ChatMessage } from "@/lib/prompt/types";
-import type { AuthorNote, KeyFacts, RollingSummary } from "@/lib/prompt/types";
+import type { KeyFacts, RollingSummary } from "@/lib/prompt/types";
 import { correctionNote } from "@/lib/prompt";
 import {
   appendToBranch,
@@ -127,10 +129,11 @@ import {
   usesBrowserModel,
   type ProviderConfig,
   defaultStorySystemSettings,
+  normalizeUserName,
 } from "@/lib/providers/settings";
 import { authHeaders, cleanApiKey } from "@/lib/providers/apikey";
 import { createId, createSession, emptyCardMemory, getSessionStore, loadCardMemory, saveCardMemory } from "@/lib/storage";
-import type { ChatSession, StoredAuthorNote, StoredCg, StoredMessage } from "@/lib/storage";
+import type { ChatSession, StoredCg, StoredMessage } from "@/lib/storage";
 import {
   allowAutoCg,
   extractAppearance,
@@ -140,6 +143,7 @@ import {
 } from "@/lib/image";
 import { decodeSseBuffer, readSseText, type WireFrame } from "@/lib/wire";
 import { useI18n } from "@/lib/i18n/use-i18n";
+import type { MessageKey } from "@/lib/i18n";
 import { persistGeneratedImage, readChatImage, shrinkPortrait } from "@/lib/chat-image";
 import { embedDocument, normalizeDocument, readChatDocument, type ChatDocument } from "@/lib/chat-document";
 import { BROWSER_PROVIDER_ID, describeImage, probeBrowserModel, streamBrowserChat } from "@/lib/browser-model";
@@ -158,7 +162,6 @@ import {
 import type { ResponseMode } from "@/lib/prompt";
 import { cardPortraitUrl } from "@/lib/cards/online";
 import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
-import { AuthorNoteSheet } from "./AuthorNoteSheet";
 import { Avatar } from "./Avatar";
 
 /** 这次 remember_character 是不是第一次记下这个人。更新旧条目不重新出头像。 */
@@ -332,21 +335,6 @@ function lastAssistantReply(turns: Turn[]): string {
 }
 
 /**
- * 把会话里存的作者注收成提示词层要的形状。
- * 旧存档可能只有 text，也可能一个字段都没有。
- */
-function normalizeStoredNote(value: StoredAuthorNote | undefined): AuthorNote | null {
-  const text = value?.text?.trim();
-  if (!text) return null;
-  return {
-    text,
-    ...(typeof value?.frequency === "number" ? { frequency: value.frequency } : {}),
-    ...(typeof value?.depth === "number" ? { depth: value.depth } : {}),
-    ...(value?.enabled === false ? { enabled: false } : {}),
-  };
-}
-
-/**
  * 旧存档里的聊天世界书补全。
  *
  * 只留能用的条目：有内容、触发词或常驻二者之一。坏条目丢掉而不是让整本书失效，
@@ -390,6 +378,8 @@ function AssistantTurn({
   portraits,
   actions,
   stage,
+  onMacroClick,
+  onMacroDoubleClick,
 }: {
   content: string;
   macroVars: MacroVars;
@@ -401,6 +391,8 @@ function AssistantTurn({
   portraits?: Record<string, string>;
   actions?: ReactNode;
   stage?: GenerationStage;
+  onMacroClick?: (macro: MacroMarkdownMarker) => void;
+  onMacroDoubleClick?: (macro: MacroMarkdownMarker) => void;
 }) {
   const { t } = useI18n();
   const stageInfo = {
@@ -421,7 +413,7 @@ function AssistantTurn({
   // 解析和续接判断都按 content 缓存：输入时整个界面会重渲染，
   // 不能让每一回合都把整段重新解析一遍。
   const parsedBlocks = useMemo(() => parseBlocks(content), [content]);
-  const blocks: MessageBlock[] = useMemo(() => resolveBlockMacros(parsedBlocks, macroVars), [parsedBlocks, macroVars]);
+  const blocks = useMemo(() => resolveBlockMacroSegments(parsedBlocks, macroVars), [parsedBlocks, macroVars]);
   const lastIsDialogue = blocks.length > 0 && blocks[blocks.length - 1].kind === "dlg";
   const continuedFlags = useMemo(
     () => blocks.map((_, index) => dialogueContinues(blocks, index, cardName)),
@@ -453,11 +445,17 @@ function AssistantTurn({
         // 操作按钮只贴在最后一块上；对白块内联，其余块追加在末尾
         const slot = isLast && lastIsDialogue ? actions : undefined;
         const key = `${index}-${block.kind}`;
+        const marked = markMacroText(block.macroSegments);
 
         if (block.kind === "narr") {
           return (
             <NarratorBlock key={key}>
-              <MarkdownText text={block.text} />
+              <MarkdownText
+                text={marked.text}
+                macroMarkers={marked.markers}
+                onMacroClick={onMacroClick}
+                onMacroDoubleClick={onMacroDoubleClick}
+              />
               {cursor}
             </NarratorBlock>
           );
@@ -466,7 +464,12 @@ function AssistantTurn({
         if (block.kind === "act") {
           return (
             <ActionBlock key={key}>
-              <MarkdownText text={block.text} />
+              <MarkdownText
+                text={marked.text}
+                macroMarkers={marked.markers}
+                onMacroClick={onMacroClick}
+                onMacroDoubleClick={onMacroDoubleClick}
+              />
               {cursor}
             </ActionBlock>
           );
@@ -475,7 +478,12 @@ function AssistantTurn({
         if (block.kind === "scene") {
           return (
             <SceneEvent key={key}>
-              <MarkdownText text={block.text} />
+              <MarkdownText
+                text={marked.text}
+                macroMarkers={marked.markers}
+                onMacroClick={onMacroClick}
+                onMacroDoubleClick={onMacroDoubleClick}
+              />
               {cursor}
             </SceneEvent>
           );
@@ -485,7 +493,13 @@ function AssistantTurn({
           // 模型不该产出 player 块，真出现了也按玩家气泡渲染，别混进对白
           return (
             <PlayerBubble key={key}>
-              <MarkdownText tone="bubble" text={block.text} />
+              <MarkdownText
+                tone="bubble"
+                text={marked.text}
+                macroMarkers={marked.markers}
+                onMacroClick={onMacroClick}
+                onMacroDoubleClick={onMacroDoubleClick}
+              />
               {cursor}
             </PlayerBubble>
           );
@@ -504,7 +518,12 @@ function AssistantTurn({
             continued={continuedFlags[index]}
             actions={slot}
           >
-            <MarkdownText text={block.text} />
+            <MarkdownText
+              text={marked.text}
+              macroMarkers={marked.markers}
+              onMacroClick={onMacroClick}
+              onMacroDoubleClick={onMacroDoubleClick}
+            />
             {cursor}
           </DialogueBlock>
         );
@@ -513,6 +532,39 @@ function AssistantTurn({
       {!lastIsDialogue ? <div className="ml-12">{actions}</div> : null}
     </div>
   );
+}
+
+function macroPropertyKey(name: string): MessageKey {
+  switch (name) {
+    case "user": return "chat.macroProperty.user";
+    case "char": return "chat.macroProperty.char";
+    case "group":
+    case "groupnotmuted":
+    case "charifnotgroup":
+    case "notchar": return "chat.macroProperty.group";
+    case "description": return "chat.macroProperty.description";
+    case "personality": return "chat.macroProperty.personality";
+    case "scenario": return "chat.macroProperty.scenario";
+    case "persona": return "chat.macroProperty.persona";
+    case "charprompt": return "chat.macroProperty.charprompt";
+    case "charinstruction": return "chat.macroProperty.charinstruction";
+    case "chardepthprompt": return "chat.macroProperty.chardepthprompt";
+    case "charcreatornotes": return "chat.macroProperty.charcreatornotes";
+    case "charversion": return "chat.macroProperty.charversion";
+    case "mesexamplesraw":
+    case "mesexamples": return "chat.macroProperty.mesexamples";
+    case "charfirstmessage": return "chat.macroProperty.charfirstmessage";
+    case "authorsnote":
+    case "charauthorsnote": return "chat.macroProperty.authorsnote";
+    case "original": return "chat.macroProperty.original";
+    case "summary": return "chat.macroProperty.summary";
+    case "input": return "chat.macroProperty.input";
+    case "lastmessageid": return "chat.macroProperty.lastmessageid";
+    case "lastmessage": return "chat.macroProperty.lastmessage";
+    case "lastusermessage": return "chat.macroProperty.lastusermessage";
+    case "lastcharmessage": return "chat.macroProperty.lastcharmessage";
+    default: return "chat.macroProperty.unknown";
+  }
 }
 
 /**
@@ -600,6 +652,7 @@ export function ChatScreen({
   onOpenSettings,
   onOpenShelf,
   onDisableQualityGate,
+  onUserNameChange,
 }: {
   cardId: string;
   card: CharacterCardData;
@@ -609,40 +662,26 @@ export function ChatScreen({
   onOpenSettings: () => void;
   onOpenShelf: () => void;
   onDisableQualityGate: () => void;
+  onUserNameChange?: (next: string) => void;
 }) {
   const { t, locale } = useI18n();
   const androidApp = useSyncExternalStore(() => () => {}, isAndroidApp, () => false);
-  const [batteryPercent, setBatteryPercent] = useState<number | null>(null);
-  const [currentTime, setCurrentTime] = useState("");
   const storySystems = config.storySystems ?? defaultStorySystemSettings();
+  const [macroInfo, setMacroInfo] = useState<MacroMarkdownMarker | null>(null);
+  const [userNameEditOpen, setUserNameEditOpen] = useState(false);
+  const [userNameDraft, setUserNameDraft] = useState(userName);
 
-  useEffect(() => {
-    if (!androidApp) return;
-    const updateTime = () => setCurrentTime(new Date().toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit", hour12: false }));
-    const initialTime = window.setTimeout(updateTime, 0);
-    const timeTimer = window.setInterval(updateTime, 30_000);
-    const batteryApi = navigator as Navigator & {
-      getBattery?: () => Promise<{
-        level: number;
-        addEventListener: (type: "levelchange", listener: () => void) => void;
-        removeEventListener: (type: "levelchange", listener: () => void) => void;
-      }>;
-    };
-    let battery: Awaited<ReturnType<NonNullable<typeof batteryApi.getBattery>>> | null = null;
-    let onLevelChange: (() => void) | null = null;
-    void batteryApi.getBattery?.().then((next) => {
-      battery = next;
-      const update = () => setBatteryPercent(Math.round(next.level * 100));
-      onLevelChange = update;
-      update();
-      next.addEventListener("levelchange", update);
-    });
-    return () => {
-      window.clearTimeout(initialTime);
-      window.clearInterval(timeTimer);
-      if (battery && onLevelChange) battery.removeEventListener("levelchange", onLevelChange);
-    };
-  }, [androidApp, locale]);
+  function openUserNameEditor(): void {
+    setMacroInfo(null);
+    setUserNameDraft(userName);
+    setUserNameEditOpen(true);
+  }
+
+  function saveUserName(): void {
+    onUserNameChange?.(normalizeUserName(userNameDraft));
+    setUserNameEditOpen(false);
+  }
+
   const greetings = useMemo(
     () =>
       openingGreetings(card).map((text) => adaptGreeting(text, locale)),
@@ -680,13 +719,6 @@ export function ChatScreen({
   useEffect(() => {
     if (!config.qualityGate) qualityGateOverrideRef.current = false;
   }, [config.qualityGate]);
-  /**
-   * 当前聊天专属的作者注。管「这一轮怎么写」，不放世界设定。
-   * 空的时候回退到角色卡上的默认注记。
-   */
-  const [note, setNote] = useState<AuthorNote | null>(null);
-  const [noteOpen, setNoteOpen] = useState(false);
-  const [memory, setMemory] = useState<number | null>(null);
   const [cgBusy, setCgBusy] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<ComposerAttachment | null>(null);
@@ -962,7 +994,6 @@ export function ChatScreen({
       const existing = sessions.find((s) => s.cardId === cardId);
       if (existing) {
         sessionRef.current = existing;
-        setNote(normalizeStoredNote(existing.authorNote));
         sceneRef.current = normalizeSceneState(existing.sceneState);
         threadsRef.current = normalizeThreads(existing.storyThreads);
         chatBookRef.current = normalizeChatBook(existing.chatLorebook);
@@ -983,22 +1014,6 @@ export function ChatScreen({
           chapterBreak: m.chapterBreak,
         }));
         setTurns(restored);
-        // 占用百分比只在发送时由服务端带回。刷新后用同一套组装再算一次，环才不会归零。
-        const assembled = assemble({
-          card,
-          lorebook: card.character_book ? { entries: card.character_book.entries } : undefined,
-          history: restored.map((turn, index) => ({ role: turn.role, content: index === 0 ? adaptGreeting(historyContent(turn), locale) : historyContent(turn) })),
-          seed: hashSeed(existing.id),
-          turn: turnRef.current,
-          summary: summaryRef.current ?? undefined,
-          facts: factsRef.current,
-          journal: journalRef.current,
-          style,
-          userName,
-           ...(storySystems.events && !isEmptySceneState(sceneRef.current) ? { sceneState: sceneRef.current } : {}),
-          budget: planBudget(16_000, 1024),
-        });
-        setMemory(Math.round((assembled.budget.used / Math.max(assembled.budget.max, 1)) * 100));
         memoryReadyRef.current = true;
         setMemoryReady(true);
         return;
@@ -1018,7 +1033,7 @@ export function ChatScreen({
     return () => {
       cancelled = true;
     };
-  }, [cardId, card, greetings, locale, userName, storySystems.events, style]);
+  }, [cardId, card, greetings]);
 
   /**
    * 每次回复落地后刷新建议。
@@ -1049,7 +1064,6 @@ export function ChatScreen({
   /** 落盘时保留已有消息的 createdAt，只给新消息盖时间戳。 */
   function persist(
     nextTurns: Turn[],
-    nextNote: AuthorNote | null = note,
     nextScene: SceneState = sceneRef.current,
     nextThreads: StoryThread[] = threadsRef.current,
   ) {
@@ -1075,9 +1089,7 @@ export function ChatScreen({
     const updated: ChatSession = {
       ...session,
       messages,
-      ...(nextNote?.text.trim()
-        ? { authorNote: { ...nextNote, text: nextNote.text.trim() } }
-        : { authorNote: undefined }),
+      authorNote: undefined,
       ...(isEmptySceneState(nextScene) ? { sceneState: undefined } : { sceneState: nextScene }),
       ...(nextThreads.length ? { storyThreads: nextThreads } : { storyThreads: undefined }),
       ...(chatBookRef.current?.entries.length
@@ -1107,7 +1119,6 @@ export function ChatScreen({
     /** 本轮临时作者注：重新生成纠偏用，只影响这一轮，不落盘 */
     temporaryNote?: string,
   ) {
-    const memoryBeforeTurn = memory;
     setError(null);
     needsSummarizeRef.current = false;
     setGenerationStage(null);
@@ -1221,8 +1232,6 @@ export function ChatScreen({
         journal: journalRef.current,
         style,
         userName,
-        // 作者注：会话专属优先，没有就用卡上的默认；临时纠偏压过两者
-        ...(note ? { authorNote: note } : {}),
         ...(temporaryNote ? { temporaryNote } : {}),
         // 场景状态：有就带上，每个字段会标出可信度
          ...(storySystems.events && !isEmptySceneState(sceneRef.current) ? { sceneState: sceneRef.current } : {}),
@@ -1323,7 +1332,6 @@ export function ChatScreen({
       if (local) {
         setGenerationStage("write");
         const assembled = assembleFor();
-        setMemory(Math.round((assembled.budget.used / Math.max(assembled.budget.max, 1)) * 100));
         await streamBrowserChat({
           messages: assembled.messages,
           temperature: config.temperature,
@@ -1346,7 +1354,6 @@ export function ChatScreen({
           } else if (frame.type === "tool") {
             absorbToolCall(calls, frame);
           } else if (frame.type === "meta") {
-            setMemory(Math.round((frame.used / Math.max(frame.max, 1)) * 100));
             needsSummarizeRef.current = frame.needsSummarize;
             // 服务端路径下导演计划在前端看不到，状态变化只能随 meta 回传
             if (storySystems.events && frame.statePatch) pendingPatchRef.current = frame.statePatch;
@@ -1406,9 +1413,8 @@ export function ChatScreen({
               facts: factsRef.current,
               journal: journalRef.current,
               ...(toolTrace.length > 0 ? { toolTrace } : {}),
-              // 作者注和场景状态、剧情线在服务端路径下也要带上，
-              // 否则回退到服务端时 Phase 4 到 6 的效果会整段消失
-              ...(note ? { authorNote: note } : {}),
+              // 场景状态和剧情线在服务端路径下也要带上，
+              // 否则回退到服务端时状态更新会消失
               ...(temporaryNote ? { temporaryNote } : {}),
                ...(storySystems.events && !isEmptySceneState(sceneRef.current) ? { sceneState: sceneRef.current } : {}),
                ...(storySystems.goals && threadsRef.current.length ? { storyThreads: threadsRef.current } : {}),
@@ -1640,7 +1646,6 @@ export function ChatScreen({
       if (replyText.trim() && result.status === "rejected") {
         setStreaming(false);
         abortRef.current = null;
-        setMemory(memoryBeforeTurn);
         setTurns(baseTurns);
         persist(baseTurns);
         // 玩家主动中断的不弹「没通过校验」，那不是模型的错
@@ -1718,7 +1723,7 @@ export function ChatScreen({
         sceneRef.current = update.state;
         storyChanged = storyChanged || update.changes.length > 0;
         if (update.changes.length > 0 || update.conflicts.length > 0) {
-          persist(finalTurns, note, update.state);
+          persist(finalTurns, update.state);
           if (process.env.NODE_ENV === "development") {
             console.debug("[ai-rp] scene state", {
               changes: update.changes,
@@ -1742,7 +1747,7 @@ export function ChatScreen({
         threadsRef.current = update.threads;
         storyChanged = storyChanged || update.created.length > 0 || update.updated.length > 0 || update.resolved.length > 0;
         if (update.created.length || update.updated.length || update.blocked.length) {
-          persist(finalTurns, note, sceneRef.current, update.threads);
+          persist(finalTurns, sceneRef.current, update.threads);
           if (process.env.NODE_ENV === "development") {
             console.debug("[ai-rp] story threads", {
               created: update.created.map((item) => item.title),
@@ -2484,32 +2489,19 @@ export function ChatScreen({
 
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
       <TopBar
-        className={cn(
-          androidApp ? "relative z-20" : "absolute inset-x-0 top-0 z-20",
-          androidApp && "pt-[max(12px,env(safe-area-inset-top))]",
-        )}
+        floating={!androidApp}
         avatar={<Avatar name={card.name} src={portraitUrl} />}
         name={card.name}
         subtitle={card.tags?.join(" · ")}
-        memoryUsed={memory}
         whoLabel={t("topbar.who")}
-        memoryLabel={
-          memory == null ? t("topbar.memoryUnknown") : t("topbar.memory", { percent: memory })
-        }
         historyLabel={t("chat.reset")}
         exportLabel={t("topbar.export")}
         settingsLabel={t("topbar.settings")}
         onWho={onOpenShelf}
-        onMemory={() => setNoteOpen(true)}
         onHistory={() => setResetOpen(true)}
         onExport={() => setExportOpen(true)}
         onSettings={onOpenSettings}
-        androidStatus={androidApp ? (
-          <div className="flex min-w-0 items-center justify-between gap-3">
-            <span>{currentTime}</span>
-            <span>{t("topbar.battery")}: {batteryPercent == null ? "--" : `${batteryPercent}%`}</span>
-          </div>
-        ) : null}
+        androidStatus={androidApp ? <AndroidStatus enabled={androidApp} /> : null}
         extra={
           <>
             <PwaInstallButton />
@@ -2560,6 +2552,9 @@ export function ChatScreen({
 
       <ChatScroll
         ref={scrollRef}
+        /* 顶栏浮在上面，正文要让开它的高度，否则第一条内容会被压在栏下。
+           栏本身不占流内高度，所以这份留白是唯一的高度来源。 */
+        className={androidApp ? undefined : "pt-[calc(env(safe-area-inset-top)+96px)]"}
         onScroll={() => {
           const element = scrollRef.current;
           if (!element) return;
@@ -2723,6 +2718,10 @@ export function ChatScreen({
                   portraitUrl={portraitUrl}
                   portraits={portraits}
                   actions={actions}
+                  onMacroClick={setMacroInfo}
+                  onMacroDoubleClick={(macro) => {
+                    if (macro.name === "user") openUserNameEditor();
+                  }}
                 />
                 {cgBusy === turn.id ? (
                   <CgLoading label={t("chat.generating")} />
@@ -2924,8 +2923,68 @@ export function ChatScreen({
         </div>
       </Dialog>
 
+      <Dialog
+        open={macroInfo !== null}
+        onClose={() => setMacroInfo(null)}
+        closeLabel={t("common.close")}
+        title={t("chat.macroTitle")}
+      >
+        {macroInfo ? (
+          <div className="flex flex-col gap-3 text-[13.5px] leading-relaxed text-ink-2">
+            <p className="m-0">{t("chat.macroSource", { source: macroInfo.source })}</p>
+            <p className="m-0">{t("chat.macroProperty", { property: t(macroPropertyKey(macroInfo.name)) })}</p>
+            <p className="m-0 break-words">{t("chat.macroValue", { value: macroInfo.text })}</p>
+            {macroInfo.name === "user" ? (
+              <PillButton variant="primary" onClick={openUserNameEditor}>
+                {t("chat.editUserName")}
+              </PillButton>
+            ) : null}
+          </div>
+        ) : null}
+      </Dialog>
+
+      <Dialog
+        open={userNameEditOpen}
+        onClose={() => setUserNameEditOpen(false)}
+        closeLabel={t("common.close")}
+        title={t("chat.editUserName")}
+      >
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveUserName();
+          }}
+        >
+          <Field>
+            <FieldInput
+              autoFocus
+              type="text"
+              autoComplete="name"
+              spellCheck={false}
+              value={userNameDraft}
+              placeholder={t("settings.userNamePlaceholder")}
+              onChange={(event) => setUserNameDraft(event.target.value)}
+            />
+          </Field>
+          <div className="flex gap-2">
+            <PillButton block onClick={() => setUserNameEditOpen(false)}>
+              {t("chat.cancel")}
+            </PillButton>
+            <PillButton block variant="primary" type="submit">
+              {t("common.confirm")}
+            </PillButton>
+          </div>
+        </form>
+      </Dialog>
+
       <Veil open={exportOpen} onClose={() => setExportOpen(false)} />
-      <Sheet open={exportOpen} title={t("chat.exportEpub")}>
+      <Sheet
+        open={exportOpen}
+        title={t("chat.exportEpub")}
+        onClose={() => setExportOpen(false)}
+        closeLabel={t("common.close")}
+      >
           <div className="mb-4 flex flex-wrap gap-2">
             <PillButton
               size="sm"
@@ -2986,26 +3045,6 @@ export function ChatScreen({
           ))}
         </ul>
       </Sheet>
-
-      {/* 作者注：当前聊天专属，从顶栏的大脑图标进来 */}
-      <AuthorNoteSheet
-        open={noteOpen}
-        note={note}
-        cardDefault={card.author_note}
-        scene={sceneRef.current}
-        threads={threadsRef.current}
-        onClose={() => setNoteOpen(false)}
-        onSave={(next) => {
-          setNote(next);
-          persist(turns, next);
-          setNoteOpen(false);
-        }}
-        onClear={() => {
-          setNote(null);
-          persist(turns, null);
-          setNoteOpen(false);
-        }}
-      />
 
       {/* 文本引擎观测只在开发模式（或 ?dev=1）出现，数据只在内存里 */}
       {devEnabled ? (

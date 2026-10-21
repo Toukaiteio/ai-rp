@@ -11,4 +11,12 @@ describe("CharacterCard", () => {
     expect(html).toContain('disabled=""');
     expect(html).toContain("Downloading");
   });
+
+  it("卡内的 z-index 关在自己的层叠上下文里，不会盖住吸顶的 tab", () => {
+    const html = renderToStaticMarkup(
+      <CharacterCard name="A" description="B" startLabel="开始" />,
+    );
+
+    expect(html).toContain("character-card group relative isolate");
+  });
 });

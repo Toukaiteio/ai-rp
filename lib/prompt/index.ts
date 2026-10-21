@@ -43,7 +43,7 @@ import type {
 /* ---------------------------------------------------------------- 类型导出 */
 
 export * from "./types";
-export { applyMacros, type MacroVars } from "./macros";
+export { applyMacros, expandMacroSegments, type MacroSegment, type MacroVars } from "./macros";
 export {
   parseBlocks,
   blocksToRaw,

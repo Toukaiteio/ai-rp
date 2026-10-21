@@ -1,24 +1,25 @@
+/* 顶栏只做两件事：垫一层从 --bar-scrim 渐隐到透明的底，摆头像与右侧按钮。
+ *
+ * 这里**不写定位**。浮在内容上还是排在流里，由调用方决定（见 ChatScreen 的 placement）：
+ *   - 浮着（absolute）：内容从栏下滚过，渐隐底把内容压暗，才看得出「透明渐变」；
+ *   - 排在流里（relative）：栏下面直接就是滚动区，渐变只能落到页面底色上，
+ *     观感永远是一条实心黑带——不管 --bar-scrim 调多淡。
+ *
+ * 设备状态行（app 里没有系统状态栏，时间和电量由网页自己画）由 androidStatus 传入。
+ */
 import type { ReactNode } from "react";
-import { IconBook, IconBrain, IconGear, IconHistory } from "../icons";
+import { IconBook, IconGear, IconHistory } from "../icons";
 import { IconButton } from "./Button";
 import { cn } from "./cn";
-
-/* 顶栏浮在内容上，只垫一层渐隐的底：顶端最不透明，越往下越透，底边全透明融进内容。
-   渐隐色取 --bar-scrim：深色是半透明黑，浅色是半透明的页面底色，两套都不写死。
-   左边一个大胶囊（头像、名字、标签），右边四个圆按钮。
-   记忆是大脑图标，外圈进度表示上下文占用的百分比。 */
 export function TopBar({
   avatar,
   name,
   subtitle,
-  memoryUsed = null,
   whoLabel,
-  memoryLabel,
   historyLabel,
   exportLabel,
   settingsLabel,
   onWho,
-  onMemory,
   onHistory,
   onExport,
   onSettings,
@@ -26,43 +27,43 @@ export function TopBar({
   /** 跟右侧圆按钮放在一起，尺寸由调用方对齐到 40px */
   extra,
   compact = false,
+  floating = false,
   className,
 }: {
   avatar?: ReactNode;
   name: ReactNode;
   subtitle?: ReactNode;
-  /** 0 到 100。还没有统计时为 null，只画空环 */
-  memoryUsed?: number | null;
   whoLabel: string;
-  memoryLabel: string;
   historyLabel: string;
   exportLabel: string;
   settingsLabel: string;
   onWho?: () => void;
-  onMemory?: () => void;
   onHistory?: () => void;
   onExport?: () => void;
   onSettings?: () => void;
   androidStatus?: ReactNode;
   extra?: ReactNode;
   compact?: boolean;
+  /**
+   * 浮在内容上（内容会从栏下滚过，渐隐底负责压暗它），还是占据流内高度。
+   * 只有浮着时 --bar-scrim 的渐变才有东西可渐隐；排在流里时它只落在页面底色上，
+   * 看上去必然是一条实心带。定位只在这里决定，调用方不要再传 position 类。
+   */
+  floating?: boolean;
   className?: string;
 }) {
-  const used =
-    memoryUsed == null ? null : Math.min(100, Math.max(0, Math.round(memoryUsed)));
-
   return (
     <div
       className={cn(
-        "flex shrink-0 flex-col gap-1.5 bg-[linear-gradient(to_bottom,var(--bar-scrim),transparent)] px-3 py-3 md:gap-3 md:px-4",
+        "flex shrink-0 flex-col bg-[linear-gradient(to_bottom,var(--bar-scrim),transparent)] px-3 md:px-4",
+        floating ? "absolute inset-x-0 top-0 z-20" : "relative z-20",
+        androidStatus
+          ? "gap-1.5 pt-[max(12px,env(safe-area-inset-top))] pb-3 md:gap-2"
+          : "gap-1.5 py-3 md:gap-3",
         className,
       )}
     >
-      {androidStatus ? (
-        <div className="w-full border-b border-line/60 pb-1 text-[11px] leading-4 text-ink-2">
-          {androidStatus}
-        </div>
-      ) : null}
+      {androidStatus}
       <div className="flex w-full items-center gap-1.5 md:gap-3">
         <button
           type="button"
@@ -86,7 +87,6 @@ export function TopBar({
         <span className="flex-1" />
 
         <div className="flex shrink-0 items-center gap-1 md:gap-2">
-          <MemoryButton percent={used} label={memoryLabel} onClick={onMemory} />
           <IconButton onClick={onHistory} aria-label={historyLabel}>
             <IconHistory />
           </IconButton>
@@ -100,52 +100,5 @@ export function TopBar({
         </div>
       </div>
     </div>
-  );
-}
-
-/** 大脑图标外圈一环。环的实线长度就是占用百分比。 */
-function MemoryButton({
-  percent,
-  label,
-  onClick,
-}: {
-  percent: number | null;
-  label: string;
-  onClick?: () => void;
-}) {
-  /* 40px 的按钮里留一圈。线宽 2.5，半径往里收，避免描边画出按钮。 */
-  const radius = 18;
-  const stroke = 2.5;
-  const circumference = 2 * Math.PI * radius;
-  const filled = percent == null ? 0 : (percent / 100) * circumference;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      className="relative grid size-10 shrink-0 place-items-center rounded-pill bg-surface text-ink"
-    >
-      <svg
-        viewBox="0 0 40 40"
-        className="pointer-events-none absolute inset-0 size-10 -rotate-90 overflow-visible"
-        aria-hidden="true"
-      >
-        <circle cx="20" cy="20" r={radius} fill="none" stroke="var(--line)" strokeWidth={stroke} />
-        {percent != null && percent > 0 ? (
-          <circle
-            cx="20"
-            cy="20"
-            r={radius}
-            fill="none"
-            stroke="var(--ink)"
-            strokeWidth={stroke}
-            strokeLinecap="round"
-            strokeDasharray={`${filled} ${circumference - filled}`}
-          />
-        ) : null}
-      </svg>
-      <IconBrain className="size-[19px]" />
-    </button>
   );
 }

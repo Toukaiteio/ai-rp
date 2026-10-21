@@ -4,6 +4,12 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { cn } from "./cn";
 
+export interface MarkdownMacroMarker {
+  text: string;
+  name: string;
+  source: string;
+}
+
 /**
  * 对话正文的 Markdown。
  * 不渲染原始 HTML，图片只留说明文字，链接只允许 http(s) 和 mailto。
@@ -29,12 +35,45 @@ export function MarkdownText({
   text,
   tone = "ink",
   className,
+  macroMarkers,
+  onMacroClick,
+  onMacroDoubleClick,
 }: {
   text: string;
   /** bubble 用在玩家的气泡里，代码底取气泡文字的浅色，深浅两套主题都分得开 */
   tone?: "ink" | "bubble";
   className?: string;
+  macroMarkers?: Readonly<Record<string, MarkdownMacroMarker>>;
+  onMacroClick?: (macro: MarkdownMacroMarker) => void;
+  onMacroDoubleClick?: (macro: MarkdownMacroMarker) => void;
 }) {
+  const markdownComponents: Components = {
+    ...components,
+    a: ({ href, children }) => {
+      const id = href?.match(/^macro:(.+)$/i)?.[1];
+      const macro = id === undefined ? undefined : macroMarkers?.[id];
+      if (macro) {
+        return (
+          <button
+            type="button"
+            title={macro.source}
+            aria-label={`${macro.source}: ${macro.text}`}
+            className="border-0 border-b border-dashed border-current bg-transparent px-0 font-inherit text-inherit"
+            onClick={() => onMacroClick?.(macro)}
+            onDoubleClick={() => onMacroDoubleClick?.(macro)}
+          >
+            {children}
+          </button>
+        );
+      }
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer">
+          {children}
+        </a>
+      );
+    },
+  };
+
   return (
     <div
       className={cn(
@@ -61,8 +100,8 @@ export function MarkdownText({
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks]}
         skipHtml
-        urlTransform={safeUrl}
-        components={components}
+        urlTransform={(url) => (/^macro:/i.test(url) ? url : safeUrl(url))}
+        components={markdownComponents}
       >
         {text}
       </ReactMarkdown>

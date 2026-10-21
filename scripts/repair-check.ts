@@ -21,7 +21,7 @@ import type { GenerationResult } from "@/lib/engine/types";
 import { createOpenAIProvider } from "@/lib/providers/openai";
 
 const API_KEY = process.env.YOSEI_API_KEY ?? process.env.BASELINE_API_KEY ?? "";
-const MODEL = process.env.BASELINE_MODEL ?? "deepseek-v4-flash-200k";
+const MODEL = process.env.BASELINE_MODEL ?? "dots3-note-prev";
 const BASE_URL = process.env.BASELINE_BASE_URL ?? "https://router.dys.asia/v1";
 const OUT = process.env.REPAIR_OUT ?? path.join("doc", "phase2-repair-check.json");
 
@@ -275,4 +275,3 @@ const payload = {
 mkdirSync(path.dirname(OUT), { recursive: true });
 writeFileSync(OUT, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 console.log(`已写入 ${OUT}`);
-

@@ -36,7 +36,7 @@ for (const raw of process.argv.slice(2)) {
 
 const API_KEY = process.env.YOSEI_API_KEY ?? process.env.BASELINE_API_KEY ?? "";
 const PROVIDER_ID = args.get("provider") ?? "yosei-router";
-const MODEL = args.get("model") ?? "deepseek-v4-flash-200k";
+const MODEL = args.get("model") ?? "dots3-note-prev";
 const BASE_URL = args.get("base-url") ?? "https://router.dys.asia/v1";
 const TEMPERATURE = Number(args.get("temperature") ?? "0.9");
 const MAX_TOKENS = Number(args.get("max-tokens") ?? "1024");

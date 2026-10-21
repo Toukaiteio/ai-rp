@@ -51,7 +51,7 @@ for (const raw of process.argv.slice(2)) {
 const LIVE = args.get("live") === "true";
 const ONLY = args.get("category");
 const API_KEY = process.env.YOSEI_API_KEY ?? process.env.BASELINE_API_KEY ?? "";
-const MODEL = args.get("model") ?? "deepseek-v4-flash-200k";
+const MODEL = args.get("model") ?? "dots3-note-prev";
 const BASE_URL = args.get("base-url") ?? "https://router.dys.asia/v1";
 const OUT =
   args.get("out") ??

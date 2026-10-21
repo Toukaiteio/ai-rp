@@ -21,6 +21,7 @@ import {
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { addImportedCard } from "@/lib/storage/cards";
 import { Avatar } from "./Avatar";
+import { resolveOnlineCardStartAction } from "./online-card-action";
 
 /**
  * 在线角色卡。
@@ -335,7 +336,12 @@ export function OnlineCards({ onAdded, compact = false, feed = false, localCards
                 tags={item.topics.slice(0, 3).map((topic) => <span key={topic}>{topic}</span>)}
                 startLabel={done ? (local ? t("online.downloaded") : t("online.added")) : busy ? t("online.downloading") : t("online.add")}
                 startDisabled={busy}
-                onStart={done ? undefined : () => void add(item)}
+                onStart={resolveOnlineCardStartAction({
+                  localId: local?.id,
+                  done,
+                  onSelectLocal,
+                  onAdd: () => void add(item),
+                })}
                 current={false}
                 currentLabel={t("online.added")}
                 onCardClick={local && onSelectLocal ? () => onSelectLocal(local.id) : undefined}

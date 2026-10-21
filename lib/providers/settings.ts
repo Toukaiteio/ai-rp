@@ -11,6 +11,14 @@ import {
 } from "./config";
 import { defaultAutoBackupSettings, normalizeAutoBackupSettings, type AutoBackupSettings } from "@/lib/storage/backup";
 
+export const DEFAULT_USER_NAME = "你";
+
+export function normalizeUserName(value: unknown): string {
+  if (typeof value !== "string") return DEFAULT_USER_NAME;
+  const name = value.trim();
+  return name || DEFAULT_USER_NAME;
+}
+
 export interface ProviderConfig {
   providerId: string;
   model: string;
@@ -31,6 +39,8 @@ export interface ProviderConfig {
   autoBackup: AutoBackupSettings;
   /** Quality gate for generated message blocks and speaker names. */
   qualityGate: boolean;
+  /** Name used for the player in prompts and character-card previews. */
+  userName: string;
   /** Story pacing systems. Missing fields in old vaults default to enabled. */
   storySystems?: StorySystemSettings;
 }
@@ -106,15 +116,27 @@ function migrateImage(value: Partial<ImageSettings> | undefined): ImageSettings 
 export function withImage(config: Partial<ProviderConfig> | null | undefined): ProviderConfig {
   const base = defaultProviderConfig();
   if (!config) return base;
+  const providerId = config.providerId ?? base.providerId;
+  const provider = findProvider(providerId);
+  const storedModel = config.model ?? base.model;
+  const model = provider?.deprecatedModels?.includes(storedModel)
+    ? modelName(provider.models[0]) || storedModel
+    : storedModel;
+  const migratedModel = model !== storedModel;
   return {
     ...base,
     ...config,
+    providerId,
+    model,
     apiKey: config.apiKey ?? "",
+    userName: normalizeUserName(config.userName),
     vision:
-      typeof config.vision === "boolean"
+      migratedModel
+        ? modelSeesImages(provider?.models[0])
+        : typeof config.vision === "boolean"
         ? config.vision
-        : modelSeesImages(findProvider(config.providerId ?? base.providerId)?.models.find(
-            (item) => modelName(item) === (config.model ?? base.model),
+        : modelSeesImages(provider?.models.find(
+            (item) => modelName(item) === model,
           )),
     image: migrateImage(config.image),
     autoBackup: normalizeAutoBackupSettings(config.autoBackup),
@@ -142,6 +164,7 @@ export function defaultProviderConfig(): ProviderConfig {
     image: defaultImageSettings(),
     autoBackup: defaultAutoBackupSettings(),
     qualityGate: true,
+    userName: DEFAULT_USER_NAME,
     storySystems: defaultStorySystemSettings(),
   };
 }

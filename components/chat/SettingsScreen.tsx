@@ -51,6 +51,7 @@ export function SettingsScreen({
   onLock,
   onWipe,
   onBack,
+  backLabel,
   onExport,
   onImport,
   archiveBusy,
@@ -61,6 +62,7 @@ export function SettingsScreen({
   onLock: () => void;
   onWipe: () => Promise<void>;
   onBack: () => void;
+  backLabel: string;
   onExport?: () => void;
   onImport?: (file: File | undefined) => void;
   archiveBusy?: boolean;
@@ -140,7 +142,7 @@ export function SettingsScreen({
       <div className="mx-auto w-full max-w-[660px] py-8">
         <ScreenHead
           title={t("settings.title")}
-          action={<BackPill onClick={onBack}>{t("settings.back")}</BackPill>}
+          action={<BackPill onClick={onBack}>{backLabel}</BackPill>}
         />
 
         <div className="mb-6 flex gap-1 overflow-x-auto rounded-pill border border-line bg-surface-2 p-1">
@@ -158,6 +160,19 @@ export function SettingsScreen({
 
         <div className="flex flex-col gap-7">
           {activeTab === "general" ? <>
+          <FormGroup title={t("settings.userName")}>
+            <Field>
+              <FieldInput
+                type="text"
+                autoComplete="name"
+                spellCheck={false}
+                placeholder={t("settings.userNamePlaceholder")}
+                value={config.userName}
+                onChange={(event) => patch({ userName: event.target.value })}
+              />
+            </Field>
+          </FormGroup>
+
           <FormGroup title={t("settings.language")}>
             <OptRow>
               <OptChip selected={locale === "zh"} onClick={() => setLocale("zh")}>
@@ -633,7 +648,7 @@ export function SettingsScreen({
           </> : null}
 
           <PillButton variant="primary" block onClick={onBack}>
-            {t("settings.back")}
+            {backLabel}
           </PillButton>
         </div>
       </div>

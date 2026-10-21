@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveMessageBlocks } from "./message-macros";
+import { markMacroText, resolveMessageBlocks, resolveBlockMacroSegments } from "./message-macros";
 
 describe("聊天宏展示", () => {
   const vars = { char: '林"<dlg>晚晴', user: '旅人"<narr>', card: { description: "{{char}}经营旅店。" } };
@@ -34,5 +34,19 @@ describe("聊天宏展示", () => {
 
   it("宏展开为空时丢弃空块，避免只显示头像和姓名", () => {
     expect(resolveMessageBlocks('<dlg who="Fuka">{{user}}</dlg>', { ...vars, user: "" })).toEqual([]);
+  });
+
+  it("保留简单宏的来源，展示层可以把替换值标成可检查文本", () => {
+    const blocks = resolveBlockMacroSegments(
+      [{ kind: "dlg", text: "Hello {{user}} and {{char}}." }],
+      { ...vars, user: "Lin", char: "Fuka" },
+    );
+    const marked = markMacroText(blocks[0].macroSegments);
+    expect(Object.values(marked.markers)).toEqual([
+      { text: "Lin", name: "user", source: "{{user}}" },
+      { text: "Fuka", name: "char", source: "{{char}}" },
+    ]);
+    expect(marked.text).toContain("macro:0");
+    expect(marked.text).toContain("macro:1");
   });
 });
