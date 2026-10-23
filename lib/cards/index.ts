@@ -11,6 +11,8 @@ export { downloadCard, downloadCardPng, encodeCardPng, readCardFile } from "./io
 export { extractCardJson } from "./png";
 export { translateCharacterCard, translationLanguages, CardTranslationError } from "./translate";
 export type { CardTranslationErrorCode, CardTranslationErrorDetails, CardTranslationProgress, CardTranslationCheckpoint } from "./translate";
+export { polishCardField } from "./polish";
+export type { CardPolishField } from "./polish";
 export type { OnlineCardItem, OnlineCardSource } from "./online";
 export {
   ONLINE_SOURCE,

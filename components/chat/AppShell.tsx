@@ -361,17 +361,16 @@ export function AppShell() {
             setSettingsReturnScreen("shelf");
             setScreen("settings");
           }}
-          onSelect={(id) => {
-            setCardId(id);
-            rememberLastCardId(id);
-            setScreen("chat");
-          }}
-          onBack={() => setScreen("chat")}
-          onCardsChanged={() => setScreen("shelf")}
-          onCreate={() => {
-            setEditingCardId(null);
-            setScreen("editor");
-          }}
+        onSelect={(id) => {
+          setCardId(id);
+          rememberLastCardId(id);
+          setScreen("chat");
+        }}
+        onBack={() => setScreen("chat")}
+        onCreate={() => {
+          setEditingCardId(null);
+          setScreen("editor");
+        }}
           onEdit={(id) => {
             setEditingCardId(id);
             setScreen("editor");

@@ -64,7 +64,6 @@ export const DIRECTOR_STATE_HINT = [
   "宁可标 inferred，也不要把猜测写成 confirmed——confirmed 会被当成既定设定，后面很难改回来。",
   "没有变化就输出空的 statePatch。",
 ].join("\n");
-
 /**
  * 导演阶段顺带维护剧情线的说明。
  *
@@ -85,8 +84,9 @@ export const DIRECTOR_THREAD_HINT = [
 
 export const DIRECTOR_SYSTEM_PROMPT = [
   "你是故事导演，只负责为下一轮回复提供轻量的场景重点和叙事方向，不写最终正文。",
-  "根据聊天记录规划少量、按顺序参考的叙事节拍。节拍是场景意图提示，不是剧本，不要预写必须照搬的完整台词。标出角色当下的处境、关系和可能的情绪方向，让最终讲述者自己用角色的口吻临场表达。act 节拍只能是旁观者能直接看见的一个动作、姿势或表情，只保留一个动作中心；不要把说话、声音、心理判断、原因、评价或结果塞进 act。不要替玩家做决定，不要创造聊天记录中没有依据的关键设定。",
-  "历史里的 act 可能不合规，不要模仿历史 act 的长度或内容；不确定是否是单一可见动作时，把节拍标为 narr。",
+  "根据聊天记录规划 2 到 4 个按顺序参考的叙事节拍，覆盖环境或在场者的反应、角色的具体动作和一句对白；short 模式可以只有一个节拍。不要只给一个孤立动作或一句台词。节拍是场景意图提示，不是剧本，不要预写必须照搬的完整台词。标出角色当下的处境、关系和可能的情绪方向，让最终讲述者自己用角色的口吻临场表达。act 节拍只能是旁观者能直接看见的一个动作、姿势或表情，只保留一个动作中心；不要把说话、声音、心理判断、原因、评价或结果塞进 act。不要替玩家做决定，只使用聊天记录和当前场景里已经出现的人与物，不要凭空新增角色或关键设定。",
+  "玩家不是可发言角色：不要给玩家安排替身、化身或同名角色，beats 里的 who 不能是玩家或玩家的名字。",
+  "历史里的 act 可能不合规，不要模仿历史 act 的长度或内容；不确定是否是单一可见动作时，把节拍标为 narr。计划中的 narr、act、dlg、scene、player、diag 只能作为平级节拍，不能嵌套；每个标签必须成对闭合，禁止自闭合或交叉闭合。",
   "计划中的对白语言必须跟随玩家最近一条输入的主要语言。不要因为角色卡、角色名或原作语言而把中文对话改成日语或英语。",
   DIRECTOR_MODE_HINT,
   DIRECTOR_STATE_HINT,
@@ -95,6 +95,45 @@ export const DIRECTOR_SYSTEM_PROMPT = [
   "status 必须写，它是每个字段的可信度；只写你这一轮真的给出的字段。",
   "beats 至少有一个；toolCalls 没有时输出空数组；mode 从给定取值里选一个；没有状态变化时 statePatch 输出空对象；没有剧情线变化时 threadPatch 输出空数组。不要输出 Markdown、代码围栏或解释文字。",
 ].join("\n");
+
+/**
+ * 导演阶段最多看多少条对话。
+ *
+ * 导演只负责这一轮的节拍和状态变化，整份上下文（System、世界书、卡设定）
+ * 对它是噪音：这些内容每轮都要重新 prefill 一遍，直接翻倍首字时间。
+ * 只发最近的对话，等于把导演的输入砍掉大半，计划质量不受影响。
+ */
+export const DIRECTOR_HISTORY_MESSAGES = 16;
+
+/** 导演只需要对话本身：system 层是给讲述者的规则，不是聊天记录。 */
+function directorHistory(messages: ChatMessage[]): ChatMessage[] {
+  // 只带回合层（语言锁定、当前场景、本轮模式）。它不是最后一条 system：
+  // 记忆目录和 post_history_instructions 都排在它后面，按位置取会取错。
+  const turnLayer = [...messages].reverse().find(
+    (message) => message.role === "system" && message.content.includes("本轮模式（"),
+  );
+  const dialogue = messages.filter((message) => message.role !== "system");
+  const recent = dialogue.length > DIRECTOR_HISTORY_MESSAGES
+    ? dialogue.slice(-DIRECTOR_HISTORY_MESSAGES)
+    : dialogue;
+  return turnLayer ? [turnLayer, ...recent] : recent;
+}
+
+/**
+ * 这一轮要不要跑导演阶段。
+ *
+ * 导演存在的唯一目的是顺带产出场景状态和剧情线；两个系统都关掉时，
+ * 它只剩节拍提示，却仍然要一次完整的上游调用并卡在首字之前。
+ * 关掉就该真的省掉这次调用，而不是只把结果丢掉。
+ */
+export function shouldPlanTurn(
+  systems: { events?: boolean; goals?: boolean } | undefined,
+): boolean {
+  return systems?.events !== false || systems?.goals !== false;
+}
+
+/** 导演阶段的输出上限。状态和剧情线都在同一份 JSON 里，420 会把尾部截断。 */
+export const DIRECTOR_MAX_TOKENS = 700;
 
 /** 把原始聊天记录包装成导演阶段的 system + user 消息。 */
 export function buildDirectorMessages(
@@ -112,7 +151,7 @@ export function buildDirectorMessages(
           ? "目标系统已关闭：不要创建或维护 RPG 目标、任务或奖励。"
           : "目标系统已开启：只有玩家明确表达想做的事，或剧情自然形成可验证的承诺时，才登记一个目标；目标应有清晰完成条件和克制的奖励，不要每轮创建。",
       ].join("\n");
-  const payload = JSON.stringify(messages);
+  const payload = JSON.stringify(directorHistory(messages));
   return [
     { role: "system", content: DIRECTOR_SYSTEM_PROMPT },
     {
@@ -133,7 +172,10 @@ export function parseTurnPlan(text: string): TurnPlan | null {
   try {
     value = JSON.parse(source) as unknown;
   } catch {
-    return null;
+    // 输出被 max_tokens 截断时，尾部 statePatch/threadPatch 会只剩半段 JSON。
+    // 整份丢掉等于白等一次调用，所以先削到最后一个完整字段再试。
+    value = parseTruncatedPlan(source);
+    if (value === null) return null;
   }
 
   if (!isRecord(value) || !Array.isArray(value.beats) || !Array.isArray(value.toolCalls)) {
@@ -190,6 +232,36 @@ export function parseTurnPlan(text: string): TurnPlan | null {
 
 function isResponseMode(value: unknown): value is ResponseMode {
   return typeof value === "string" && (RESPONSE_MODES as readonly string[]).includes(value);
+}
+
+/**
+ * 截断补救：从尾部逐步削掉不完整的部分，直到能解析。
+ *
+ * 只在 JSON.parse 失败时走这条路，正常输出不受影响。削到某个逗号位置时，
+ * 上层可能已经拿到完整的 beats 和 mode，丢掉的只是半截 statePatch——
+ * 那比「整份计划作废、白等一次调用」好得多。
+ */
+function parseTruncatedPlan(source: string): Record<string, unknown> | null {
+  // 从末尾找一个还没闭合的字段边界：逗号或开引号之前的位置
+  let cut = source.lastIndexOf(",");
+  let guard = 0;
+  while (cut > 0 && guard < 200) {
+    guard += 1;
+    const candidate = `${source.slice(0, cut)}\n}`;
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (isRecord(parsed) && Array.isArray(parsed.beats)) {
+        return {
+          ...parsed,
+          toolCalls: Array.isArray(parsed.toolCalls) ? parsed.toolCalls : [],
+        };
+      }
+    } catch {
+      // 继续往前削
+    }
+    cut = source.lastIndexOf(",", cut - 1);
+  }
+  return null;
 }
 
 /** 把已校验的计划交给最终讲述者；计划是约束，不是需要照抄的正文。 */

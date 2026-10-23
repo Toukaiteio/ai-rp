@@ -1,10 +1,17 @@
 import {
-  APIConnectionError,
-  APIConnectionTimeoutError,
-  APIError,
-  APIUserAbortError,
+  APIConnectionError as OpenAIConnectionError,
+  APIConnectionTimeoutError as OpenAITimeoutError,
+  APIError as OpenAIAPIError,
+  APIUserAbortError as OpenAIUserAbortError,
   OpenAIError,
 } from "openai";
+import {
+  APIConnectionError as AnthropicConnectionError,
+  APIConnectionTimeoutError as AnthropicTimeoutError,
+  APIError as AnthropicAPIError,
+  APIUserAbortError as AnthropicUserAbortError,
+  AnthropicError,
+} from "@anthropic-ai/sdk";
 
 /** 返回给浏览器的一条错误。message 是给人看的中文，绝不包含 Key。 */
 export interface ChatErrorInfo {
@@ -64,11 +71,11 @@ export function toChatError(error: unknown, apiKey?: string): ChatErrorInfo {
     message: redact(info.message, apiKey).slice(0, 300),
   });
 
-  if (error instanceof APIUserAbortError) {
+  if (error instanceof OpenAIUserAbortError || error instanceof AnthropicUserAbortError) {
     return finish({ status: 499, code: "aborted", message: "已停止生成" });
   }
 
-  if (error instanceof APIConnectionTimeoutError) {
+  if (error instanceof OpenAITimeoutError || error instanceof AnthropicTimeoutError) {
     return finish({
       status: 504,
       code: "timeout",
@@ -76,7 +83,7 @@ export function toChatError(error: unknown, apiKey?: string): ChatErrorInfo {
     });
   }
 
-  if (error instanceof APIConnectionError) {
+  if (error instanceof OpenAIConnectionError || error instanceof AnthropicConnectionError) {
     return finish({
       status: 502,
       code: "connection",
@@ -84,19 +91,20 @@ export function toChatError(error: unknown, apiKey?: string): ChatErrorInfo {
     });
   }
 
-  if (error instanceof APIError) {
-    const status = typeof error.status === "number" ? error.status : 502;
+  if (error instanceof OpenAIAPIError || error instanceof AnthropicAPIError) {
+    const providerError = error as { status?: unknown };
+    const status = typeof providerError.status === "number" ? providerError.status : 502;
     const known = isKnownStatus(status);
     return finish({
       status,
-      code: error.code ?? error.type ?? `http_${status}`,
+      code: providerErrorCode(providerError, status),
       message: known
         ? STATUS_MESSAGES[status]
         : `提供商返回了未预期的错误（HTTP ${status}）`,
     });
   }
 
-  if (error instanceof OpenAIError) {
+  if (error instanceof OpenAIError || error instanceof AnthropicError) {
     return finish({
       status: 502,
       code: "provider",
@@ -109,4 +117,12 @@ export function toChatError(error: unknown, apiKey?: string): ChatErrorInfo {
     code: "unknown",
     message: "生成失败",
   });
+}
+
+function providerErrorCode(error: object, status: number): string {
+  const code = "code" in error ? error.code : undefined;
+  if (typeof code === "string" && code) return code;
+  const type = "type" in error ? error.type : undefined;
+  if (typeof type === "string" && type) return type;
+  return `http_${status}`;
 }

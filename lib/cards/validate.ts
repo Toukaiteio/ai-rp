@@ -6,6 +6,7 @@ import {
   type WorldBookEntry,
 } from "./types";
 import { normalizeVoiceProfile } from "@/lib/voice";
+import { ATTACHMENTS_KEY, ATTACHMENTS_NAMESPACE, normalizeAttachments } from "@/lib/attachments";
 
 export type ParseResult =
   | { ok: true; card: CharacterCard }
@@ -166,6 +167,16 @@ export function parseCharacterCard(raw: unknown): ParseResult {
   if (!local.portrait && !local.portraitUrl && importedPortrait) local.portraitUrl = importedPortrait;
   if (Object.keys(local).length > 0) extensions._local = local;
 
+  const aiRp = isRecord(extensions[ATTACHMENTS_NAMESPACE])
+    ? { ...extensions[ATTACHMENTS_NAMESPACE] }
+    : undefined;
+  const hasAttachments = !!aiRp && Array.isArray(aiRp[ATTACHMENTS_KEY]);
+  const normalizedAttachments = hasAttachments ? normalizeAttachments(aiRp?.[ATTACHMENTS_KEY]) : undefined;
+  if (aiRp && hasAttachments) {
+    aiRp[ATTACHMENTS_KEY] = normalizedAttachments;
+    extensions[ATTACHMENTS_NAMESPACE] = aiRp;
+  }
+
   const data: CharacterCardData = {
     name,
     description: asString(body.description),
@@ -183,6 +194,7 @@ export function parseCharacterCard(raw: unknown): ParseResult {
     character_version: asString(body.character_version),
     extensions,
   };
+  if (normalizedAttachments) data.attachments = normalizedAttachments;
 
   // 空世界书没有意义，只有真有条目时才写
   const book = parseBook(body.character_book);
@@ -219,10 +231,17 @@ export function cardFileName(card: CharacterCard): string {
  * 读写两边都走这一对函数，形状才不会漂。
  */
 export function toWireCard(card: CharacterCard): CharacterCard {
-  const { voice, ...rest } = card.data;
-  if (!voice) return card;
+  const { voice, attachments, ...rest } = card.data;
   const extensions = { ...(rest.extensions ?? {}) };
-  extensions[VOICE_KEY] = voice;
+  if (voice) extensions[VOICE_KEY] = voice;
+  if (attachments) {
+    const aiRp = isRecord(extensions[ATTACHMENTS_NAMESPACE])
+      ? { ...extensions[ATTACHMENTS_NAMESPACE] }
+      : {};
+    aiRp[ATTACHMENTS_KEY] = attachments;
+    extensions[ATTACHMENTS_NAMESPACE] = aiRp;
+  }
+  if (!voice && !attachments) return card;
   return { ...card, data: { ...rest, extensions } };
 }
 

@@ -23,6 +23,7 @@ function config(partial: Partial<ProviderConfig>): ProviderConfig {
     },
     autoBackup: defaultAutoBackupSettings(),
     qualityGate: true,
+    encodeUserMessageWords: false,
     userName: "你",
     ...partial,
   };

@@ -18,6 +18,7 @@
 import {
   blocksToRaw,
   parseRawBlocks,
+  repairBlockStructure,
   stripPseudoToolTags,
   type BlockKind,
   type MessageBlock,
@@ -87,18 +88,21 @@ export interface ResponseValidation {
   reason: string;
 }
 
-/** Return the raw model output without applying quality-gate rules. */
+/** Skip semantic quality checks while keeping deterministic message-block compatibility repairs. */
 export function bypassResponseValidation(raw: string): ResponseValidation {
   const source = typeof raw === "string" ? raw : "";
+  const repaired = repairBlockStructure(stripPseudoToolTags(source));
+  const normalizedSource = repaired.safe ? repaired.text : source;
+  const blocks = parseRawBlocks(normalizedSource).filter((block) => block.kind !== "player");
   return {
     severity: "none",
     decision: "accepted",
     issues: [],
     hardIssues: [],
     softIssues: [],
-    rawBlocks: parseRawBlocks(source).filter((block) => block.kind !== "player"),
-    blocks: parseRawBlocks(source).filter((block) => block.kind !== "player"),
-    content: source,
+    rawBlocks: blocks,
+    blocks,
+    content: normalizedSource,
     degradations: [],
     reason: "",
   };
@@ -110,6 +114,17 @@ export function validateResponseBlocks(
   options: ValidateOptions = {},
 ): ResponseValidation {
   const source = typeof raw === "string" ? raw : "";
+  const repairedStructure = repairBlockStructure(stripPseudoToolTags(source));
+  const structureIssues: GenerationIssue[] = repairedStructure.safe
+    ? []
+    : repairedStructure.issues
+        .filter((issue) => !issue.safe)
+        .map((issue) => ({
+          code: "block_structure" as const,
+          severity: "block" as const,
+          detail: issue.detail,
+        }));
+  const normalizedSource = repairedStructure.safe ? repairedStructure.text : source;
   const context: CheckContext = {
     cardName: (options.cardName ?? "").trim(),
     userName: (options.userName ?? "你").trim() || "你",
@@ -119,7 +134,7 @@ export function validateResponseBlocks(
   };
 
   // 检查看原始输出：模型把 act 写成什么样，就按什么样判。
-  const parsed = parseRawBlocks(source);
+  const parsed = parseRawBlocks(normalizedSource);
   // 模型自己输出的 player 块不能进 blocks：那是玩家主权的标记，
   // 留着会被 blocksToRaw 原样写回历史，下一轮就成了「模型写过玩家的话」。
   const playerBlocks = parsed.filter((block) => block.kind === "player").length;
@@ -134,6 +149,7 @@ export function validateResponseBlocks(
   const strippedLength = Math.max(0, source.length - withoutPseudoTools.length);
 
   const issues: GenerationIssue[] = [
+    ...structureIssues,
     ...checkProtocol(source, rawBlocks, strippedLength, playerBlocks),
     ...(options.checkCharacterNames ? checkWho(rawBlocks, context) : []),
     ...checkNarratorPerson(rawBlocks),
@@ -170,11 +186,16 @@ export function validateResponseBlocks(
     rawBlocks,
     blocks,
     /*
-     * 合格时原样返回模型写的字符串，不走 blocksToRaw 再序列化一遍。
+     * 合格且没有结构修补时原样返回模型写的字符串，不走 blocksToRaw 再序列化一遍。
      * 序列化会规范化换行、补上 who="" 这类空属性——对合法回复来说，
      * 「一个字都不动」比「等价重排」重要得多。
      */
-    content: severity === "hard" ? "" : decision === "accepted" ? source : blocksToRaw(blocks),
+     content:
+       severity === "hard"
+         ? ""
+         : decision === "accepted"
+           ? normalizedSource
+           : blocksToRaw(blocks),
     degradations,
     reason:
       hardIssues.length > 0

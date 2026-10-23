@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDirectorMessages,
+  DIRECTOR_HISTORY_MESSAGES,
   DIRECTOR_SYSTEM_PROMPT,
   formatTurnPlan,
   parseTurnPlan,
+  shouldPlanTurn,
   type TurnPlan,
 } from "./turn-plan";
 import { dialogueLanguageInstruction } from "./language";
@@ -34,6 +36,43 @@ describe("导演计划", () => {
     });
     expect(result[1].content).toContain("当前已连续 4 轮没有实质推进");
     expect(result[1].content).toContain("目标系统已关闭");
+  });
+
+  it("只给导演最近的对话和本回合语境，不发整份系统提示", () => {
+    const history = [
+      { role: "system" as const, content: "核心规则，导演不需要。" },
+      ...Array.from({ length: DIRECTOR_HISTORY_MESSAGES + 6 }, (_, index) => ({
+        role: (index % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+        content: `第 ${index} 条`,
+      })),
+      { role: "system" as const, content: "对白语言锁定：简体中文。\n本轮模式（正常推进）：……" },
+      { role: "system" as const, content: "记忆目录，导演不需要。" },
+    ];
+    const payload = buildDirectorMessages(history)[1].content;
+    const sent = JSON.parse(payload.slice(payload.indexOf("\n") + 1)) as Array<{ content: string }>;
+
+    expect(sent).toHaveLength(DIRECTOR_HISTORY_MESSAGES + 1);
+    expect(sent[0].content).toContain("本轮模式（正常推进）");
+    expect(sent.map((item) => item.content)).not.toContain("核心规则，导演不需要。");
+    expect(sent.map((item) => item.content)).not.toContain("记忆目录，导演不需要。");
+    expect(sent.at(-1)?.content).toBe(`第 ${DIRECTOR_HISTORY_MESSAGES + 5} 条`);
+  });
+
+  it("两个剧情系统都关掉时跳过导演阶段", () => {
+    expect(shouldPlanTurn({ events: false, goals: false })).toBe(false);
+    expect(shouldPlanTurn({ events: true, goals: false })).toBe(true);
+    expect(shouldPlanTurn({ events: false, goals: true })).toBe(true);
+    expect(shouldPlanTurn(undefined)).toBe(true);
+  });
+
+  it("输出被截断时保住完整 beats，只丢尾部 patch", () => {
+    const truncated =
+      '{"beats":[{"kind":"narr","text":"雨声变大。"},{"kind":"dlg","who":"林晚晴","text":"先别进去。"}],"toolCalls":[],"mode":"normal","statePatch":{"location":"门口","time"';
+    const plan = parseTurnPlan(truncated);
+
+    expect(plan?.beats).toHaveLength(2);
+    expect(plan?.mode).toBe("normal");
+    expect(plan?.statePatch).toBeUndefined();
   });
 
   it("解析 JSON 和 json 代码围栏", () => {
@@ -135,6 +174,11 @@ describe("导演计划", () => {
     expect(DIRECTOR_SYSTEM_PROMPT).toContain("inferred");
     expect(DIRECTOR_SYSTEM_PROMPT).toContain("uncertain");
     expect(DIRECTOR_SYSTEM_PROMPT).toContain("宁可标 inferred");
+  });
+
+  it("导演提示明确块必须平级成对闭合", () => {
+    expect(DIRECTOR_SYSTEM_PROMPT).toContain("不能嵌套");
+    expect(DIRECTOR_SYSTEM_PROMPT).toContain("成对闭合");
   });
 
   it("计划里带 mode 时，交给正文模型的那段会说明以回合层为准", () => {

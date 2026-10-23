@@ -45,6 +45,7 @@ const CHECK_ORDER: IssueCode[] = [
   "act_result",
   "dlg_has_action",
   "dlg_markup",
+  "block_structure",
   "player_control",
   "repeated_expression",
   "plot_overreach",

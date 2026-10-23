@@ -1,7 +1,8 @@
-import type { Components } from "react-markdown";
-import ReactMarkdown from "react-markdown";
+import { useEffect, useRef, useState } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { useI18n } from "@/lib/i18n/use-i18n";
 import { cn } from "./cn";
 
 export interface MarkdownMacroMarker {
@@ -9,6 +10,9 @@ export interface MarkdownMacroMarker {
   name: string;
   source: string;
 }
+
+/** 二段点击的点亮窗口：超时没点第二下就熄掉，再点重新点亮。 */
+const MACRO_ARM_MS = 3000;
 
 /**
  * 对话正文的 Markdown。
@@ -37,30 +41,51 @@ export function MarkdownText({
   className,
   macroMarkers,
   onMacroClick,
-  onMacroDoubleClick,
 }: {
   text: string;
   /** bubble 用在玩家的气泡里，代码底取气泡文字的浅色，深浅两套主题都分得开 */
   tone?: "ink" | "bubble";
   className?: string;
   macroMarkers?: Readonly<Record<string, MarkdownMacroMarker>>;
+  /** 二段点击的第二下（点亮状态下再点）才会触发 */
   onMacroClick?: (macro: MarkdownMacroMarker) => void;
-  onMacroDoubleClick?: (macro: MarkdownMacroMarker) => void;
 }) {
+  const { t } = useI18n();
+  const [armed, setArmed] = useState<string | null>(null);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (armTimer.current) clearTimeout(armTimer.current);
+  }, []);
+
+  function tapMacro(id: string, macro: MarkdownMacroMarker): void {
+    if (armTimer.current) clearTimeout(armTimer.current);
+    if (armed === id) {
+      setArmed(null);
+      onMacroClick?.(macro);
+      return;
+    }
+    setArmed(id);
+    armTimer.current = setTimeout(() => setArmed(null), MACRO_ARM_MS);
+  }
+
   const markdownComponents: Components = {
     ...components,
     a: ({ href, children }) => {
       const id = href?.match(/^macro:(.+)$/i)?.[1];
       const macro = id === undefined ? undefined : macroMarkers?.[id];
-      if (macro) {
+      if (macro && id !== undefined) {
+        const lit = armed === id;
         return (
           <button
             type="button"
-            title={macro.source}
+            title={lit && macro.name === "user" ? t("chat.macroArmed") : macro.source}
             aria-label={`${macro.source}: ${macro.text}`}
-            className="border-0 border-b border-dashed border-current bg-transparent px-0 font-inherit text-inherit"
-            onClick={() => onMacroClick?.(macro)}
-            onDoubleClick={() => onMacroDoubleClick?.(macro)}
+            className={cn(
+              "border-0 border-b border-dashed bg-transparent px-0 font-inherit transition-colors",
+              lit ? "border-solid border-armed text-armed" : "border-current text-inherit",
+            )}
+            onClick={() => tapMacro(id, macro)}
           >
             {children}
           </button>

@@ -17,6 +17,8 @@ export interface ProviderPreset {
   name: string;
   baseURL: string;
   models: ProviderModel[];
+  /** 这个预设固定的接口协议。自定义提供商留空，由用户选择。 */
+  interfaceType?: string;
   /** 这个提供商自己的生图模型。选中后沿用它的 Base URL，不再另配一套。 */
   imageModels?: string[];
   /** 地址和接口类型已经定死，设置页不再展示这两项。 */
@@ -93,4 +95,40 @@ export function getDefaultProvider(): ProviderPreset {
     );
   }
   return found;
+}
+
+export function defaultInterfaceType(): string {
+  return config.defaultInterfaceType;
+}
+
+export function findInterfaceType(id: string | undefined): InterfaceType | undefined {
+  return id ? config.interfaceTypes.find((type) => type.id === id) : undefined;
+}
+
+/** 只有显式标为 enabled 的协议才允许被请求使用。 */
+export function isInterfaceTypeEnabled(id: string | undefined): boolean {
+  return findInterfaceType(id)?.enabled === true;
+}
+
+/**
+ * 这次请求实际用哪个协议。
+ *
+ * 预设已经定死协议（Anthropic 只能走 Messages），自定义提供商看用户选择；
+ * 选了被关掉的协议时退回默认。旧客户端只传 providerId 时仍按预设推断。
+ */
+export function resolveInterfaceType(providerId: string, requested?: string): string {
+  const preset = findProvider(providerId);
+  if (preset?.interfaceType && isInterfaceTypeEnabled(preset.interfaceType)) {
+    return preset.interfaceType;
+  }
+  if (typeof requested === "string" && isInterfaceTypeEnabled(requested)) {
+    return requested;
+  }
+  if (
+    (providerId === "anthropic" || providerId === "anthropic-messages") &&
+    isInterfaceTypeEnabled("anthropic-messages")
+  ) {
+    return "anthropic-messages";
+  }
+  return defaultInterfaceType();
 }

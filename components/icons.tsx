@@ -1,4 +1,4 @@
-import { Bookmark, Brain, ClipboardCheck, GitBranch, RefreshCw, Settings } from "lucide-react";
+import { Bookmark, Brain, ClipboardCheck, GitBranch, Map, RefreshCw, Settings } from "lucide-react";
 import type { ReactNode, SVGProps } from "react";
 
 type IconProps = Omit<SVGProps<SVGSVGElement>, "children" | "strokeWidth"> & {
@@ -178,6 +178,10 @@ export function IconGlobe(props: IconProps) {
       <path d="M12 3c2.6 2.4 4 5.6 4 9s-1.4 6.6-4 9c-2.6-2.4-4-5.6-4-9s1.4-6.6 4-9z" />
     </Icon>
   );
+}
+
+export function IconMap({ className = "size-[19px]", ...rest }: IconProps) {
+  return <Map className={className} strokeWidth={1.8} aria-hidden="true" {...rest} />;
 }
 
 /** 仓库入口。实心标记，和旁边的描边图标用同一档尺寸。 */

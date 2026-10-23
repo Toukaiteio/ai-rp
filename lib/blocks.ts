@@ -7,8 +7,37 @@ export interface MessageBlock {
   text: string;
 }
 
-const BLOCK_TAG = /<\s*(\/?)\s*(narr|act|dlg|scene|player)\b((?:"[^"]*"|'[^']*'|[^'">])*)>/gi;
+const BLOCK_TAG_NAMES = "narr|act|dlg|scene|player";
+const BLOCK_TAG = new RegExp(
+  `<\\s*(\\/?)\\s*(${BLOCK_TAG_NAMES})\\b((?:"[^"]*"|'[^']*'|[^'">])*)>`,
+  "gi",
+);
+const REPAIR_BLOCK_TAG = new RegExp(
+  `<\\s*(\\/?)\\s*(narr|act|dlg|scene|player|diag)\\b((?:"[^"]*"|'[^']*'|[^'">])*)>`,
+  "gi",
+);
 const WHO_ATTRIBUTE = /\bwho\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
+
+export type BlockRepairIssueKind =
+  | "nested"
+  | "self_closing"
+  | "mismatched_close"
+  | "unmatched_close"
+  | "unclosed"
+  | "invalid_tag";
+
+export interface BlockRepairIssue {
+  kind: BlockRepairIssueKind;
+  detail: string;
+  safe: boolean;
+}
+
+export interface BlockRepairResult {
+  text: string;
+  changed: boolean;
+  safe: boolean;
+  issues: BlockRepairIssue[];
+}
 
 export function encodeBlockAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
@@ -54,6 +83,183 @@ export function stripPseudoToolTags(raw: string): string {
     .replace(PSEUDO_TOOL_TAG, "");
 }
 
+interface BlockTagToken {
+  index: number;
+  end: number;
+  closing: boolean;
+  kind: string;
+  attrs: string;
+  selfClosing: boolean;
+}
+
+/**
+ * 把消息块修成「平级、成对」的最小结构。
+ *
+ * 能确定的情况只做结构变更：嵌套前先闭合上一个块、缺少闭合时补闭合、
+ * diag 作为诊断包装去掉标签但保留里面的正文。遇到没有唯一判断的落单闭合、
+ * 顶层自闭合或非法属性时返回原文，并把问题交给质量门拒收。
+ */
+export function repairBlockStructure(raw: string): BlockRepairResult {
+  const source = typeof raw === "string" ? raw : "";
+  if (!source) return { text: source, changed: false, safe: true, issues: [] };
+
+  const tokens: BlockTagToken[] = [];
+  REPAIR_BLOCK_TAG.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = REPAIR_BLOCK_TAG.exec(source)) !== null) {
+    const attrs = match[3] ?? "";
+    tokens.push({
+      index: match.index,
+      end: match.index + match[0].length,
+      closing: match[1] === "/",
+      kind: match[2].toLowerCase(),
+      attrs,
+      selfClosing: !match[1] && /\/\s*$/.test(attrs),
+    });
+  }
+
+  if (tokens.length === 0) {
+    return { text: source, changed: false, safe: true, issues: [] };
+  }
+
+  const issues: BlockRepairIssue[] = [];
+  for (const token of tokens) {
+    const invalid = invalidTagDetail(token);
+    if (invalid) {
+      issues.push({ kind: "invalid_tag", detail: invalid, safe: false });
+    }
+  }
+  if (issues.some((issue) => !issue.safe)) {
+    return { text: source, changed: false, safe: false, issues };
+  }
+
+  let output = "";
+  let cursor = 0;
+  let active: string | null = null;
+  let diagDepth = 0;
+  const suppressedClosings = new Set<string>();
+  let changed = false;
+  let safe = true;
+
+  const addIssue = (kind: BlockRepairIssueKind, detail: string, issueSafe = true) => {
+    issues.push({ kind, detail, safe: issueSafe });
+    if (!issueSafe) safe = false;
+  };
+
+  for (const token of tokens) {
+    output += source.slice(cursor, token.index);
+
+    if (token.kind === "diag") {
+      if (token.closing) {
+        if (diagDepth === 0) {
+          if (active) {
+            suppressedClosings.add(active);
+            output += `</${active}>`;
+            active = null;
+            changed = true;
+            addIssue("mismatched_close", "diag 闭合时补齐了仍未闭合的消息块");
+          } else {
+            output += source.slice(token.index, token.end);
+            addIssue("unmatched_close", "没有对应开标签的 </diag>", false);
+          }
+        } else {
+          diagDepth -= 1;
+          if (active) {
+            suppressedClosings.add(active);
+            output += `</${active}>`;
+            active = null;
+            changed = true;
+            addIssue("mismatched_close", "diag 闭合时补齐了仍未闭合的消息块");
+          }
+          changed = true;
+        }
+      } else if (token.selfClosing) {
+        changed = true;
+        addIssue("self_closing", "diag 不能使用自闭合标签，已移除空标签");
+      } else {
+        diagDepth += 1;
+        changed = true;
+      }
+      cursor = token.end;
+      continue;
+    }
+
+    if (token.closing) {
+      if (active === token.kind) {
+        output += source.slice(token.index, token.end);
+        active = null;
+      } else if (active) {
+        const previous = active;
+        suppressedClosings.add(previous);
+        output += `</${active}>`;
+        active = null;
+        changed = true;
+        addIssue("mismatched_close", `</${token.kind}> 与当前 <${previous}> 不匹配，已按当前块闭合`);
+      } else {
+        if (suppressedClosings.delete(token.kind)) {
+          changed = true;
+          addIssue("mismatched_close", `</${token.kind}> 对应的外层块已在嵌套修补时闭合`);
+        } else {
+          output += source.slice(token.index, token.end);
+          addIssue("unmatched_close", `没有对应开标签的 </${token.kind}>`, false);
+        }
+      }
+      cursor = token.end;
+      continue;
+    }
+
+    if (token.selfClosing) {
+      if (active) {
+        changed = true;
+        addIssue("self_closing", `<${token.kind}/> 出现在已打开的 <${active}> 内，已移除空标签`);
+      } else {
+        output += source.slice(token.index, token.end);
+        addIssue("self_closing", `顶层 <${token.kind}/> 无法判断应归属的正文`, false);
+      }
+      cursor = token.end;
+      continue;
+    }
+
+    if (active) {
+      suppressedClosings.add(active);
+      output += `</${active}>`;
+      changed = true;
+      addIssue("nested", `<${token.kind}> 嵌套在 <${active}> 内，已先闭合外层块`);
+      active = null;
+    }
+    output += source.slice(token.index, token.end);
+    active = token.kind;
+    cursor = token.end;
+  }
+
+  output += source.slice(cursor);
+  if (active) {
+    output += `</${active}>`;
+    changed = true;
+    addIssue("unclosed", `<${active}> 缺少闭合标签，已补齐`);
+  }
+  if (diagDepth > 0) {
+    changed = true;
+    addIssue("unclosed", `<diag> 缺少闭合标签，已移除诊断包装`);
+  }
+
+  if (!safe) return { text: source, changed: false, safe: false, issues };
+  return { text: output, changed, safe: true, issues };
+}
+
+function invalidTagDetail(token: BlockTagToken): string | null {
+  const attrs = token.attrs.replace(/\/\s*$/, "").trim();
+  if (token.closing) {
+    return attrs ? `</${token.kind}> 不能带属性` : null;
+  }
+  if (token.kind === "act" || token.kind === "dlg") {
+    return attrs && !/^who\s*=\s*(?:"[^"]*"|'[^']*')$/i.test(attrs)
+      ? `<${token.kind}> 的标签属性只能是带引号的 who`
+      : null;
+  }
+  return attrs ? `<${token.kind}> 不能带属性` : null;
+}
+
 /**
  * 把模型输出拆成块。
  *
@@ -62,7 +268,7 @@ export function stripPseudoToolTags(raw: string): string {
  * 不带任何标记的纯文本按角色对白处理，保证旧回复也能显示。
  */
 export function parseBlocks(raw: string): MessageBlock[] {
-  return parseBlocksInternal(raw, true);
+  return parseBlocksInternal(repairBlockStructure(stripPseudoToolTags(raw)).text, true);
 }
 
 /**
@@ -73,14 +279,12 @@ export function parseBlocks(raw: string): MessageBlock[] {
  * 被降级掉的那条 act 恰恰是最该计进 invalidActCount 的样本。
  */
 export function parseRawBlocks(raw: string): MessageBlock[] {
-  return parseBlocksInternal(raw, false);
+  return parseBlocksInternal(repairBlockStructure(stripPseudoToolTags(raw)).text, false);
 }
 
 function parseBlocksInternal(raw: string, degradeAct: boolean): MessageBlock[] {
   const blocks: MessageBlock[] = [];
   if (!raw) return blocks;
-  raw = stripPseudoToolTags(raw);
-
   let last = 0;
   let open: { kind: BlockKind; who?: string; textStart: number } | null = null;
   let match: RegExpExecArray | null;

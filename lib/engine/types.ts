@@ -45,6 +45,7 @@ export const ISSUE_CODES = [
   "act_metaphor",
   "act_result",
   "dlg_markup",
+  "block_structure",
   "voice_breach",
 ] as const;
 
@@ -227,6 +228,7 @@ export const ISSUE_SEVERITY: Record<IssueCode, IssueSeverity> = {
   act_result: "warn",
   dlg_has_action: "warn",
   dlg_markup: "block",
+  block_structure: "block",
   player_control: "block",
   player_block: "block",
   repeated_expression: "warn",
@@ -269,6 +271,7 @@ export const GATE_ACTION: Record<IssueCode, GateAction> = {
   narrator_in_character: "reject",
   language_switch: "reject",
   dlg_markup: "reject",
+  block_structure: "reject",
   no_blocks: "reject",
   pseudo_tool_text: "reject",
   // 只记录：这些要靠后续阶段（记忆、剧情线、文风）处理，不该拦住这一轮
@@ -292,6 +295,7 @@ export const ISSUE_LABELS: Record<IssueCode, string> = {
   act_result: "act 写了动作结果",
   dlg_has_action: "dlg 混入动作",
   dlg_markup: "dlg 混入标签或 JSON",
+  block_structure: "消息块结构错误",
   player_control: "替玩家说话或行动",
   player_block: "模型输出了 player 块",
   repeated_expression: "重复上一轮表达",

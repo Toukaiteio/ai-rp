@@ -22,6 +22,8 @@ export interface StoredMessage {
   role: StoredRole;
   /** 保留块标记的原始文本，渲染时才解析成块 */
   content: string;
+  /** 只给新用户消息保存的实际发送版本；界面和导出仍使用 content。 */
+  outboundContent?: string;
   createdAt: number;
   cg?: StoredCg;
   /** 同一条回复的几次生成。导出只用 swipeIndex 指到的那条。 */
@@ -67,6 +69,8 @@ export interface ChatSession {
    * 不会跟着角色卡跑到别的故事里去。
    */
   chatLorebook?: WorldBook;
+  /** 当前会话的 attachment 运行态，角色卡 JSON 不会携带它。 */
+  attachmentState?: Record<string, unknown>;
   /**
    * 分支（Phase 11.3）。不同选择形成不同剧情线，而不是覆盖原来的故事。
    * 挂在会话上：一条会话是一棵树，主干加若干从某条消息分出去的支线。

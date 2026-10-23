@@ -41,6 +41,12 @@ describe("质量门：块合法性", () => {
     expect(result.issues).toEqual([]);
   });
 
+  it("关闭质量门时仍修补可确定的消息块结构，避免历史保存嵌套标签", () => {
+    const result = bypassResponseValidation('<diag><act who="林晚晴">她抬眼。</act></diag>');
+    expect(result.content).toBe('<act who="林晚晴">她抬眼。</act>');
+    expect(result.blocks).toEqual([{ kind: "act", who: "林晚晴", text: "她抬眼。" }]);
+  });
+
   it("只认识 narr / act / dlg / scene 四类模型块", () => {
     const result = validate(
       '<narr>雨小了。</narr><act who="林晚晴">她抬眼。</act><dlg who="林晚晴">住店？</dlg><scene>天亮了。</scene>',
@@ -74,6 +80,36 @@ describe("质量门：块合法性", () => {
     const result = validate("");
     expect(result.severity).toBe("none");
     expect(result.blocks).toEqual([]);
+  });
+
+  it("diag 包裹的 act 按平级结构修补后进入校验和落地正文", () => {
+    const raw = '<diag><act who="林晚晴">她抬眼。</act></diag>';
+    const result = validate(raw);
+    expect(result.decision).toBe("accepted");
+    expect(result.content).toBe('<act who="林晚晴">她抬眼。</act>');
+    expect(result.blocks).toEqual([{ kind: "act", who: "林晚晴", text: "她抬眼。" }]);
+  });
+
+  it("重复 act 和空自闭合标签修补后仍保留正文", () => {
+    const result = validate('<diag><act><act/>她抬眼。</act></diag>');
+    expect(result.decision).toBe("accepted");
+    expect(result.content).toBe("<act>她抬眼。</act>");
+    expect(result.blocks[0]?.text).toBe("她抬眼。");
+  });
+
+  it("空的 scene 块不生成空历史，报告没有可渲染内容", () => {
+    const result = validate("<scene></scene>");
+    expect(result.decision).toBe("rejected");
+    expect(result.content).toBe("");
+    expect(result.hardIssues.map((issue) => issue.code)).toContain("no_blocks");
+  });
+
+  it("结构无法安全判断时保留原文并报告 block_structure", () => {
+    const raw = "</dlg>残文";
+    const result = validate(raw);
+    expect(result.content).toBe("");
+    expect(result.hardIssues.map((issue) => issue.code)).toContain("block_structure");
+    expect(result.hardIssues[0]?.detail).toContain("没有对应开标签");
   });
 });
 
@@ -138,6 +174,10 @@ describe("质量门：who 合法性", () => {
 
   it("act 的 who 同样要准确", () => {
     expect(codes('<act who="她">她抬眼。</act>')).toContain("who_pronoun");
+  });
+
+  it("who 写「我」也算玩家在说话", () => {
+    expect(codes('<dlg who="我">走吧。</dlg>')).toContain("player_control");
   });
 
   it("间接提到玩家不算替他行动", () => {
@@ -330,7 +370,7 @@ describe("质量门：三档严重程度", () => {
 
   it("soft 只包含能就地改好的问题，hard 只包含救不回来的问题", () => {
     const soft: IssueCode[] = ["act_overlong", "act_multi_action", "act_has_dialogue", "act_has_thought", "act_metaphor", "act_result", "dlg_has_action"];
-    const hard: IssueCode[] = ["player_control", "player_block", "who_pronoun", "who_inexact", "character_drift", "narrator_in_character", "language_switch", "dlg_markup", "no_blocks", "pseudo_tool_text"];
+    const hard: IssueCode[] = ["player_control", "player_block", "who_pronoun", "who_inexact", "character_drift", "narrator_in_character", "language_switch", "dlg_markup", "block_structure", "no_blocks", "pseudo_tool_text"];
     for (const code of soft) expect(GATE_ACTION[code], code).toBe("degrade");
     for (const code of hard) expect(GATE_ACTION[code], code).toBe("reject");
   });

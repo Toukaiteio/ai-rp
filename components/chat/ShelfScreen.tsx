@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowUp, PenLine, Plus, Undo2, Upload } from "lucide-react";
+import { ArrowUp, Languages, PenLine, Plus, Undo2, Upload } from "lucide-react";
 import {
   CharacterCard,
   Dialog,
@@ -30,6 +30,13 @@ import { OnlineCards } from "./OnlineCards";
 import { Avatar } from "./Avatar";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
 import { CardTranslation } from "./CardTranslation";
+import {
+  getTranslationTasksServerSnapshot,
+  getTranslationTasksSnapshot,
+  setTranslationTray,
+  subscribeTranslationTasks,
+} from "./CardTranslationTasks";
+import { CardTranslationTray } from "./CardTranslationTray";
 import { applyMacros } from "@/lib/prompt";
 import { hasNativeFilePicker, isAndroidApp, pickNativeFile } from "@/lib/storage/native";
 
@@ -78,6 +85,10 @@ export function ShelfScreen({
   const jumpingRef = useRef(false);
   const { t } = useI18n();
   const androidApp = useSyncExternalStore(() => () => {}, isAndroidApp, () => false);
+  const translationTasks = useSyncExternalStore(
+    subscribeTranslationTasks, getTranslationTasksSnapshot, getTranslationTasksServerSnapshot);
+  const hasLiveTranslations = translationTasks.some((task) =>
+    task.status === "running" || task.status === "saving" || task.status === "failed");
 
   const tags = useMemo(
     () => {
@@ -250,6 +261,17 @@ export function ShelfScreen({
             action={
               <div className="flex items-center gap-2">
                 <PwaInstallButton />
+                <IconButton
+                  aria-label={t("card.translationTasks")}
+                  title={t("card.translationTasks")}
+                  className="relative"
+                  onClick={() => setTranslationTray("open")}
+                >
+                  <Languages className="size-[18px]" aria-hidden="true" />
+                  {hasLiveTranslations ? (
+                    <span aria-hidden="true" className="absolute top-2 right-2 size-[7px] rounded-pill bg-accent" />
+                  ) : null}
+                </IconButton>
                 <AnnouncementBell onClick={() => setAnnounceOpen(true)} />
                 {onOpenSettings ? (
                   <IconButton aria-label={t("settings.title")} title={t("settings.title")} onClick={onOpenSettings}>
@@ -381,7 +403,7 @@ export function ShelfScreen({
                 current={entry.id === currentCardId}
                 currentLabel={t("common.current")}
                 startLabel={t("common.start")}
-                startAccessory={<CardTranslation card={entry.card} onCardsChanged={onCardsChanged} onOpenSettings={onOpenSettings} />}
+                startAccessory={<CardTranslation card={entry.card} onCardsChanged={onCardsChanged} />}
                 onStart={playable ? () => onSelect(entry.id) : undefined}
                 onReturn={entry.id === currentCardId ? onBack : undefined}
                 returnLabel={t("shelf.returnToChat", { name: entry.card.data.name })}
@@ -443,6 +465,7 @@ export function ShelfScreen({
       </div>
 
       <AnnouncementDialog open={announceOpen} onClose={() => setAnnounceOpen(false)} />
+      <CardTranslationTray onSaved={onCardsChanged} onOpenSettings={onOpenSettings} />
       <div className="fixed right-5 bottom-5 z-30 flex flex-col items-end gap-2 sm:right-8 sm:bottom-8">
         {shelfTab === "network" && scrollAction ? (
           <button

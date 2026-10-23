@@ -132,7 +132,6 @@ export interface OfflineCheck {
 /** 提示词里必须出现的东西。缺一个都说明组装被改坏了。 */
 const TURN_LAYER_MARKERS = [
   { text: "本轮状态", why: "回合层的状态段没了" },
-  { text: "本轮目标篇幅", why: "篇幅要求没了" },
 ];
 
 const CONTRACT_MARKERS = [

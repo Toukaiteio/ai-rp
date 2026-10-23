@@ -2,16 +2,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { translate, type Locale, type MessageKey, type Vars } from "@/lib/i18n";
 import { createEmptyCard } from "@/lib/cards";
-import { CardTranslation } from "./CardTranslation";
-import { CardTranslationDialog } from "./CardTranslationDialog";
+import { CardTranslation, CardTranslationConfirm } from "./CardTranslation";
 import { CardTranslationMenu } from "./CardTranslationMenu";
 
 const language = vi.hoisted(() => ({ locale: "zh" as Locale }));
 vi.mock("@/lib/i18n/use-i18n", () => ({
   useI18n: () => ({ locale: language.locale, t: (key: MessageKey, vars?: Vars) => translate(language.locale, key, vars) }),
 }));
-
-const handlers = { onSkip: () => {}, onClose: () => {}, onStart: () => {}, onOpenSettings: () => {} };
 
 describe("card translation UI", () => {
   it.each(["zh", "en"] as const)("opens a round target-language trigger in %s", (locale) => {
@@ -36,7 +33,10 @@ describe("card translation UI", () => {
 
   it.each(["zh", "en"] as const)("renders informed consent and a themed native checkbox in %s", (locale) => {
     language.locale = locale;
-    const html = renderToStaticMarkup(<CardTranslationDialog stage="confirm" name="Original" targetLanguage="Simplified Chinese" skip={false} error="card.translationFailed" {...handlers} />);
+    const html = renderToStaticMarkup(
+      <CardTranslationConfirm name="Original" language="Simplified Chinese" skip={false}
+        onSkip={() => {}} onClose={() => {}} onStart={() => {}} />,
+    );
     expect(html).toContain('type="checkbox"');
     expect(html).toContain("<label");
     expect(html).toContain("focus-visible:outline-accent");
@@ -46,23 +46,13 @@ describe("card translation UI", () => {
     expect(html).not.toContain('checked=""');
   });
 
-  it("has loading, cancellation and success feedback independent of the reminder", () => {
+  it("offers cancellation before the task starts, not a progress modal", () => {
     language.locale = "zh";
-    const loading = renderToStaticMarkup(<CardTranslationDialog stage="loading" name="Original" targetLanguage="Simplified Chinese" skip error="card.translationFailed" {...handlers} />);
-    expect(loading).toContain('role="status"');
-    expect(loading).toContain('aria-busy="true"');
-    expect(loading).toContain("正在翻译角色卡");
-    expect(loading).toContain("取消");
-    expect(loading).not.toContain('type="checkbox"');
-    const success = renderToStaticMarkup(<CardTranslationDialog stage="success" name="Original" targetLanguage="Simplified Chinese" skip error="card.translationFailed" {...handlers} />);
-    expect(success).toContain("译卡已另存至本地角色架");
-  });
-
-  it("offers settings for missing configuration and safe retry feedback", () => {
-    language.locale = "en";
-    const html = renderToStaticMarkup(<CardTranslationDialog stage="error" name="Original" targetLanguage="Simplified Chinese" skip={false} error="card.translationNotConfigured" {...handlers} />);
-    expect(html).toContain('role="alert"');
-    expect(html).toContain("Open Settings");
-    expect(html).toContain("Retry");
+    const html = renderToStaticMarkup(
+      <CardTranslationConfirm name="Original" language="Simplified Chinese" skip={false}
+        onSkip={() => {}} onClose={() => {}} onStart={() => {}} />,
+    );
+    expect(html).toContain("取消");
+    expect(html).not.toContain("progressbar");
   });
 });

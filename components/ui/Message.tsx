@@ -1,4 +1,6 @@
 import type { ReactNode, Ref, UIEventHandler } from "react";
+import { ArrowDown } from "lucide-react";
+import { useI18n } from "@/lib/i18n/use-i18n";
 import { cn } from "./cn";
 
 /* 对白正文：整屏最常读的一段，墨色最亮、行距最松 */
@@ -195,12 +197,25 @@ export function TypingCursor() {
 /* 只显示一个需要等待的异步阶段，不扩展成卡片或阶段列表。 */
 export function TaskBrief({
   title,
+  count,
 }: {
   title: string;
+  /** 当前阶段实时已接收的 token 估算值，用下箭头缀在标题右侧 */
+  count?: number;
 }) {
+  const { t } = useI18n();
   return (
-    <div className="stage-status truncate text-[12px] leading-5 text-ink-2">
-      {title}
+    <div className="stage-status flex min-w-0 items-center gap-1.5 text-[12px] leading-5 text-ink-2">
+      <span className="truncate">{title}</span>
+      {typeof count === "number" && count > 0 ? (
+        <span
+          aria-label={t("chat.stage.received", { count })}
+          className="inline-flex shrink-0 items-center gap-0.5 text-ink-3 tabular-nums"
+        >
+          <ArrowDown className="size-3" aria-hidden="true" />
+          {count}
+        </span>
+      ) : null}
     </div>
   );
 }

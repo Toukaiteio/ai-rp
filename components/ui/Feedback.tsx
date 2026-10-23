@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "./cn";
 
 /* 上下文占用条：底槽用次级填充，进度用主文字色，不引入色相 */
@@ -6,16 +6,18 @@ export function Bar({
   value,
   tone = "ink",
   className,
+  ...rest
 }: {
-  value: number;
-  tone?: "ink" | "ok" | "danger";
-  className?: string;
-}) {
+  value: number,
+  tone?: "ink" | "ok" | "danger",
+  className?: string,
+} & Omit<HTMLAttributes<HTMLDivElement>, "className">) {
   const fill =
     tone === "ok" ? "bg-ok" : tone === "danger" ? "bg-danger" : "bg-ink";
   return (
     <div
       role="progressbar"
+      {...rest}
       aria-valuenow={Math.round(value)}
       aria-valuemin={0}
       aria-valuemax={100}

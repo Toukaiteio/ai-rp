@@ -34,3 +34,13 @@ export {
   type BranchTree,
   type ChatBranch,
 } from "./branch";
+export {
+  USER_MESSAGE_BASE64_INSTRUCTION,
+  decodeMarkedBase64,
+  decodeUtf8Base64,
+  encodeRandomUserWords,
+  encodeUtf8Base64,
+  hasMarkedBase64,
+  type EncodedUserMessage,
+  type EncodeUserMessageOptions,
+} from "./user-message-encoding";

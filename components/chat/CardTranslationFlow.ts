@@ -1,5 +1,5 @@
 import { translateCharacterCard, translationLanguages, type CharacterCard, type CardTranslationCheckpoint, type CardTranslationProgress } from "@/lib/cards";
-import { hasMessage, type Locale, type MessageKey } from "@/lib/i18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 import { withImage } from "@/lib/providers/settings";
 import { addImportedCard } from "@/lib/storage/cards";
 import { getProviderConfigSnapshot } from "@/lib/storage/settings";
@@ -18,12 +18,6 @@ export function clearTranslationSession(session: TranslationSession): void {
   delete session.translated;
 }
 
-/** 界面语言对应的默认目标语言，数据表里没有时退回第一项。 */
-export function defaultTargetLanguage(locale: Locale): string {
-  const languages = translationLanguages();
-  return languages[locale] ?? Object.values(languages)[0];
-}
-
 /** 送进提示词的语言名 → 界面显示名。常见语言走文案表，自定义语言原样显示。 */
 export function translationLanguageLabel(language: string, t: (key: MessageKey) => string): string {
   for (const [code, name] of Object.entries(translationLanguages())) {
@@ -34,7 +28,7 @@ export function translationLanguageLabel(language: string, t: (key: MessageKey) 
   return language;
 }
 
-export function translationBinding(card: CharacterCard, targetLanguage: string, config: unknown): string {
+function translationBinding(card: CharacterCard, targetLanguage: string, config: unknown): string {
   const configuration = JSON.stringify(config, (key, value) => key === "apiKey" ? undefined : value);
   return JSON.stringify([card, targetLanguage, configuration]);
 }
@@ -49,8 +43,9 @@ const fields: Record<string, MessageKey> = {
   voice: "card.translationFieldVoice",
 };
 
-export function translationFieldKey(field: unknown): MessageKey {
-  return typeof field === "string" && Object.hasOwn(fields, field) ? fields[field] : "card.translationFieldUnknown";
+/** 字段名 → 界面文案；认不出的字段返回 null，界面直接不显示这一行。 */
+export function translationFieldKey(field: unknown): MessageKey | null {
+  return typeof field === "string" && Object.hasOwn(fields, field) ? fields[field] : null;
 }
 
 const reasons: Record<string, MessageKey> = {
@@ -66,7 +61,7 @@ const reasons: Record<string, MessageKey> = {
 
 export interface TranslationDiagnostic {
   reason: MessageKey;
-  field: MessageKey;
+  field: MessageKey | null;
   completed?: number;
   total?: number;
   status?: number;

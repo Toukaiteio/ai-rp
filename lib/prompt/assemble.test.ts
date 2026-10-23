@@ -139,8 +139,35 @@ describe("组装顺序与字节稳定", () => {
     expect(flat).toContain("角色先是处在这个当下的人");
     expect(flat).toContain("act 必须白描");
     expect(flat).toContain("禁止使用任何比喻、拟人、象征、排比、对仗、夸张或诗意形容");
+    expect(flat).toContain("绝不允许互相嵌套");
+    expect(flat).toContain("成对闭合");
     expect(flat).toContain("act 只能写当下能被旁观者直接看见的一个动作");
     expect(flat).not.toContain("最多不超过");
+    expect(flat).toContain("玩家由玩家本人扮演");
+    expect(flat).toContain("不要为玩家创建角色");
+    expect(flat).toContain("空气凝固");
+    expect(flat).toContain("不要三连排比");
+  });
+
+  it("玩家改过名字时，把玩家名和身份写进前缀", () => {
+    const flat = linesOf(run({ userName: "阿岚" }).messages).join("\n");
+
+    expect(flat).toContain("玩家名：阿岚");
+    expect(flat).toContain("不要创建同名人物");
+    expect(linesOf(run().messages).join("\n")).not.toContain("玩家名：你");
+  });
+
+  it("理解带标记的 Base64 玩家词语，但发给模型的历史仍保留标记", () => {
+    const result = run({
+      history: [{ role: "user", content: "<player>我想去[[b64:utf8:5LiK5rW3]]</player>" }],
+      lorebook: { entries: [{ keys: ["上海"], content: "命中：上海。" }] },
+    });
+    const flat = linesOf(result.messages).join("\n");
+
+    expect(flat).toContain("[[b64:utf8:5LiK5rW3]]");
+    expect(flat).toContain("隐私传输提示");
+    expect(flat).toContain("命中：上海。");
+    expect(flat).not.toContain("<player>");
   });
 
   it("act 约束和正向示例在回合层再出现一次", () => {
@@ -152,6 +179,9 @@ describe("组装顺序与字节稳定", () => {
     // 只重复最容易走形的两条，不把整份协议抄一遍
     expect(turnLayer).toContain("act 只写一个旁观者能直接看见的动作");
     expect(turnLayer).toContain("不替玩家说话");
+    expect(turnLayer).toContain("普通回合要写出一个完整的现场反应");
+    expect(turnLayer).toContain("不要为了给玩家回话凭空造人");
+    expect(turnLayer).toContain("不要加入与玩家同名或同指的角色");
     // 正向示例：少量合法样例
     expect(turnLayer).toContain('<act who="角色名">她抬眼。</act>');
     expect(turnLayer).toContain('<act who="角色名">她把杯子放下。</act>');

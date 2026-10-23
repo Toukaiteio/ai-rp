@@ -4,6 +4,7 @@ import {
   dialogueContinues,
   isAtomicAct,
   parseBlocks,
+  repairBlockStructure,
   stripPseudoToolTags,
 } from "./blocks";
 
@@ -119,5 +120,45 @@ describe("消息块解析", () => {
     expect(
       parseBlocks('<act who="Fuka">她说完就去翻书，没真翻，只是来回翻。</act>'),
     ).toEqual([{ kind: "narr", text: "她说完就去翻书，没真翻，只是来回翻。", who: undefined }]);
+  });
+
+  it("修补 diag 包住 act 的嵌套，保留动作正文", () => {
+    const repaired = repairBlockStructure('<diag><act who="林晚晴">她抬眼。</act></diag>');
+    expect(repaired.safe).toBe(true);
+    expect(repaired.text).toBe('<act who="林晚晴">她抬眼。</act>');
+    expect(parseBlocks('<diag><act who="林晚晴">她抬眼。</act></diag>')).toEqual([
+      { kind: "act", who: "林晚晴", text: "她抬眼。" },
+    ]);
+  });
+
+  it("修补重复 act 标签，不把内容解析为空", () => {
+    const raw = '<diag><act><act/>她抬眼。</act></diag>';
+    const repaired = repairBlockStructure(raw);
+    expect(repaired.safe).toBe(true);
+    expect(repaired.text).toBe("<act>她抬眼。</act>");
+    expect(parseBlocks(raw)).toEqual([{ kind: "act", text: "她抬眼。", who: undefined }]);
+  });
+
+  it("缺少闭合标签时补齐，不吞掉后面的块", () => {
+    const raw = '<narr>她抬眼。<dlg who="林晚晴">住店？</dlg>';
+    expect(parseBlocks(raw)).toEqual([
+      { kind: "narr", text: "她抬眼。", who: undefined },
+      { kind: "dlg", who: "林晚晴", text: "住店？" },
+    ]);
+  });
+
+  it("普通消息块嵌套时按平级块拆开，并吞掉已被修补替代的外层闭合", () => {
+    expect(parseBlocks('<narr>外层。<dlg>住店？</dlg></narr>')).toEqual([
+      { kind: "narr", text: "外层。", who: undefined },
+      { kind: "dlg", text: "住店？", who: undefined },
+    ]);
+  });
+
+  it("无法安全判断的落单闭合保留原文并标记不安全", () => {
+    const raw = "</dlg>残文";
+    const repaired = repairBlockStructure(raw);
+    expect(repaired.safe).toBe(false);
+    expect(repaired.text).toBe(raw);
+    expect(repaired.issues.some((issue) => issue.kind === "unmatched_close")).toBe(true);
   });
 });

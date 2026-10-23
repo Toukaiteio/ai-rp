@@ -13,6 +13,7 @@
  */
 import type { ChatMessage } from "@/lib/prompt/types";
 import { stripPseudoToolTags } from "@/lib/blocks";
+import { hasMarkedBase64, USER_MESSAGE_BASE64_INSTRUCTION } from "@/lib/chat";
 import { ISSUE_LABELS, type GenerationIssue, type IssueCode } from "./types";
 
 export interface RepairPromptOptions {
@@ -36,6 +37,7 @@ export const REPAIR_CONTRACT = [
   '<dlg who="角色名">角色实际说出口的原话，只放原话。</dlg>',
   "<scene>场景切换、时间流逝或状态变化，一句写完。</scene>",
   "player 块只用来标记玩家输入，你永远不要输出它。",
+  "narr、act、dlg、scene、player、diag 都是独立的平级块，绝不嵌套。每个开标签都必须有同名闭合标签；不要写 <act/> 这类自闭合标签。标签名只能是小写，act/dlg 只能带双引号 who 属性，其他块不能带属性。diag 只用于诊断包装，不能进入最终回复；能确定时去掉它但保留其中正文。",
 ].join("\n");
 
 /**
@@ -91,7 +93,12 @@ export function buildRepairMessages(options: RepairPromptOptions): ChatMessage[]
     .join("\n");
 
   return [
-    { role: "system", content: REPAIR_SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: hasMarkedBase64(options.playerInput)
+        ? `${REPAIR_SYSTEM_PROMPT}\n\n${USER_MESSAGE_BASE64_INSTRUCTION}`
+        : REPAIR_SYSTEM_PROMPT,
+    },
     {
       role: "user",
       content: [
@@ -136,6 +143,7 @@ const REPAIR_HINTS: Partial<Record<IssueCode, string>> = {
   language_switch: "把对白改回玩家正在使用的语言，不要整句换成外语",
   no_blocks: "用 narr / act / dlg / scene 重新包一遍，不要输出裸文本",
   pseudo_tool_text: "删掉函数调用标签，只保留剧情正文",
+  block_structure: "把嵌套、交叉闭合、落单或自闭合的块改成平级且成对闭合；无法确定时保留原文",
 };
 
 /**

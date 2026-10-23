@@ -9,7 +9,7 @@
  * 每个函数上方的注释写清楚「为什么算问题」，因为后面阶段要按这些码
  * 决定是自动修复还是直接判不合格。
  */
-import { ACT_MAX_LENGTH, type MessageBlock } from "@/lib/blocks";
+import { ACT_MAX_LENGTH, repairBlockStructure, type MessageBlock } from "@/lib/blocks";
 import { applyMacros } from "@/lib/prompt";
 import { checkVoice, type CharacterVoiceProfile } from "@/lib/voice";
 import type { GenerationIssue, IssueCode } from "./types";
@@ -431,7 +431,8 @@ const PLAYER_ACTION =
 const PLAYER_FEELING =
   /(?:^|[。！？；;，,\s])你(?:也|又|便|就|才|再)?(?:跟着|默默|缓缓|慢慢|轻轻|顺势|随后)?(?:感到|觉得|意识到|明白|知道|心里|心中|想起|记得|决定|打算|忍不住|不由得)/;
 
-const PLAYER_NAMES = ["你", "玩家", "player", "user"];
+/** who 里出现「我」时它只能是玩家；角色名必须写名字，规则本来就不允许代词。 */
+const PLAYER_NAMES = ["你", "我", "玩家", "player", "user"];
 
 /**
  * 替玩家说话或行动：出现玩家名下的块，或者旁白/动作里替玩家做了事。
@@ -733,7 +734,7 @@ export function checkVoiceBreach(
 /* ------------------------------------------------------------------ 协议 */
 
 /** 认得出任何一个消息块标签，就算走了输出契约。 */
-const BLOCK_TAG_PRESENT = /<\s*\/?\s*(narr|act|dlg|scene|player)\b/i;
+const BLOCK_TAG_PRESENT = /<\s*\/?\s*(narr|act|dlg|scene|player|diag)\b/i;
 
 /**
  * 没有输出消息块，把工具调用写成了标签，或者模型自己输出了 player 块。
@@ -777,6 +778,24 @@ export function checkProtocol(
     });
   }
   return issues;
+}
+
+/**
+ * 检查消息块是否只能靠猜测才能修复。
+ *
+ * 可确定的嵌套、缺闭合和 diag 包装已在校验入口先归一化；落单闭合、
+ * 顶层自闭合和非法属性没有唯一含义，必须保留原文并拒收，不能静默丢字。
+ */
+export function checkBlockStructure(raw: string): GenerationIssue[] {
+  const result = repairBlockStructure(raw);
+  if (result.safe || result.issues.length === 0) return [];
+  return result.issues
+    .filter((issue) => !issue.safe)
+    .map((issue) => ({
+      code: "block_structure" as const,
+      severity: "block" as const,
+      detail: issue.detail,
+    }));
 }
 
 /** 归一化后长度，用来判断剥标签前后有没有变化。 */

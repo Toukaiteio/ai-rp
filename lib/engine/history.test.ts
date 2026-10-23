@@ -50,6 +50,16 @@ describe("质量门：写进历史的唯一决定点", () => {
     expect(outcome.turns[outcome.turns.length - 1].content).not.toContain("<act");
   });
 
+  it("结构修补后的回复写入历史的是修补版，不是嵌套原文", () => {
+    const raw = '<diag><act who="林晚晴">她抬眼。</act></diag>';
+    const outcome = commitTurn(BASE, pending("我看着她。"), gate(raw));
+
+    expect(outcome.written).toBe(true);
+    expect(outcome.content).toBe('<act who="林晚晴">她抬眼。</act>');
+    expect(outcome.turns.at(-1)?.content).toBe(outcome.content);
+    expect(outcome.turns.at(-1)?.content).not.toContain("<diag>");
+  });
+
   it("拒收的回复不会出现在历史里，历史原样返回", () => {
     const raw = '<dlg who="你">我先坐会儿。</dlg>';
     const outcome = commitTurn(BASE, pending("我推门进来。"), gate(raw));

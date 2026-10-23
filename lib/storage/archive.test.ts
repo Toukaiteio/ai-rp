@@ -14,6 +14,12 @@ describe("存档里的记忆", () => {
         events: {},
         portraits: { 阿宁: "data:image/jpeg;base64,abc" },
       },
+      attachmentState: {
+        mapGenerations: { "world-map": { fingerprint: "abc" } },
+      },
+      attachmentGenerations: {
+        "world-map": { seed: "session-a" },
+      },
       turn: 3,
       updatedAt: 1,
     };
@@ -21,6 +27,26 @@ describe("存档里的记忆", () => {
     expect(packed.journal?.characters["阿宁"]?.detail).toBe("刚下船");
     expect(packed.journal?.portraits?.["阿宁"]).toBe("data:image/jpeg;base64,abc");
     expect(packed.turn).toBe(3);
+    expect(packed.attachmentState).toEqual({
+      mapGenerations: { "world-map": { fingerprint: "abc" } },
+    });
+    expect(packed.attachmentGenerations).toEqual({
+      "world-map": { seed: "session-a" },
+    });
+  });
+
+  it("保留没有 attachmentState 的旧记忆形状", () => {
+    const [packed] = packMemories([
+      {
+        cardId: "old-card",
+        summary: null,
+        facts: { characters: {}, places: {}, flags: {} },
+        turn: 0,
+        updatedAt: 0,
+      },
+    ]);
+    expect(packed.attachmentState).toBeUndefined();
+    expect(packed.attachmentGenerations).toBeUndefined();
   });
 });
 

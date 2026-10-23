@@ -19,6 +19,7 @@ import {
 import { IconDownload, IconEye, IconLock, IconTrash, IconX } from "@/components/icons";
 import { BROWSER_PROVIDER_ID, probeBrowserModel } from "@/lib/browser-model";
 import {
+  defaultInterfaceType,
   getProvidersConfig,
   findProvider,
   listProviders,
@@ -27,7 +28,13 @@ import {
   type ProviderPreset,
 } from "@/lib/providers/config";
 import { IMAGE_STYLES } from "@/lib/image";
-import { defaultImageSettings, defaultStorySystemSettings, type ImageSettings, type ProviderConfig } from "@/lib/providers/settings";
+import {
+  defaultImageSettings,
+  defaultStorySystemSettings,
+  effectiveInterfaceType,
+  type ImageSettings,
+  type ProviderConfig,
+} from "@/lib/providers/settings";
 import { cleanApiKey } from "@/lib/providers/apikey";
 import { hasMessage } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/use-i18n";
@@ -118,6 +125,9 @@ export function SettingsScreen({
   const browserSelected = browserReady && config.providerId === BROWSER_PROVIDER_ID;
   const interfaceTypes = getProvidersConfig().interfaceTypes;
   const preset = findProvider(config.providerId);
+  const activeInterfaceType = effectiveInterfaceType(config);
+  // 预设已经定死协议；只有自定义提供商能选。
+  const interfaceLocked = Boolean(preset?.interfaceType);
 
   function patch(next: Partial<ProviderConfig>) {
     onChange({ ...config, ...next });
@@ -233,6 +243,7 @@ export function SettingsScreen({
                     const first = provider.models[0];
                     patch({
                       providerId: provider.id,
+                      interfaceType: provider.interfaceType ?? defaultInterfaceType(),
                       model: modelName(first),
                       vision: modelSeesImages(first),
                       baseURL: "",
@@ -262,7 +273,14 @@ export function SettingsScreen({
           <FormGroup title={t("settings.interface")}>
             <OptRow>
               {interfaceTypes.map((type) => (
-                <OptChip key={type.id} selected={type.enabled} disabled={!type.enabled}>
+                <OptChip
+                  key={type.id}
+                  selected={type.id === activeInterfaceType}
+                  disabled={!type.enabled || (interfaceLocked && type.id !== activeInterfaceType)}
+                  onClick={() => {
+                    if (!interfaceLocked && type.enabled) patch({ interfaceType: type.id });
+                  }}
+                >
                   {type.enabled ? type.name : t("settings.later", { name: type.name })}
                 </OptChip>
               ))}
@@ -604,6 +622,27 @@ export function SettingsScreen({
                 className={`flex h-[22px] w-10 shrink-0 items-center rounded-pill p-0.5 ${config.qualityGate ? "justify-end bg-accent" : "justify-start bg-surface-3"}`}
               >
                 <span className={`size-[18px] rounded-pill shadow-raised ${config.qualityGate ? "bg-accent-ink" : "bg-ink"}`} />
+              </span>
+            </button>
+          </FormGroup>
+
+          <FormGroup title={t("settings.privacyEncoding")}>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={config.encodeUserMessageWords}
+              onClick={() => patch({ encodeUserMessageWords: !config.encodeUserMessageWords })}
+              className="flex w-full items-center justify-between rounded-lg border border-line bg-surface-2 px-4 py-3 text-left text-[13px] text-ink"
+            >
+              <span>
+                <span className="block">{t("settings.privacyEncodingEnabled")}</span>
+                <span className="mt-1 block text-[12px] text-ink-2">{t("settings.privacyEncodingHelp")}</span>
+              </span>
+              <span
+                aria-hidden="true"
+                className={`flex h-[22px] w-10 shrink-0 items-center rounded-pill p-0.5 ${config.encodeUserMessageWords ? "justify-end bg-accent" : "justify-start bg-surface-3"}`}
+              >
+                <span className={`size-[18px] rounded-pill shadow-raised ${config.encodeUserMessageWords ? "bg-accent-ink" : "bg-ink"}`} />
               </span>
             </button>
           </FormGroup>

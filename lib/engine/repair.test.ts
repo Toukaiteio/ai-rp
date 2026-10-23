@@ -54,6 +54,8 @@ describe("自动修复：提示词", () => {
     expect(system).toContain("<act who=");
     expect(system).toContain("<dlg who=");
     expect(system).toContain("player 块只用来标记玩家输入");
+    expect(system).toContain("绝不嵌套");
+    expect(system).toContain("每个开标签都必须有同名闭合标签");
   });
 
   it("请求里只有候选正文、玩家这一句和角色名，没有聊天历史", () => {

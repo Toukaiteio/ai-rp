@@ -37,7 +37,7 @@ export const MODE_LABELS: Record<ResponseMode, string> = {
  * 列一堆禁止项反而会挤掉真正要它做的事。
  */
 export const MODE_INSTRUCTIONS: Record<ResponseMode, string> = {
-  normal: "按平常的节奏推进：接住玩家这一句，给一两个看得见的反应，停在玩家还能接话的地方。",
+  normal: "按平常的节奏推进：接住玩家这一句，让在场角色作出具体反应，写出动作、对白和一点环境或他人的回应，停在玩家还能接话的地方。不要压成一句台词或一个孤立动作。",
   short:
     "这一轮要短。一个动作、一段对白就够，不主动引入新剧情、新人物或新场景，也不要补充背景说明。",
   dialogue:
@@ -97,7 +97,7 @@ export const DIRECTOR_MODE_HINT = [
   "除了节拍，你还要判断本轮的回应模式，取值为：",
   "normal（正常推进）、short（简短回应）、dialogue（以对白为主）、scene（场景推进）、continue（续写上一段）。",
   "玩家要求继续或上一段被截断时用 continue；玩家要求换场、跳时间时用 scene；",
-  "玩家在提问、想听角色说话时用 dialogue；玩家只说了一两个词时用 short；其余用 normal。",
+  "玩家在提问、想听角色说话时用 dialogue；只有玩家这一轮确实只回了一声、一个动作或一两个词时才用 short，玩家说了完整句子就用 normal。",
 ].join("\n");
 
 export type { ChatMessage };

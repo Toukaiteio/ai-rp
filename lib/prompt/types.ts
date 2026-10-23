@@ -2,6 +2,7 @@ import type { Journal, ToolTrace } from "@/lib/memory/journal";
 import type { SceneState } from "@/lib/scene";
 import type { StoryThread } from "@/lib/story";
 import type { CharacterVoiceProfile } from "@/lib/voice";
+import type { CardAttachment } from "@/lib/attachments";
 import type { WorldBookReport } from "./worldbook";
 import type { PromptInspector } from "./inspector";
 import type { ResponseMode } from "./mode";
@@ -225,6 +226,8 @@ export interface CharacterCardCore {
    * 会话里单独设过作者注时以会话的为准。
    */
   author_note?: string;
+  /** 卡片声明的能力附件。附件内容由工具查询，脚本永不执行。 */
+  attachments?: CardAttachment[];
 }
 
 export type StyleId = "haruhi" | "mushoku";

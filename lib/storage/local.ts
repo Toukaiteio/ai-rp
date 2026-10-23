@@ -164,6 +164,10 @@ export interface CardMemory {
   facts: KeyFacts;
   /** 模型用函数调用写下的人物、地点、事件。旧存档没有这个字段 */
   journal?: Journal;
+  /** 角色卡专属 attachment 运行态，旧存档没有这个字段。 */
+  attachmentState?: Record<string, unknown>;
+  /** 角色卡 attachment 的一次性生成结果，旧存档没有这个字段。 */
+  attachmentGenerations?: Record<string, unknown>;
   turn: number;
   updatedAt: number;
 }
@@ -185,17 +189,27 @@ export async function loadCardMemory(cardId: string): Promise<CardMemory> {
   try {
     const stored = await readSlot<CardMemory>("data", `${MEMORY_PREFIX}${cardId}`);
     if (!stored || stored.cardId !== cardId) return emptyCardMemory(cardId);
+    const attachmentState = asRecord(stored.attachmentState);
+    const attachmentGenerations = asRecord(stored.attachmentGenerations);
     return {
       cardId,
       summary: stored.summary ?? null,
       facts: stored.facts ?? { characters: {}, places: {}, flags: {} },
       journal: stored.journal ?? { characters: {}, places: {}, events: {} },
+      ...(attachmentState ? { attachmentState } : {}),
+      ...(attachmentGenerations ? { attachmentGenerations } : {}),
       turn: typeof stored.turn === "number" ? stored.turn : 0,
       updatedAt: stored.updatedAt ?? 0,
     };
   } catch {
     return emptyCardMemory(cardId);
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
 }
 
 export async function saveCardMemory(memory: CardMemory): Promise<void> {

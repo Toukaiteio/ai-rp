@@ -12,7 +12,14 @@ import {
   type KeyFacts,
   type RollingSummary,
 } from "@/lib/prompt";
-import { buildDirectorMessages, formatTurnPlan, parseTurnPlan } from "@/lib/prompt";
+import {
+  buildDirectorMessages,
+  DIRECTOR_MAX_TOKENS,
+  formatTurnPlan,
+  parseTurnPlan,
+  shouldPlanTurn,
+  type TurnPlan,
+} from "@/lib/prompt";
 import {
   getProvider,
   isInsecureBaseURL,
@@ -23,9 +30,11 @@ import {
 import { isChatImage } from "@/lib/chat-image";
 import { cleanApiKey, headerSafeValue } from "@/lib/providers/apikey";
 import { DICE_TOOL } from "@/lib/dice";
+import { ATTACHMENT_TOOLS } from "@/lib/attachments";
 import type { ThreadPatchEntry } from "@/lib/story";
 import type { ScenePatch } from "@/lib/scene";
 import { normalizeVoiceProfile } from "@/lib/voice";
+import { normalizeAttachments } from "@/lib/attachments";
 import { MEMORY_TOOLS, normalizeJournal } from "@/lib/memory/journal";
 import type { Journal, ToolTrace } from "@/lib/memory/journal";
 import { encodeSseFrame, type WireEvent } from "@/lib/wire";
@@ -47,6 +56,8 @@ const RESPONSE_TOKENS = 1024;
 interface ChatRequestBody {
   providerId: string;
   model: string;
+  /** 接口协议。缺省时按提供商预设推断，兼容旧客户端。 */
+  interfaceType?: string;
   /** 组装所需的全部原料。服务端负责组装，浏览器不碰提示词结构。 */
   context: {
     card: AssembleInput["card"];
@@ -77,6 +88,13 @@ interface ChatRequestBody {
   sessionId?: string;
   /** false 时不再提供函数调用，用来结束「工具结果之后再写一段」的续写 */
   tools?: boolean;
+  /**
+   * 浏览器直连已经处理过导演阶段时传 false：回退到服务端重跑一次，
+   * 等于把首字时间再翻一倍。
+   */
+  planning?: boolean;
+  /** 浏览器直连已经拿到的导演计划，回退时直接复用，不再请求上游。 */
+  directorPlanText?: string;
   /** 这一轮用户消息附带的图片 */
   image?: string;
 }
@@ -85,6 +103,8 @@ interface ChatRequestBody {
 interface CompleteRequestBody {
   providerId: string;
   model: string;
+  /** 接口协议。缺省时按提供商预设推断，兼容旧客户端。 */
+  interfaceType?: string;
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
@@ -156,6 +176,7 @@ function parseBody(raw: unknown): ParsedRequest {
       body: {
         providerId,
         model: model.trim(),
+        interfaceType: asString(raw.interfaceType),
         messages,
         temperature: typeof raw.temperature === "number" ? raw.temperature : undefined,
         maxTokens: typeof raw.maxTokens === "number" ? raw.maxTokens : undefined,
@@ -185,6 +206,7 @@ function parseBody(raw: unknown): ParsedRequest {
     body: {
     providerId,
     model: model.trim(),
+    interfaceType: asString(raw.interfaceType),
     context: {
       card: {
         name: card.name,
@@ -201,6 +223,7 @@ function parseBody(raw: unknown): ParsedRequest {
         post_history_instructions: asString(card.post_history_instructions),
         author_note: asString(card.author_note),
         voice: normalizeVoiceProfile(card.voice),
+        ...(Array.isArray(card.attachments) ? { attachments: normalizeAttachments(card.attachments) } : {}),
       },
       lorebook: context.lorebook as AssembleInput["lorebook"],
       // 三来源世界书（Phase 8）：浏览器把三本一起送上来，服务端合并匹配
@@ -234,6 +257,8 @@ function parseBody(raw: unknown): ParsedRequest {
     baseURL: asString(raw.baseURL),
     sessionId: asString(raw.sessionId),
     tools: raw.tools !== false,
+    ...(raw.planning === false ? { planning: false as const } : {}),
+    ...(typeof raw.directorPlanText === "string" ? { directorPlanText: raw.directorPlanText } : {}),
     image: isChatImage(raw.image) ? raw.image : undefined,
     },
   };
@@ -333,6 +358,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const provider = getProvider({
     providerId: body.providerId,
+    interfaceType: body.interfaceType,
     apiKey: apiKey ?? "",
     baseURL,
     timeoutMs: UPSTREAM_TIMEOUT_MS,
@@ -340,42 +366,55 @@ export async function POST(request: Request): Promise<Response> {
 
   // 先用一个很短的导演阶段规划本轮节拍，再让最终请求负责自然语言渲染。
   // 规划失败时静默回退到原来的单阶段流程，不能因为弱模型的 JSON 失败而阻断聊天。
+  // 两个剧情系统都关掉时整段跳过：那次调用本来就没有产出，没理由压在首字之前。
   let messages = assembledMessages;
   let mode = responseMode;
   let statePatch: ScenePatch | undefined;
   let threadPatch: ThreadPatchEntry[] | undefined;
-  try {
-    const directorEvents = await provider.open({
-      messages: buildDirectorMessages(assembledMessages, {
-        eventsEnabled: context.storySystems?.events,
-        goalsEnabled: context.storySystems?.goals,
-        stagnantTurns: context.storySystems?.stagnantTurns,
-        eventAfterTurns: context.storySystems?.eventAfterTurns,
-      }),
-      model: body.model,
-      temperature: 0.2,
-      maxTokens: 420,
-      signal: controller.signal,
-    });
-    let directorText = "";
-    for await (const event of directorEvents) {
-      if (controller.signal.aborted) break;
-      if (event.type === "delta") directorText += event.text;
+
+  const applyPlan = (plan: TurnPlan) => {
+    statePatch = plan.statePatch;
+    threadPatch = plan.threadPatch;
+    // 导演看过完整聊天记录，它给的 mode 比只看玩家这一句的推断准。
+    // 回合层是按 mode 拼的，所以覆盖之后要重新组装一次（纯函数，很便宜）。
+    if (plan.mode && plan.mode !== mode) {
+      mode = plan.mode;
+      messages = assemble({ ...context, mode, budget }).messages;
     }
-    const plan = parseTurnPlan(directorText);
-    if (plan) {
-      statePatch = plan.statePatch;
-      threadPatch = plan.threadPatch;
-      // 导演看过完整聊天记录，它给的 mode 比只看玩家这一句的推断准。
-      // 回合层是按 mode 拼的，所以覆盖之后要重新组装一次（纯函数，很便宜）。
-      if (plan.mode && plan.mode !== mode) {
-        mode = plan.mode;
-        messages = assemble({ ...context, mode, budget }).messages;
+    messages = [...messages, { role: "system", content: formatTurnPlan(plan) }];
+  };
+
+  const providedPlan = body.planning === false && body.directorPlanText
+    ? parseTurnPlan(body.directorPlanText)
+    : null;
+  if (providedPlan) {
+    // 浏览器直连已经跑过导演：用它带回来的计划，不再请求一次上游。
+    applyPlan(providedPlan);
+  } else if (shouldPlanTurn(context.storySystems)) {
+    try {
+      const directorEvents = await provider.open({
+        messages: buildDirectorMessages(assembledMessages, {
+          eventsEnabled: context.storySystems?.events,
+          goalsEnabled: context.storySystems?.goals,
+          stagnantTurns: context.storySystems?.stagnantTurns,
+          eventAfterTurns: context.storySystems?.eventAfterTurns,
+        }),
+        model: body.model,
+        temperature: 0.2,
+        maxTokens: DIRECTOR_MAX_TOKENS,
+        reasoningEffort: "low",
+        signal: controller.signal,
+      });
+      let directorText = "";
+      for await (const event of directorEvents) {
+        if (controller.signal.aborted) break;
+        if (event.type === "delta") directorText += event.text;
       }
-      messages = [...messages, { role: "system", content: formatTurnPlan(plan) }];
+      const plan = parseTurnPlan(directorText);
+      if (plan) applyPlan(plan);
+    } catch {
+      // 计划阶段只是质量增强，连接已经能用时不因它失败而让整轮失败。
     }
-  } catch {
-    // 计划阶段只是质量增强，连接已经能用时不因它失败而让整轮失败。
   }
 
   let events: Awaited<ReturnType<typeof provider.open>>;
@@ -386,7 +425,7 @@ export async function POST(request: Request): Promise<Response> {
       temperature: body.temperature,
       maxTokens: body.maxTokens,
       signal: controller.signal,
-      ...(body.tools === false ? {} : { tools: [...MEMORY_TOOLS, DICE_TOOL] }),
+       ...(body.tools === false ? {} : { tools: [...MEMORY_TOOLS, DICE_TOOL, ...ATTACHMENT_TOOLS] }),
       ...(body.image ? { image: body.image } : {}),
     });
   } catch (error) {
@@ -534,6 +573,7 @@ export async function PUT(request: Request): Promise<Response> {
 
   const provider = getProvider({
     providerId,
+    interfaceType: asString(raw.interfaceType),
     apiKey,
     baseURL: resolved.baseURL,
     timeoutMs: UPSTREAM_TIMEOUT_MS,
@@ -600,6 +640,7 @@ async function complete(request: Request, body: CompleteRequestBody): Promise<Re
 
   const provider = getProvider({
     providerId: body.providerId,
+    interfaceType: body.interfaceType,
     apiKey: apiKey ?? "",
     baseURL,
     timeoutMs: UPSTREAM_TIMEOUT_MS,

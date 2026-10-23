@@ -42,6 +42,9 @@
   --ok: #3fb950;
   --ok-soft: #16251a;
 
+  /* 二段点击的待确认态：整站唯一的橙，专门标出「已点亮，再点一次生效」 */
+  --armed: #f97316;
+
   /* 玩家气泡 —— 整屏对比最强的一块，明确「这是我说的话」。
      深色下最亮，浅色下反过来最暗，不跟着底色一起淡下去。 */
   --bubble: #ededed;
@@ -110,6 +113,8 @@
   --ok: #1a7f37;
   --ok-soft: #e6f4ea;
 
+  --armed: #ea580c;
+
   --bubble: #202020;
   --bubble-ink: #f7f7f5;
 
@@ -154,6 +159,8 @@
 
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
+
+  --color-armed: var(--armed);
 
   --color-bubble: var(--bubble);
   --color-bubble-ink: var(--bubble-ink);

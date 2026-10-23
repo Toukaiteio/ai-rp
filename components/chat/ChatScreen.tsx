@@ -28,6 +28,7 @@ import {
   NarratorBlock,
   Field,
   FieldInput,
+  IconButton,
   PillButton,
   PlayerBubble,
   SceneEvent,
@@ -40,7 +41,7 @@ import {
   TypingCursor,
   Veil,
 } from "@/components/ui";
-import { IconBookmark, IconBranch, IconCheck, IconCopy, IconEdit, IconImage, IconRefresh } from "@/components/icons";
+import { IconBookmark, IconBranch, IconCheck, IconCopy, IconEdit, IconImage, IconMap, IconRefresh } from "@/components/icons";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
 import { AndroidStatus } from "./AndroidStatus";
 import { hasNativeFilePicker, isAndroidApp, pickNativeFile } from "@/lib/storage/native";
@@ -71,7 +72,7 @@ import {
 import { DevReportButton, DevReportPanel, logReport } from "./DevReportPanel";
 import { buildSuggestionMessages, parseSuggestions } from "@/lib/suggest";
 import { DICE_TOOL } from "@/lib/dice";
-import { GLOBAL_LOREBOOK, type WorldBook, type WorldBookReport } from "@/lib/prompt";
+import { GLOBAL_LOREBOOK, estimateTokens, type WorldBook, type WorldBookReport } from "@/lib/prompt";
 import {
   applyMemoryWrite,
   emptyJournal,
@@ -116,6 +117,7 @@ import {
   reportStale,
   resolveBranch,
   MAIN_BRANCH,
+  encodeRandomUserWords,
   type BranchTree,
   type ChatBranch,
   type StaleReport,
@@ -127,6 +129,7 @@ import {
   isConfigured,
   isImageConfigured,
   usesBrowserModel,
+  needsServerAdapter,
   type ProviderConfig,
   defaultStorySystemSettings,
   normalizeUserName,
@@ -153,16 +156,34 @@ import {
   assemble,
   buildDirectorMessages,
   defaultCost,
+  DIRECTOR_MAX_TOKENS,
   formatTurnPlan,
   parseTurnPlan,
   planBudget,
+  shouldPlanTurn,
   withExtraMessage,
   type PromptInspector,
+  type TurnPlan,
 } from "@/lib/prompt";
 import type { ResponseMode } from "@/lib/prompt";
 import { cardPortraitUrl } from "@/lib/cards/online";
 import { AnnouncementBell, AnnouncementDialog } from "./Announcements";
 import { Avatar } from "./Avatar";
+import { CodexAttachmentView, MapAttachmentView, useAttachmentWorkspaceMode } from "./attachments";
+import {
+  ATTACHMENT_TOOLS,
+  ATTACHMENT_TOOL_NAMES,
+  executeAttachmentTool,
+  generateMap,
+  isResolvedMapGeneration,
+  normalizeAttachments,
+  resolveMapGeneration,
+  type CardAttachment,
+  type CodexAttachment,
+  type GeneratedMap,
+  type MapAttachment,
+  type ResolvedMapGeneration,
+} from "@/lib/attachments";
 
 /** 这次 remember_character 是不是第一次记下这个人。更新旧条目不重新出头像。 */
 function newCharacter(journal: Journal, raw: string): { name: string; detail: string } | null {
@@ -178,11 +199,80 @@ function newCharacter(journal: Journal, raw: string): { name: string; detail: st
   }
 }
 
+interface AttachmentRuntime {
+  attachments: CardAttachment[];
+  state: Record<string, unknown>;
+  maps: Record<string, GeneratedMap>;
+}
+
+function mapAttachmentsOf(attachments: CardAttachment[] | undefined): MapAttachment[] {
+  return (attachments ?? []).filter(
+    (attachment): attachment is MapAttachment => attachment.kind === "map" && attachment.enabled !== false,
+  );
+}
+
+function codexAttachmentsOf(attachments: CardAttachment[] | undefined): CodexAttachment[] {
+  return (attachments ?? []).filter(
+    (attachment): attachment is CodexAttachment => attachment.kind === "codex" && attachment.enabled !== false,
+  );
+}
+
+function isMapAttachment(value: CardAttachment | undefined): value is MapAttachment {
+  return value?.kind === "map" && "generation" in value;
+}
+
+function isCodexAttachment(value: CardAttachment | undefined): value is CodexAttachment {
+  return value?.kind === "codex" && "entries" in value;
+}
+
+function attachmentRuntime(
+  attachments: CardAttachment[] | undefined,
+  storedState: Record<string, unknown> | undefined,
+  startSeed: string,
+): AttachmentRuntime {
+  const baseAttachments = normalizeAttachments(attachments);
+  const storedOverride = Array.isArray(storedState?.attachmentOverrides)
+    ? normalizeAttachments(storedState.attachmentOverrides)
+    : undefined;
+  const overrideById = new Map((storedOverride ?? []).map((attachment) => [attachment.id, attachment]));
+  const runtimeAttachments = baseAttachments.map((attachment) => overrideById.get(attachment.id) ?? attachment);
+  const storedGenerations = storedState?.mapGenerations;
+  const generations: Record<string, ResolvedMapGeneration> = {};
+  const maps: Record<string, GeneratedMap> = {};
+
+  for (const attachment of mapAttachmentsOf(runtimeAttachments)) {
+    const stored = storedGenerations && typeof storedGenerations === "object"
+      ? (storedGenerations as Record<string, unknown>)[attachment.id]
+      : undefined;
+    let resolved: ResolvedMapGeneration;
+    if (isResolvedMapGeneration(stored)) {
+      const candidate = resolveMapGeneration(attachment.generation, stored.startSeed || startSeed);
+      resolved = candidate.fingerprint === stored.fingerprint ? stored : candidate;
+    } else {
+      resolved = resolveMapGeneration(attachment.generation, startSeed);
+    }
+    generations[attachment.id] = resolved;
+    maps[attachment.id] = generateMap(resolved);
+  }
+
+  return {
+    attachments: runtimeAttachments,
+    state: {
+      ...(storedState ?? {}),
+      ...(storedOverride ? { attachmentOverrides: runtimeAttachments } : {}),
+      mapGenerations: generations,
+    },
+    maps,
+  };
+}
+
 interface Turn {
   id: string;
   role: "user" | "assistant";
   /** 保留块标记的原始文本 */
   content: string;
+  /** 新用户消息的实际发送版本；原始内容仍用于界面、编辑和导出。 */
+  outboundContent?: string;
   cg?: StoredCg;
   swipes?: string[];
   swipeIndex?: number;
@@ -297,7 +387,8 @@ function historyContent(turn: Turn): string {
   // 模型偶尔把函数调用写成 XML 标签。原样存进历史，下一轮它就会在自己
   // 上一轮的输出里看见这种写法，从而有样学样。喂回去之前先剥掉。
   if (turn.role === "assistant") return stripPseudoToolTags(turn.content);
-  const text = embedDocument(turn.content, turn.document);
+  const content = turn.role === "user" ? turn.outboundContent ?? turn.content : turn.content;
+  const text = embedDocument(content, turn.document);
   if (!turn.imageNote) return text;
   return `${text}\n\n【图片】\n${turn.imageNote}`;
 }
@@ -378,8 +469,8 @@ function AssistantTurn({
   portraits,
   actions,
   stage,
+  receivedCount,
   onMacroClick,
-  onMacroDoubleClick,
 }: {
   content: string;
   macroVars: MacroVars;
@@ -391,8 +482,9 @@ function AssistantTurn({
   portraits?: Record<string, string>;
   actions?: ReactNode;
   stage?: GenerationStage;
+  /** 当前阶段实时已接收的 token 估算，缀在阶段提示右侧 */
+  receivedCount?: number;
   onMacroClick?: (macro: MacroMarkdownMarker) => void;
-  onMacroDoubleClick?: (macro: MacroMarkdownMarker) => void;
 }) {
   const { t } = useI18n();
   const stageInfo = {
@@ -424,7 +516,7 @@ function AssistantTurn({
     return (
       <NarratorBlock>
         {streaming && stageText ? (
-          <TaskBrief key={stage} title={stageText.title} />
+          <TaskBrief key={stage} title={stageText.title} count={receivedCount} />
         ) : (
           <p className="text-ink-3">{t("chat.empty")}</p>
         )}
@@ -436,7 +528,7 @@ function AssistantTurn({
     <div className="flex flex-col gap-2.5">
       {streaming && stageText ? (
         <div className="ml-12">
-          <TaskBrief key={stage} title={stageText.title} />
+          <TaskBrief key={stage} title={stageText.title} count={receivedCount} />
         </div>
       ) : null}
       {blocks.map((block, index) => {
@@ -454,7 +546,6 @@ function AssistantTurn({
                 text={marked.text}
                 macroMarkers={marked.markers}
                 onMacroClick={onMacroClick}
-                onMacroDoubleClick={onMacroDoubleClick}
               />
               {cursor}
             </NarratorBlock>
@@ -468,7 +559,6 @@ function AssistantTurn({
                 text={marked.text}
                 macroMarkers={marked.markers}
                 onMacroClick={onMacroClick}
-                onMacroDoubleClick={onMacroDoubleClick}
               />
               {cursor}
             </ActionBlock>
@@ -482,7 +572,6 @@ function AssistantTurn({
                 text={marked.text}
                 macroMarkers={marked.markers}
                 onMacroClick={onMacroClick}
-                onMacroDoubleClick={onMacroDoubleClick}
               />
               {cursor}
             </SceneEvent>
@@ -498,7 +587,6 @@ function AssistantTurn({
                 text={marked.text}
                 macroMarkers={marked.markers}
                 onMacroClick={onMacroClick}
-                onMacroDoubleClick={onMacroDoubleClick}
               />
               {cursor}
             </PlayerBubble>
@@ -522,7 +610,6 @@ function AssistantTurn({
               text={marked.text}
               macroMarkers={marked.markers}
               onMacroClick={onMacroClick}
-              onMacroDoubleClick={onMacroDoubleClick}
             />
             {cursor}
           </DialogueBlock>
@@ -667,6 +754,8 @@ export function ChatScreen({
   const { t, locale } = useI18n();
   const androidApp = useSyncExternalStore(() => () => {}, isAndroidApp, () => false);
   const storySystems = config.storySystems ?? defaultStorySystemSettings();
+  // Anthropic Messages / OpenAI Responses 没有浏览器直连实现，统一走服务端适配器。
+  const serverOnlyInterface = needsServerAdapter(config);
   const [macroInfo, setMacroInfo] = useState<MacroMarkdownMarker | null>(null);
   const [userNameEditOpen, setUserNameEditOpen] = useState(false);
   const [userNameDraft, setUserNameDraft] = useState(userName);
@@ -702,6 +791,8 @@ export function ChatScreen({
   const [composerReset, setComposerReset] = useState(0);
   const [streaming, setStreaming] = useState(false);
   const [generationStage, setGenerationStage] = useState<GenerationStage | null>(null);
+  /** 当前阶段实时已接收的 token 估算值，随每个流式增量更新，进阶段即清零。 */
+  const [receivedTokens, setReceivedTokens] = useState(0);
   /**
    * Phase 0 的观测开关。开发模式默认开，也可以在 URL 上加 ?dev=1 打开，
    * 这样对着预览部署也能看真实模型的表现。生产环境不带这个参数时全程不计算、不记录。
@@ -722,6 +813,38 @@ export function ChatScreen({
   const [cgBusy, setCgBusy] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<ComposerAttachment | null>(null);
+  const cardAttachments = useMemo(() => card.attachments ?? [], [card.attachments]);
+  const [runtimeAttachments, setRuntimeAttachments] = useState<CardAttachment[]>(cardAttachments);
+  const runtimeAttachmentsRef = useRef<CardAttachment[]>(cardAttachments);
+  const generatedMapsRef = useRef<Record<string, GeneratedMap>>({});
+  const mapAttachments = useMemo(() => mapAttachmentsOf(runtimeAttachments), [runtimeAttachments]);
+  const codexAttachments = useMemo(() => codexAttachmentsOf(runtimeAttachments), [runtimeAttachments]);
+  const [attachmentOpen, setAttachmentOpen] = useState(false);
+  const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null);
+  const [generatedMaps, setGeneratedMaps] = useState<Record<string, GeneratedMap>>({});
+  const attachmentStateRef = useRef<Record<string, unknown>>({});
+  const attachmentMode = useAttachmentWorkspaceMode(attachmentOpen);
+  const visibleAttachments = useMemo<CardAttachment[]>(
+    () => [...mapAttachments, ...codexAttachments],
+    [codexAttachments, mapAttachments],
+  );
+  const activeAttachment = visibleAttachments.find((item) => item.id === activeAttachmentId) ?? visibleAttachments[0];
+  const activeMapAttachment = isMapAttachment(activeAttachment) ? activeAttachment : undefined;
+  const activeCodexAttachment = isCodexAttachment(activeAttachment) ? activeAttachment : undefined;
+  const activeMap = activeMapAttachment ? generatedMaps[activeMapAttachment.id] : undefined;
+  const attachmentTabs = useMemo(
+    () => visibleAttachments.map((item) => ({ id: item.id, label: item.title ?? item.kind })),
+    [visibleAttachments],
+  );
+
+  function adoptAttachmentRuntime(runtime: AttachmentRuntime): void {
+    runtimeAttachmentsRef.current = runtime.attachments;
+    generatedMapsRef.current = runtime.maps;
+    attachmentStateRef.current = runtime.state;
+    setRuntimeAttachments(runtime.attachments);
+    setGeneratedMaps(runtime.maps);
+  }
+
   const cgBusyRef = useRef<string | null>(null);
   /** 重新生成时留下的旧回复。新回复落地后成为最后一条 swipe，失败则原样放回去。 */
   const carrySwipesRef = useRef<string[] | null>(null);
@@ -876,7 +999,7 @@ export function ChatScreen({
     const covered = previous?.coveredIndex ?? 0;
     const additions: ChatMessage[] = allTurns
       .slice(covered)
-      .map((turn) => ({ role: turn.role, content: turn.content }));
+      .map((turn) => ({ role: turn.role, content: historyContent(turn) }));
     if (additions.length === 0) return;
 
     summarizingRef.current = true;
@@ -890,6 +1013,7 @@ export function ChatScreen({
         },
         body: JSON.stringify({
           providerId: config.providerId,
+          interfaceType: config.interfaceType,
           model: chatRoute.model,
           ...(chatRoute.baseURL ? { baseURL: chatRoute.baseURL } : {}),
           previous: previous?.text ?? "",
@@ -936,7 +1060,7 @@ export function ChatScreen({
     async (history: Turn[]) => {
       if (!isConfigured(config) || suggestingRef.current) return;
       const messages = buildSuggestionMessages(
-        history.map((turn) => ({ role: turn.role, content: applyMacros(turn.content, { ...macroVars, history }) })),
+        history.map((turn) => ({ role: turn.role, content: applyMacros(historyContent(turn), { ...macroVars, history }) })),
       );
 
       suggestingRef.current = true;
@@ -950,6 +1074,7 @@ export function ChatScreen({
           body: JSON.stringify({
             mode: "complete",
             providerId: config.providerId,
+            interfaceType: config.interfaceType,
             model: chatRoute.model,
             messages,
             temperature: SUGGESTION_TEMPERATURE,
@@ -993,7 +1118,13 @@ export function ChatScreen({
 
       const existing = sessions.find((s) => s.cardId === cardId);
       if (existing) {
-        sessionRef.current = existing;
+        const runtime = attachmentRuntime(cardAttachments, existing.attachmentState, existing.id);
+        adoptAttachmentRuntime(runtime);
+        const restoredSession = { ...existing, attachmentState: runtime.state };
+        sessionRef.current = restoredSession;
+        if (JSON.stringify(existing.attachmentState ?? {}) !== JSON.stringify(runtime.state)) {
+          void store.save(restoredSession);
+        }
         sceneRef.current = normalizeSceneState(existing.sceneState);
         threadsRef.current = normalizeThreads(existing.storyThreads);
         chatBookRef.current = normalizeChatBook(existing.chatLorebook);
@@ -1005,6 +1136,7 @@ export function ChatScreen({
           id: m.id,
           role: m.role,
           content: m.content,
+          outboundContent: m.outboundContent,
           cg: m.cg,
           image: m.image,
           imageNote: m.imageNote,
@@ -1024,8 +1156,11 @@ export function ChatScreen({
         cardName: card.name,
         opening: greetings[0] ?? card.first_mes,
       });
-      sessionRef.current = created;
-      await store.save(created);
+      const runtime = attachmentRuntime(cardAttachments, undefined, created.id);
+      adoptAttachmentRuntime(runtime);
+      const createdSession = { ...created, attachmentState: runtime.state };
+      sessionRef.current = createdSession;
+      await store.save(createdSession);
       memoryReadyRef.current = true;
       setMemoryReady(true);
     })();
@@ -1033,7 +1168,7 @@ export function ChatScreen({
     return () => {
       cancelled = true;
     };
-  }, [cardId, card, greetings]);
+  }, [cardId, card, cardAttachments, greetings]);
 
   /**
    * 每次回复落地后刷新建议。
@@ -1075,6 +1210,7 @@ export function ChatScreen({
       id: turn.id,
       role: turn.role,
       content: turn.content,
+      ...(turn.outboundContent ? { outboundContent: turn.outboundContent } : {}),
       createdAt: previous.get(turn.id)?.createdAt ?? Date.now(),
       ...(turn.cg ? { cg: turn.cg } : {}),
       ...(turn.swipes?.length
@@ -1095,6 +1231,9 @@ export function ChatScreen({
       ...(chatBookRef.current?.entries.length
         ? { chatLorebook: chatBookRef.current }
         : { chatLorebook: undefined }),
+      ...(Object.keys(attachmentStateRef.current).length > 0
+        ? { attachmentState: attachmentStateRef.current }
+        : { attachmentState: undefined }),
       // 分支（Phase 11.3）：只有真的分过支才落盘，主干不占字段
       ...(branchTreeRef.current.branches.length > 1
         ? { branchTree: branchTreeRef.current, activeBranch }
@@ -1103,6 +1242,12 @@ export function ChatScreen({
     };
     sessionRef.current = updated;
     void getSessionStore().save(updated);
+  }
+
+  /** 进入生成阶段：阶段切换意味着上一段流已经结束，接收计数从零重新算。 */
+  function enterStage(stage: GenerationStage) {
+    setGenerationStage(stage);
+    setReceivedTokens(0);
   }
 
   /**
@@ -1122,6 +1267,7 @@ export function ChatScreen({
     setError(null);
     needsSummarizeRef.current = false;
     setGenerationStage(null);
+    setReceivedTokens(0);
     setStreaming(true);
     setSuggestions([]);
     /** 观测用的耗时起点。整轮包括导演阶段和续写轮，和玩家体感一致。 */
@@ -1137,6 +1283,9 @@ export function ChatScreen({
       id: createId(),
       role: "user",
       content: markPlayer(userMessage),
+      ...(config.encodeUserMessageWords
+        ? { outboundContent: markPlayer(encodeRandomUserWords(userMessage).text) }
+        : {}),
       ...(image ? { image } : {}),
       ...(document ? { document } : {}),
     };
@@ -1167,7 +1316,7 @@ export function ChatScreen({
     let imageNote = "";
     let outboundImage = image;
     if (image && !seesImages) {
-      setGenerationStage("attachment");
+      enterStage("attachment");
       outboundImage = undefined;
       if (browserReady) {
         try {
@@ -1221,8 +1370,9 @@ export function ChatScreen({
      * 导演给了更准的 mode 之后再组一次。组装是纯函数，重复调用没有副作用。
      */
     const assembleFor = (mode?: ResponseMode) => {
+      const promptCard = { ...card, attachments: runtimeAttachmentsRef.current };
       const assembled = assemble({
-        card,
+        card: promptCard,
         ...(Object.keys(lorebooks).length > 0 ? { lorebooks } : {}),
         history,
         seed,
@@ -1250,8 +1400,10 @@ export function ChatScreen({
     // 组装器是纯函数，因此可以安全地在浏览器运行；服务端路径仍保留作后备。
     let directMessages: ChatMessage[] | null = null;
     let directEndpoint = "";
-    if (!local) {
-      setGenerationStage("plan");
+    /** 浏览器直连已经跑过的导演计划，回退到服务端时原样带上，避免再跑一次。 */
+    let directorPlanText = "";
+    let planningAttempted = false;
+    if (!local && !serverOnlyInterface) {
       const preset = findProvider(config.providerId);
       const baseURL = config.providerId === "custom" ? config.baseURL : preset?.baseURL ?? "";
       try {
@@ -1260,49 +1412,57 @@ export function ChatScreen({
         directMessages = assembled.messages;
         // 先按当前组装结果记一份：导演失败时这就是最终发给模型的东西
         inspectorRef.current = assembled.inspector;
-        let planText = "";
-        await streamBrowserOpenAI({
-          endpoint: directEndpoint,
-          apiKey: cleanApiKey(config.apiKey).value,
-          model: chatRoute.model,
-           messages: buildDirectorMessages(assembled.messages, {
-             eventsEnabled: storySystems.events,
-             goalsEnabled: storySystems.goals,
-             stagnantTurns: stagnantTurnsRef.current,
-             eventAfterTurns: storySystems.eventAfterTurns,
-           }),
-          temperature: 0.2,
-          maxTokens: 420,
-          signal: controller.signal,
-          onEvent: (event) => {
-            if (event.type === "delta") {
-              planText += event.text;
-            }
-          },
-        });
-        const plan = parseTurnPlan(planText);
-        if (plan) {
-          // 状态变化等这一轮落地之后再应用：导演给的是「这一轮会变成什么」，
-          // 提前写进状态会让模型把还没发生的事当成已确认的事实。
-           if (storySystems.events && plan.statePatch) pendingPatchRef.current = plan.statePatch;
-           if (storySystems.goals && plan.threadPatch) pendingThreadsRef.current = plan.threadPatch;
-          // 导演看过完整聊天记录，它给的 mode 比只看玩家这一句的推断准。
-          // 回合层是按 mode 拼的，所以覆盖之后要重新组装一次（纯函数，很便宜）。
-          const base = plan.mode ? assembleFor(plan.mode) : assembled;
-          directMessages = [
-            ...base.messages,
-            { role: "system", content: formatTurnPlan(plan) },
-          ];
-          /*
-           * 导演计划是组装之后才拼上的（它由模型现场生成，组装时还不存在），
-           * 所以面板要单独补这一条——否则 Inspector 显示的就不是最终发出去的那份。
-           */
-          inspectorRef.current = withExtraMessage(
-            base.inspector,
-            { role: "system", content: formatTurnPlan(plan) },
-            { section: "director", layer: "post", detail: "导演计划（beats / mode / statePatch）" },
-            defaultCost,
-          );
+        // 两个剧情系统都关掉时没有导演，但仍然走浏览器直连，不为此退回服务端。
+        if (shouldPlanTurn(storySystems)) {
+          enterStage("plan");
+          let planText = "";
+          planningAttempted = true;
+          await streamBrowserOpenAI({
+            endpoint: directEndpoint,
+            apiKey: cleanApiKey(config.apiKey).value,
+            model: chatRoute.model,
+            messages: buildDirectorMessages(assembled.messages, {
+              eventsEnabled: storySystems.events,
+              goalsEnabled: storySystems.goals,
+              stagnantTurns: stagnantTurnsRef.current,
+              eventAfterTurns: storySystems.eventAfterTurns,
+            }),
+            temperature: 0.2,
+            maxTokens: DIRECTOR_MAX_TOKENS,
+            reasoningEffort: "low",
+            signal: controller.signal,
+            onEvent: (event) => {
+              if (event.type === "delta") {
+                planText += event.text;
+                setReceivedTokens(estimateTokens(planText));
+              }
+            },
+          });
+          const plan: TurnPlan | null = parseTurnPlan(planText);
+          if (plan) {
+            directorPlanText = planText;
+            // 状态变化等这一轮落地之后再应用：导演给的是「这一轮会变成什么」，
+            // 提前写进状态会让模型把还没发生的事当成已确认的事实。
+            if (storySystems.events && plan.statePatch) pendingPatchRef.current = plan.statePatch;
+            if (storySystems.goals && plan.threadPatch) pendingThreadsRef.current = plan.threadPatch;
+            // 导演看过完整聊天记录，它给的 mode 比只看玩家这一句的推断准。
+            // 回合层是按 mode 拼的，所以覆盖之后要重新组装一次（纯函数，很便宜）。
+            const base = plan.mode ? assembleFor(plan.mode) : assembled;
+            directMessages = [
+              ...base.messages,
+              { role: "system", content: formatTurnPlan(plan) },
+            ];
+            /*
+             * 导演计划是组装之后才拼上的（它由模型现场生成，组装时还不存在），
+             * 所以面板要单独补这一条——否则 Inspector 显示的就不是最终发出去的那份。
+             */
+            inspectorRef.current = withExtraMessage(
+              base.inspector,
+              { role: "system", content: formatTurnPlan(plan) },
+              { section: "director", layer: "post", detail: "导演计划（beats / mode / statePatch）" },
+              defaultCost,
+            );
+          }
         }
       } catch {
         directMessages = null;
@@ -1321,6 +1481,7 @@ export function ChatScreen({
 
     const appendReply = (text: string) => {
       replyText += text;
+      setReceivedTokens(estimateTokens(replyText));
       setTurns((prev) =>
         prev.map((turn) =>
           turn.id === assistantId ? { ...turn, content: turn.content + text } : turn,
@@ -1330,7 +1491,7 @@ export function ChatScreen({
 
     try {
       if (local) {
-        setGenerationStage("write");
+        enterStage("write");
         const assembled = assembleFor();
         await streamBrowserChat({
           messages: assembled.messages,
@@ -1346,6 +1507,7 @@ export function ChatScreen({
           if (frame === "[DONE]") return;
           if (frame.type === "delta") {
             replyText += frame.text;
+            setReceivedTokens(estimateTokens(replyText));
             setTurns((prev) =>
               prev.map((turn) =>
                 turn.id === assistantId ? { ...turn, content: turn.content + frame.text } : turn,
@@ -1364,7 +1526,7 @@ export function ChatScreen({
         };
 
         if (directMessages && directEndpoint) {
-          setGenerationStage("write");
+          enterStage("write");
           try {
             await streamBrowserOpenAI({
               endpoint: directEndpoint,
@@ -1373,7 +1535,7 @@ export function ChatScreen({
               messages: directMessages,
               temperature: config.temperature,
               maxTokens: 1024,
-              tools: allowTools ? [...MEMORY_TOOLS, DICE_TOOL] : undefined,
+               tools: allowTools ? [...MEMORY_TOOLS, DICE_TOOL, ...ATTACHMENT_TOOLS] : undefined,
               image: outboundImage,
               signal: controller.signal,
               onEvent: (event) => handleEvent(event),
@@ -1385,7 +1547,7 @@ export function ChatScreen({
             continue;
           }
         } else {
-        setGenerationStage("write");
+        enterStage("write");
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: {
@@ -1396,14 +1558,17 @@ export function ChatScreen({
           signal: controller.signal,
           body: JSON.stringify({
             providerId: config.providerId,
+            interfaceType: config.interfaceType,
             model: chatRoute.model,
             temperature: config.temperature,
             ...(chatRoute.baseURL ? { baseURL: chatRoute.baseURL } : {}),
             sessionId,
-            tools: allowTools,
+             tools: allowTools,
+            ...(planningAttempted ? { planning: false } : {}),
+            ...(directorPlanText ? { directorPlanText } : {}),
             ...(outboundImage ? { image: outboundImage } : {}),
             context: {
-              card,
+              card: { ...card, attachments: runtimeAttachmentsRef.current },
               // 三来源世界书：和服务端直连路径用同一份原料，两条路结果一致
               ...(Object.keys(lorebooks).length > 0 ? { lorebooks } : {}),
               history,
@@ -1473,6 +1638,28 @@ export function ChatScreen({
         const freshCharacters: Array<{ name: string; detail: string }> = [];
         for (const call of named) {
           if (call.name === "roll_dice") rolled = true;
+          if (ATTACHMENT_TOOL_NAMES.has(call.name)) {
+            const execution = executeAttachmentTool(call.name, call.arguments, {
+              attachments: runtimeAttachmentsRef.current,
+              maps: generatedMapsRef.current,
+              state: attachmentStateRef.current,
+              startSeed: sessionRef.current?.id ?? sessionId,
+            });
+            if (execution.attachments) {
+              runtimeAttachmentsRef.current = execution.attachments;
+              setRuntimeAttachments(execution.attachments);
+            }
+            if (execution.maps) {
+              generatedMapsRef.current = execution.maps;
+              setGeneratedMaps(execution.maps);
+            }
+            if (execution.state) attachmentStateRef.current = execution.state;
+            toolTrace = [
+              ...toolTrace,
+              { name: call.name, arguments: call.arguments, result: execution.result },
+            ];
+            continue;
+          }
           if (call.name === "remember_character") {
             const created = newCharacter(journalRef.current, call.arguments);
             if (created) freshCharacters.push(created);
@@ -1505,7 +1692,7 @@ export function ChatScreen({
         // 工具结果的下一轮继续走服务端后备路径，保持现有 toolTrace 语义，
         // 避免把不完整的原生 tool message 协议伪装成普通历史。
         directMessages = null;
-        setGenerationStage("write");
+        enterStage("write");
         void saveCardMemory({
           cardId,
           summary: summaryRef.current,
@@ -1583,7 +1770,7 @@ export function ChatScreen({
       let repairNote = "";
       if (replyText.trim() && result.status === "rejected" && !controller.signal.aborted) {
         repairAttempted = true;
-        setGenerationStage("repair");
+        enterStage("repair");
         /*
          * 修复期间先把没通过校验的正文从画面上撤掉。
          * 让玩家先读到一版错的、再眼睁睁看它被换掉，比直接等修复结果更糟；
@@ -1594,7 +1781,7 @@ export function ChatScreen({
         );
         const repaired = await requestRepair({
           candidate: replyText,
-          playerInput: userMessage,
+          playerInput: playerText(userTurn.outboundContent ?? userTurn.content),
           cardName: card.name,
           knownCharacters: known,
           issues: validation.hardIssues,
@@ -1603,8 +1790,10 @@ export function ChatScreen({
           directEndpoint,
         });
         if (repaired.text) {
-          // 修复请求本身就是格式转换步骤。修复结果直接进入历史，不再重复执行质量门。
-          const nextValidation = bypassResponseValidation(repaired.text);
+          // 修复结果仍必须走同一套质量门；只有二次校验通过或可降级时才允许落地。
+          const nextValidation = qualityGateEnabled
+            ? validateResponseBlocks(repaired.text, validateOptions)
+            : bypassResponseValidation(repaired.text);
           const nextResult = resolveGeneration(nextValidation, {
             report: reportForValidation(nextValidation, {
               raw: repaired.text,
@@ -1618,16 +1807,23 @@ export function ChatScreen({
               ...(turnLorebook ? { lorebook: turnLorebook } : {}),
             }),
           });
-          // bypassResponseValidation 始终返回 accepted；这里不再存在修复后二次拒收分支。
-          replyText = nextValidation.content;
           validation = nextValidation;
-          report = { ...nextResult.report, repairAttempted: true, repairSucceeded: true };
+          report = {
+            ...nextResult.report,
+            repairAttempted: true,
+            repairSucceeded: nextResult.status !== "rejected",
+          };
           result = nextResult;
-          setTurns((prev) =>
-            prev.map((turn) =>
-              turn.id === assistantId ? { ...turn, content: nextValidation.content } : turn,
-            ),
-          );
+          if (nextResult.status !== "rejected") {
+            replyText = nextResult.content;
+            setTurns((prev) =>
+              prev.map((turn) =>
+                turn.id === assistantId ? { ...turn, content: nextResult.content } : turn,
+              ),
+            );
+          } else {
+            repairNote = nextResult.reason;
+          }
         } else {
           repairNote = repaired.note;
           report = { ...report, repairAttempted: true, repairSucceeded: false, repairNote };
@@ -1849,6 +2045,7 @@ export function ChatScreen({
           body: JSON.stringify({
             mode: "complete",
             providerId: config.providerId,
+            interfaceType: config.interfaceType,
             model: chatRoute.model,
             messages,
             temperature: 0.2,
@@ -2067,6 +2264,8 @@ export function ChatScreen({
     setBranches([mainBranch()]);
     setActiveBranch(MAIN_BRANCH);
     activeBranchRef.current = MAIN_BRANCH;
+    const runtime = attachmentRuntime(cardAttachments, undefined, createId());
+    adoptAttachmentRuntime(runtime);
     setStaleState(null);
     pendingPatchRef.current = null;
     pendingThreadsRef.current = null;
@@ -2471,6 +2670,20 @@ export function ChatScreen({
     tapRef.current = { x: touch.clientX, t: now };
   }
 
+  function openAttachment(id?: string) {
+    const target = id ?? activeAttachment?.id ?? visibleAttachments[0]?.id;
+    if (!target) return;
+    setActiveAttachmentId(target);
+    setAttachmentOpen(true);
+  }
+
+  function askAboutAttachment(regionId?: string) {
+    if (!activeAttachment || streaming || !memoryReadyRef.current) return;
+    const subject = regionId ? `地图区域「${regionId}」` : activeAttachment.title ?? activeAttachment.id;
+    setAttachmentOpen(false);
+    void runTurn(`请说明${subject}。`, turns);
+  }
+
   return (
     <div
       className="relative flex h-dvh overflow-hidden"
@@ -2504,6 +2717,11 @@ export function ChatScreen({
         androidStatus={androidApp ? <AndroidStatus enabled={androidApp} /> : null}
         extra={
           <>
+            {visibleAttachments.length > 0 ? (
+              <IconButton aria-label="附件" title="附件" onClick={() => openAttachment()}>
+                <IconMap />
+              </IconButton>
+            ) : null}
             <PwaInstallButton />
             <AnnouncementBell onClick={() => setAnnounceOpen(true)} />
           </>
@@ -2714,13 +2932,15 @@ export function ChatScreen({
                   macroVars={macroVars}
                   streaming={streaming && isLastTurn}
                   stage={streaming && isLastTurn ? generationStage ?? undefined : undefined}
+                  receivedCount={streaming && isLastTurn ? receivedTokens : undefined}
                   cardName={card.name}
                   portraitUrl={portraitUrl}
                   portraits={portraits}
                   actions={actions}
-                  onMacroClick={setMacroInfo}
-                  onMacroDoubleClick={(macro) => {
+                  onMacroClick={(macro) => {
+                    // 二段点击的第二下：玩家名直接进编辑，其余宏打开说明
                     if (macro.name === "user") openUserNameEditor();
+                    else setMacroInfo(macro);
                   }}
                 />
                 {cgBusy === turn.id ? (
@@ -2906,6 +3126,32 @@ export function ChatScreen({
       </div>
       </div>
 
+      {attachmentOpen && activeMapAttachment && activeMap ? (
+        <MapAttachmentView
+          map={activeMap}
+          mode={attachmentMode}
+          title={activeMapAttachment.title ?? "地图"}
+          onClose={() => setAttachmentOpen(false)}
+          onBackToChat={() => setAttachmentOpen(false)}
+          onAskCharacter={(region) => askAboutAttachment(region?.id)}
+          tabs={attachmentTabs}
+          activeTabId={activeAttachment?.id}
+          onTabChange={setActiveAttachmentId}
+        />
+      ) : null}
+      {attachmentOpen && activeCodexAttachment ? (
+        <CodexAttachmentView
+          attachment={activeCodexAttachment}
+          mode={attachmentMode}
+          onClose={() => setAttachmentOpen(false)}
+          onBackToChat={() => setAttachmentOpen(false)}
+          onAskCharacter={() => askAboutAttachment()}
+          tabs={attachmentTabs}
+          activeTabId={activeAttachment?.id}
+          onTabChange={setActiveAttachmentId}
+        />
+      ) : null}
+
       <Dialog
         open={resetOpen}
         onClose={() => setResetOpen(false)}
@@ -2934,11 +3180,6 @@ export function ChatScreen({
             <p className="m-0">{t("chat.macroSource", { source: macroInfo.source })}</p>
             <p className="m-0">{t("chat.macroProperty", { property: t(macroPropertyKey(macroInfo.name)) })}</p>
             <p className="m-0 break-words">{t("chat.macroValue", { value: macroInfo.text })}</p>
-            {macroInfo.name === "user" ? (
-              <PillButton variant="primary" onClick={openUserNameEditor}>
-                {t("chat.editUserName")}
-              </PillButton>
-            ) : null}
           </div>
         ) : null}
       </Dialog>

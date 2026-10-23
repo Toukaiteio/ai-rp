@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { findProvider, imageProviderForModel, listProviders, presetChat } from "./config";
+import {
+  findInterfaceType,
+  findProvider,
+  imageProviderForModel,
+  listProviders,
+  presetChat,
+  resolveInterfaceType,
+} from "./config";
 import { DEFAULT_USER_NAME, defaultProviderConfig, normalizeUserName, withImage } from "./settings";
 import { resolveBaseURL } from "./validate";
 
@@ -34,6 +41,34 @@ describe("提供商预设", () => {
     ).toBe("https://example.com/v1");
   });
 
+  it("Anthropic 预设走官方 Messages 地址并允许用户填写模型", () => {
+    expect(findProvider("anthropic")).toMatchObject({
+      baseURL: "https://api.anthropic.com",
+      interfaceType: "anthropic-messages",
+      models: [],
+      hideEndpoint: true,
+    });
+    expect(findInterfaceType("anthropic-messages")?.enabled).toBe(true);
+  });
+
+  it("预设锁死协议，自定义提供商可以选已启用的协议", () => {
+    expect(resolveInterfaceType("anthropic")).toBe("anthropic-messages");
+    expect(resolveInterfaceType("yosei-router", "anthropic-messages")).toBe("chat-completions");
+    expect(resolveInterfaceType("custom", "anthropic-messages")).toBe("anthropic-messages");
+    expect(resolveInterfaceType("custom", "openai-responses")).toBe("openai-responses");
+    expect(resolveInterfaceType("custom")).toBe("chat-completions");
+  });
+
+  it("旧存档按提供商补齐协议，自定义保留用户选择", () => {
+    expect(withImage({ providerId: "anthropic", model: "claude-test" }).interfaceType).toBe(
+      "anthropic-messages",
+    );
+    expect(
+      withImage({ providerId: "custom", interfaceType: "anthropic-messages" }).interfaceType,
+    ).toBe("anthropic-messages");
+    expect(withImage({ providerId: "custom" }).interfaceType).toBe("chat-completions");
+  });
+
   it("把旧的 YoseiRouter 模型配置迁移到首选视觉模型", () => {
     expect(
       withImage({
@@ -50,7 +85,9 @@ describe("提供商预设", () => {
 
   it("旧配置缺少用户名时使用安全默认值，并清理空白用户名", () => {
     expect(defaultProviderConfig().userName).toBe(DEFAULT_USER_NAME);
+    expect(defaultProviderConfig().encodeUserMessageWords).toBe(false);
     expect(withImage({ providerId: "openai", model: "gpt-6-luna" }).userName).toBe(DEFAULT_USER_NAME);
+    expect(withImage({}).encodeUserMessageWords).toBe(false);
     expect(withImage({ userName: "  Lin  " }).userName).toBe("Lin");
     expect(normalizeUserName("   ")).toBe(DEFAULT_USER_NAME);
   });

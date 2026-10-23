@@ -7,6 +7,7 @@
       "id": "yosei-router",
       "name": "YoseiRouter",
       "baseURL": "https://router.dys.asia/v1",
+      "interfaceType": "chat-completions",
       "models": [
         { "id": "dots3-note-prev", "vision": true },
         { "id": "step-3.7-flash", "vision": true },
@@ -23,6 +24,7 @@
       "id": "agnes",
       "name": "Agnes AI",
       "baseURL": "https://apihub.agnes-ai.com/v1",
+      "interfaceType": "chat-completions",
       "models": [
         { "id": "agnes-3.0-flash", "vision": true },
         { "id": "agnes-2.5-flash", "vision": true }
@@ -38,6 +40,7 @@
       "id": "dots",
       "name": "Dots Studio",
       "baseURL": "https://note3-prev-api.askdiandian.com/v1",
+      "interfaceType": "chat-completions",
       "models": [{ "id": "dots3-note-prev", "vision": true }],
       "hideEndpoint": true,
       "hideModel": true,
@@ -49,6 +52,7 @@
       "id": "openai",
       "name": "OpenAI",
       "baseURL": "https://api.openai.com/v1",
+      "interfaceType": "chat-completions",
       "models": [{ "id": "gpt-6-luna", "vision": true }],
       "imageModels": ["gpt-image-2.5"],
       "hideEndpoint": true,
@@ -57,9 +61,20 @@
       "docUrl": "https://platform.openai.com/docs/api-reference/chat"
     },
     {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "baseURL": "https://api.anthropic.com",
+      "interfaceType": "anthropic-messages",
+      "models": [],
+      "hideEndpoint": true,
+      "keyUrl": "https://console.anthropic.com/settings/keys",
+      "docUrl": "https://docs.anthropic.com/en/api/messages"
+    },
+    {
       "id": "deepseek",
       "name": "DeepSeek",
       "baseURL": "https://api.deepseek.com/v1",
+      "interfaceType": "chat-completions",
       "models": ["deepseek-chat", "deepseek-reasoner"],
       "keyUrl": "https://platform.deepseek.com/api_keys",
       "docUrl": "https://api-docs.deepseek.com/"
@@ -82,12 +97,12 @@
     {
       "id": "anthropic-messages",
       "name": "Anthropic Messages",
-      "enabled": false
+      "enabled": true
     },
     {
       "id": "openai-responses",
       "name": "OpenAI Responses",
-      "enabled": false
+      "enabled": true
     }
   ]
 }

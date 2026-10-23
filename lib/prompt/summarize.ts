@@ -1,4 +1,5 @@
 import { parseBlocks, stripBlocks } from "@/lib/blocks";
+import { hasMarkedBase64, USER_MESSAGE_BASE64_INSTRUCTION } from "@/lib/chat";
 import { estimateTokens } from "./budget";
 import type { ChatMessage, KeyFacts, RollingSummary } from "./types";
 
@@ -83,7 +84,12 @@ export function buildSummarizeMessages(input: SummarizeInput): ChatMessage[] {
   );
 
   return [
-    { role: "system", content: SUMMARIZE_SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: input.additions.some((message) => message.role === "user" && hasMarkedBase64(message.content))
+        ? `${SUMMARIZE_SYSTEM_PROMPT}\n\n${USER_MESSAGE_BASE64_INSTRUCTION}`
+        : SUMMARIZE_SYSTEM_PROMPT,
+    },
     { role: "user", content: parts.join("\n\n") },
   ];
 }

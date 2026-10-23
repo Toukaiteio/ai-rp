@@ -1,4 +1,5 @@
 import { stripBlocks } from "@/lib/blocks";
+import { hasMarkedBase64, USER_MESSAGE_BASE64_INSTRUCTION } from "@/lib/chat";
 import type { ChatMessage } from "@/lib/prompt/types";
 
 /**
@@ -27,7 +28,12 @@ export function buildSuggestionMessages(history: ChatMessage[]): ChatMessage[] {
     .join("\n");
 
   return [
-    { role: "system", content: SUGGESTION_SYSTEM_PROMPT },
+    {
+      role: "system",
+      content: history.some((message) => message.role === "user" && hasMarkedBase64(message.content))
+        ? `${SUGGESTION_SYSTEM_PROMPT}\n\n${USER_MESSAGE_BASE64_INSTRUCTION}`
+        : SUGGESTION_SYSTEM_PROMPT,
+    },
     {
       role: "user",
       content: `最近的对话：\n${transcript}\n\n给出 3 条玩家接下来可能输入的话。`,

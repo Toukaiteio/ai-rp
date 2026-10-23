@@ -2,12 +2,14 @@ import { DEFAULT_CG_BUDGET, DEFAULT_CG_THRESHOLD, DEFAULT_IMAGE_STYLE, type Imag
 import { BROWSER_PROVIDER_ID } from "@/lib/browser-model";
 import { cleanApiKey } from "./apikey";
 import {
+  defaultInterfaceType,
   findProvider,
   getDefaultProvider,
   imageProviderForModel,
   listProviders,
   modelName,
   modelSeesImages,
+  resolveInterfaceType,
 } from "./config";
 import { defaultAutoBackupSettings, normalizeAutoBackupSettings, type AutoBackupSettings } from "@/lib/storage/backup";
 
@@ -19,8 +21,38 @@ export function normalizeUserName(value: unknown): string {
   return name || DEFAULT_USER_NAME;
 }
 
+/**
+ * 这次请求实际用哪个接口协议。
+ *
+ * 预设已经定死协议（Anthropic 只能走 Messages），自定义提供商才看用户选择；
+ * 选了一个被 providers.json 关掉的协议时退回默认，避免请求发到不存在的实现。
+ */
+export function effectiveInterfaceType(config: {
+  providerId: string;
+  interfaceType?: string;
+}): string {
+  return resolveInterfaceType(config.providerId, config.interfaceType);
+}
+
+/**
+ * 浏览器直连只实现了 Chat Completions 的 SSE。
+ * Anthropic Messages、OpenAI Responses 都统一走服务端适配器，
+ * 不在浏览器里对这两种协议发一次注定失败的请求。
+ */
+export function needsServerAdapter(config: {
+  providerId: string;
+  interfaceType?: string;
+}): boolean {
+  return effectiveInterfaceType(config) !== "chat-completions";
+}
+
 export interface ProviderConfig {
   providerId: string;
+  /**
+   * 请求使用的接口协议。预设提供商固定，自定义提供商由用户选择。
+   * 旧存档没有这个字段时按提供商预设或默认协议补齐。
+   */
+  interfaceType?: string;
   model: string;
   /**
    * 加密后存在本机（localStorage 槽位），密钥由用户设定、不落盘。
@@ -39,6 +71,8 @@ export interface ProviderConfig {
   autoBackup: AutoBackupSettings;
   /** Quality gate for generated message blocks and speaker names. */
   qualityGate: boolean;
+  /** Randomly wraps words in new player messages as marked UTF-8 Base64. */
+  encodeUserMessageWords: boolean;
   /** Name used for the player in prompts and character-card previews. */
   userName: string;
   /** Story pacing systems. Missing fields in old vaults default to enabled. */
@@ -127,6 +161,10 @@ export function withImage(config: Partial<ProviderConfig> | null | undefined): P
     ...base,
     ...config,
     providerId,
+    interfaceType: effectiveInterfaceType({
+      providerId,
+      interfaceType: config.interfaceType,
+    }),
     model,
     apiKey: config.apiKey ?? "",
     userName: normalizeUserName(config.userName),
@@ -141,6 +179,7 @@ export function withImage(config: Partial<ProviderConfig> | null | undefined): P
     image: migrateImage(config.image),
     autoBackup: normalizeAutoBackupSettings(config.autoBackup),
     qualityGate: config.qualityGate !== false,
+    encodeUserMessageWords: config.encodeUserMessageWords === true,
     storySystems: {
       ...defaultStorySystemSettings(),
       ...(config.storySystems ?? {}),
@@ -156,6 +195,7 @@ export function defaultProviderConfig(): ProviderConfig {
   const preset = getDefaultProvider();
   return {
     providerId: preset.id,
+    interfaceType: preset.interfaceType ?? defaultInterfaceType(),
     model: modelName(preset.models[0]),
     apiKey: "",
     baseURL: "",
@@ -164,6 +204,7 @@ export function defaultProviderConfig(): ProviderConfig {
     image: defaultImageSettings(),
     autoBackup: defaultAutoBackupSettings(),
     qualityGate: true,
+    encodeUserMessageWords: false,
     userName: DEFAULT_USER_NAME,
     storySystems: defaultStorySystemSettings(),
   };

@@ -4,13 +4,6 @@ import { addImportedCard } from "@/lib/storage/cards";
 import { getProviderConfigSnapshot } from "@/lib/storage/settings";
 import { defaultProviderConfig, withImage } from "@/lib/providers/settings";
 import { clearTranslationSession, translateAndSaveCard, translationDiagnostic, translationErrorKey, translationPercent, type TranslationProgress, type TranslationSession } from "./CardTranslationFlow";
-import { renderToStaticMarkup } from "react-dom/server";
-import { translate, type MessageKey, type Vars } from "@/lib/i18n";
-import { CardTranslationDialog } from "./CardTranslationDialog";
-
-vi.mock("@/lib/i18n/use-i18n", () => ({
-  useI18n: () => ({ locale: "en", t: (key: MessageKey, vars?: Vars) => translate("en", key, vars) }),
-}));
 
 vi.mock("@/lib/cards", async (importOriginal) => ({
   ...await importOriginal<object>(), translateCharacterCard: vi.fn(),
@@ -183,55 +176,29 @@ const progress: TranslationProgress = {
   phase: "translating", completed: 2, total: 4, field: "description",
   receivedCharacters: 37, completedCharacters: 200, totalCharacters: 800,
 };
-const handlers = { onSkip: () => {}, onClose: () => {}, onStart: () => {}, onOpenSettings: () => {} };
 
 describe("translation progress and safe diagnostics", () => {
-  it("renders real segment, source and stream counts with a themed progress bar", () => {
-    const html = renderToStaticMarkup(<CardTranslationDialog stage="loading" name="Card" targetLanguage="English" skip={false} error="card.translationFailed" progress={progress} {...handlers} />);
-    expect(html).toContain("2 / 4");
-    expect(html).toContain("200 / 800 · 25%");
-    expect(html).toContain("Characters received in this translation attempt: 37");
-    expect(html).toContain("Description");
-    expect(html).toContain('aria-valuenow="25"');
-    expect(html).toContain("bg-accent");
-  });
-
-  it("never claims 100% before validation and persistence succeed", () => {
+  it("never claims 100% before persistence succeeds", () => {
     const complete = { ...progress, phase: "complete" as const, completedCharacters: 800 };
     expect(translationPercent(complete)).toBe(99);
     expect(translationPercent(undefined)).toBe(0);
     expect(translationPercent({ ...progress, completedCharacters: NaN })).toBe(0);
-    const saving = renderToStaticMarkup(<CardTranslationDialog stage="loading" name="Card" targetLanguage="English" skip={false} error="card.translationFailed" progress={complete} saving {...handlers} />);
-    expect(saving).toContain("saving translated card");
-    expect(saving).toContain('aria-valuenow="99"');
-    const success = renderToStaticMarkup(<CardTranslationDialog stage="success" name="Card" targetLanguage="English" skip={false} error="card.translationFailed" progress={complete} {...handlers} />);
-    expect(success).toContain('aria-valuenow="100"');
+    expect(translationPercent(complete, true)).toBe(100);
   });
 
-  it.each(["output_limit", "content_filter", "stream_interrupted", "invalid_json", "json_truncated", "invalid_sse", "unexpected_finish_reason", "upstream_error", "network_error", "unexpected_fields", "invalid_value", "invalid_dictionary", "missing_fields", "protected_tokens", "http_error"])("safely explains %s with failed field and completed count", (reason) => {
+  it.each(["output_limit", "content_filter", "stream_interrupted", "invalid_json", "json_truncated", "invalid_sse", "unexpected_finish_reason", "upstream_error", "network_error", "unexpected_fields", "invalid_value", "invalid_dictionary", "missing_fields", "protected_tokens", "http_error"])("maps %s to a safe diagnostic", (reason) => {
     const diagnostic = translationDiagnostic({ message: "private payload", details: { reason, field: "character_book", completed: 2, total: 4, status: 429, payload: "secret" } });
-    const html = renderToStaticMarkup(<CardTranslationDialog stage="error" name="Card" targetLanguage="English" skip={false} error="card.translationIncomplete" diagnostic={diagnostic} progress={progress} {...handlers} />);
-    expect(html).toContain(translate("en", diagnostic.reason).replaceAll("'", "&#x27;"));
-    expect(html).toContain("World book");
-    expect(html).toContain("2 / 4");
-    expect(html).toContain("Continue translation");
-    expect(html).not.toContain("private payload");
-    expect(html).not.toContain("secret");
     expect(diagnostic.reason).not.toBe("card.translationReasonUnknown");
+    expect(diagnostic.field).toBe("card.translationFieldBook");
+    expect(diagnostic.completed).toBe(2);
+    expect(diagnostic.total).toBe(4);
+    expect(diagnostic.status).toBe(429);
+    expect(JSON.stringify(diagnostic)).not.toContain("secret");
   });
 
   it("whitelists unknown reasons, fields, and numeric status", () => {
     const diagnostic = translationDiagnostic({ details: { reason: "secret payload", field: "secret field", status: "secret status", completed: -1, total: Infinity } });
-    expect(diagnostic).toEqual({ reason: "card.translationReasonUnknown", field: "card.translationFieldUnknown", completed: undefined, total: undefined, status: undefined, receivedCharacters: undefined });
+    expect(diagnostic).toEqual({ reason: "card.translationReasonUnknown", field: null, completed: undefined, total: undefined, status: undefined, receivedCharacters: undefined });
     expect(translationDiagnostic({ details: { reason: "__proto__", field: "constructor" } }).reason).toBe("card.translationReasonUnknown");
-  });
-
-  it("offers a save-only retry and configuration settings", () => {
-    const save = renderToStaticMarkup(<CardTranslationDialog stage="error" name="Card" targetLanguage="English" skip={false} error="card.translationSaveFailed" {...handlers} />);
-    expect(save).toContain("Retry saving");
-    expect(save).toContain("without calling the model again");
-    expect(save).not.toContain("consume more model credits");
-    const config = renderToStaticMarkup(<CardTranslationDialog stage="error" name="Card" targetLanguage="English" skip={false} error="card.translationNotConfigured" {...handlers} />);
-    expect(config).toContain("Open Settings");
   });
 });

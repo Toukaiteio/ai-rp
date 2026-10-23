@@ -3,6 +3,7 @@
  * 只做 JSON，不做 PNG 内嵌卡，也不做 CHARX。
  */
 import type { CharacterVoiceProfile } from "@/lib/voice";
+import type { CardAttachment } from "@/lib/attachments";
 
 /**
  * 世界书条目。keys / content / constant 是最小集，其余都可选。
@@ -63,6 +64,8 @@ export interface CharacterCardData {
    * 别的客户端读卡时会原样忽略，不会因为我们加了它而认不出这张卡。
    */
   voice?: CharacterVoiceProfile;
+  /** 内存里的卡专属 attachment，落盘时放进 extensions["ai-rp"].attachments。 */
+  attachments?: CardAttachment[];
   alternate_greetings?: string[];
   character_book?: WorldBook;
   tags?: string[];

@@ -9,6 +9,7 @@ import { buildInspector, type MessageOrigin } from "./inspector";
 import {
   BASE_RULES,
   DEFAULT_RESPONSE_TOKENS,
+  DEFAULT_USER_NAME,
   OUTPUT_CONTRACT,
   STYLE_PROMPTS,
   buildTurnLayer,
@@ -20,8 +21,14 @@ import { formatJournal, formatToolTrace } from "@/lib/memory/journal";
 import { formatSceneState } from "@/lib/scene";
 import { formatThreads, selectThreads } from "@/lib/story";
 import { describeVoice } from "@/lib/voice";
+import { formatAttachmentCatalog } from "@/lib/attachments";
 import { activeThreads, formatFacts, needsSummarize } from "./summarize";
 import { dialogueLanguageInstruction } from "./language";
+import {
+  decodeMarkedBase64,
+  hasMarkedBase64,
+  USER_MESSAGE_BASE64_INSTRUCTION,
+} from "@/lib/chat";
 import {
   INJECTION_GROUPS,
   LOREBOOK_SOURCES,
@@ -133,7 +140,9 @@ export {
   buildDirectorMessages,
   formatTurnPlan,
   parseTurnPlan,
+  shouldPlanTurn,
   DIRECTOR_SYSTEM_PROMPT,
+  DIRECTOR_MAX_TOKENS,
 } from "./turn-plan";
 export type { DirectorMessagesOptions, TurnBeat, TurnPlan, TurnToolCall } from "./turn-plan";
 export {
@@ -254,6 +263,11 @@ export function assemble(input: AssembleInput): AssembleResult {
   };
   const apply = (text: string) => applyMacros(text, macroVars);
   const history = normalizeHistory(rawHistory).map((message) => ({ ...message, content: apply(message.content) }));
+  const logicHistory = normalizeHistory(
+    rawHistory.map((message) =>
+      message.role === "user" ? { ...message, content: decodeMarkedBase64(message.content) } : message,
+    ),
+  ).map((message) => ({ ...message, content: apply(message.content) }));
   const expandBook = (book: WorldBook): WorldBook => ({
     ...book,
     entries: book.entries.map((entry) => ({
@@ -281,8 +295,8 @@ export function assemble(input: AssembleInput): AssembleResult {
     ...(lorebooks
       ? { books: toSourcedBooks(lorebooks).map(({ source, book }) => ({ source, book: expandBook(book) })) }
       : { lorebook: lorebook ? expandBook(lorebook) : undefined }),
-    history,
-    userMessage: lastUserText(history),
+    history: logicHistory,
+    userMessage: lastUserText(logicHistory),
     sceneText: apply(sceneScan),
     seed,
     budgetCap: budgetCapOf(lorebooks, lorebook),
@@ -320,6 +334,17 @@ export function assemble(input: AssembleInput): AssembleResult {
     role: "system",
     content: OUTPUT_CONTRACT,
   });
+
+  /*
+   * 玩家名要明说。默认的「你」已经在规则里讲清楚了，只有玩家改过名字才加这一条：
+   * 不写出来，模型会看到历史里有人用这个名字，就顺手造一个同名 NPC 让他说话。
+   */
+  if (userName !== DEFAULT_USER_NAME) {
+    push(prefix, { section: "card", layer: "prefix", detail: "玩家名" }, {
+      role: "system",
+      content: `玩家名：${apply(userName)}。这是玩家本人，不是场景里的角色；不要创建同名人物，也不要把 who 写成这个名字。`,
+    });
+  }
 
   // 2. 常驻世界书 before_char。关键词条目不进前缀，免得缓存跟着命中闪断
   for (const text of stableContents(book.group.before_char)) {
@@ -403,6 +428,14 @@ export function assemble(input: AssembleInput): AssembleResult {
     push(prefix, { section: "scene", layer: "prefix", detail: "card.scenario" }, {
       role: "system",
       content: `当前场景：${apply(card.scenario)}`,
+    });
+  }
+
+  const attachmentCatalog = formatAttachmentCatalog(card.attachments);
+  if (attachmentCatalog) {
+    push(prefix, { section: "card", layer: "prefix", detail: "角色卡附件目录" }, {
+      role: "system",
+      content: attachmentCatalog,
     });
   }
 
@@ -498,9 +531,17 @@ export function assemble(input: AssembleInput): AssembleResult {
     );
   }
 
+  if (rawHistory.some((message) => message.role === "user" && hasMarkedBase64(message.content))) {
+    push(
+      post,
+      { section: "history", layer: "post", detail: "玩家消息 Base64 标记说明" },
+      { role: "system", content: USER_MESSAGE_BASE64_INSTRUCTION },
+    );
+  }
+
   // 语言锁定要按「玩家最近一条输入」现算，所以放在历史之后、回合层里
-  const language = dialogueLanguageInstruction(history);
-  const responseMode = mode ?? inferResponseMode({ playerInput: lastUserText(history) });
+  const language = dialogueLanguageInstruction(logicHistory);
+  const responseMode = mode ?? inferResponseMode({ playerInput: lastUserText(logicHistory) });
   /*
    * 剧情线（Phase 6）：从完整列表里按策略挑几条，不是全部注入。
    * 挑选理由有四种——玩家追问、最近提到、当前场景相关、高重要度；
@@ -508,8 +549,8 @@ export function assemble(input: AssembleInput): AssembleResult {
    */
   const pickedThreads = storyThreads?.length
     ? selectThreads(storyThreads, {
-        playerInput: lastUserText(history),
-        recentText: recentText(history),
+        playerInput: lastUserText(logicHistory),
+        recentText: recentText(logicHistory),
         presentCharacters: sceneState?.presentCharacters ?? [],
         location: sceneState?.location ?? "",
         turn,
