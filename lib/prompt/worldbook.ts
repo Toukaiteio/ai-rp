@@ -1,5 +1,5 @@
 import { estimateTokens, PER_MESSAGE_OVERHEAD } from "./budget";
-import type { ChatMessage, WorldBook, WorldBookEntry } from "./types";
+import type { ChatMessage, LorebookTimingState, WorldBook, WorldBookEntry } from "./types";
 
 /** 位置分组。数值只用来排序，不进提示词。 */
 export const POSITION_ORDER = {
@@ -152,14 +152,16 @@ function matchKeys(entry: WorldBookEntry, scanText: string): string[] {
 export function mergeLorebooks(books: readonly SourcedLorebook[]): Array<{
   entry: WorldBookEntry;
   source: LorebookSource;
+  /** 条目在原书 entries 里的下标，时效状态拿它当稳定键 */
+  index: number;
 }> {
-  const merged: Array<{ entry: WorldBookEntry; source: LorebookSource }> = [];
+  const merged: Array<{ entry: WorldBookEntry; source: LorebookSource; index: number }> = [];
   for (const { source, book } of books) {
-    for (const entry of book?.entries ?? []) {
-      if (entry.enabled === false) continue;
-      if (!entry.content.trim()) continue;
-      merged.push({ entry, source });
-    }
+    (book?.entries ?? []).forEach((entry, index) => {
+      if (entry.enabled === false) return;
+      if (!entry.content.trim()) return;
+      merged.push({ entry, source, index });
+    });
   }
   return merged;
 }
@@ -193,11 +195,17 @@ export function matchWorldBook(params: {
   seed: number;
   budgetCap?: number;
   tokenCap?: number;
+  /** 当前轮次。sticky / cooldown / delay 都按它计数，不传按第 0 轮。 */
+  turn?: number;
+  /** 上一轮结束后的时效状态，用于 sticky 续期与 cooldown 判定 */
+  timing?: LorebookTimingState;
 }): {
   matched: MatchedEntry[];
   group: Record<InjectionGroup, WorldBookEntry[]>;
   tokens: number;
   report: WorldBookReport;
+  /** 本轮结束后的时效状态，调用方原样带回下一轮 */
+  timing: LorebookTimingState;
 } {
   const {
     lorebook,
@@ -208,6 +216,8 @@ export function matchWorldBook(params: {
     seed,
     budgetCap = 8,
     tokenCap = 2000,
+    turn = 0,
+    timing: previousTiming,
   } = params;
 
   const sources: SourcedLorebook[] = books?.length
@@ -218,20 +228,55 @@ export function matchWorldBook(params: {
 
   const group = emptyGroup();
   const report = emptyReport(budgetCap, tokenCap);
-  if (sources.length === 0) return { matched: [], group, tokens: 0, report };
+  // 继承上一轮的记录：本轮没被激活的条目（cooldown 计时中、sticky 续期中）状态要原样带下去
+  const timing: LorebookTimingState = { ...previousTiming };
+  if (sources.length === 0) return { matched: [], group, tokens: 0, report, timing };
 
   // 扫描深度和递归开关取「最宽松的那一本」：三本世界书各配一套只会让人困惑
   const globalDepth = Math.max(...sources.map((item) => item.book?.scanDepth ?? 4));
   const recursive = sources.some((item) => item.book?.recursiveScan === true);
 
-  const candidates = mergeLorebooks(sources).map((item, index) => ({ ...item, index }));
+  const candidates = mergeLorebooks(sources);
   const sceneScan = sceneText ?? "";
   const playerScan = userMessage ?? "";
 
   const cascaded: string[] = [];
   const matched: MatchedEntry[] = [];
 
-  for (const { entry, source, index } of candidates) {
+  candidates.forEach(({ entry, source, index }, flatIndex) => {
+    /*
+     * 时效门（酒馆 sticky / cooldown / delay 的移植）：
+     * 只作用于关键词条目；常驻条目本来就每轮都在，不吃这套。
+     * delay 管开头几轮，cooldown 管连续触发，sticky 管激活后多留几轮。
+     */
+    const turnNo = Math.max(0, Math.floor(turn));
+    const timingKey = `${source}#${index}`;
+    const prev = previousTiming?.[timingKey];
+    const sticky = Math.max(0, Math.floor(entry.sticky ?? 0));
+    const cooldown = Math.max(0, Math.floor(entry.cooldown ?? 0));
+    const delay = Math.max(0, Math.floor(entry.delay ?? 0));
+
+    if (entry.constant !== true) {
+      if (turnNo < delay) return;
+      // sticky 续期：上一轮激活过、窗口还没走完，关键词没中也不算断
+      const stickyActive =
+        sticky > 0 &&
+        prev !== undefined &&
+        prev.stickyLeft > 0 &&
+        turnNo > prev.lastTurn &&
+        turnNo <= prev.lastTurn + prev.stickyLeft;
+      // 冷却从 sticky 窗口走完才开始算
+      if (
+        cooldown > 0 &&
+        prev !== undefined &&
+        !stickyActive &&
+        turnNo > prev.lastTurn &&
+        turnNo <= prev.lastTurn + prev.stickyLeft + cooldown
+      ) {
+        return;
+      }
+    }
+
     const depth = entry.scanDepth ?? globalDepth;
     const base = buildScanText(history, userMessage, depth);
     /*
@@ -244,25 +289,43 @@ export function matchWorldBook(params: {
     const scanText = [base, sceneScan, ...cascaded].filter(Boolean).join("\n");
 
     let hits: string[] = [];
+    let stickyRenewal = false;
     if (entry.constant === true) {
       hits = normalizeKeys(entry.keys);
     } else {
+      const stickyActive =
+        sticky > 0 &&
+        prev !== undefined &&
+        prev.stickyLeft > 0 &&
+        turnNo > prev.lastTurn &&
+        turnNo <= prev.lastTurn + prev.stickyLeft;
       hits = matchKeys(entry, scanText);
-      if (hits.length === 0) continue;
-      const probability = entry.probability ?? 100;
-      if (probability < 100 && !rollDice(seed, entry.content, probability)) {
-        continue;
+      if (hits.length === 0) {
+        if (!stickyActive) return;
+        // sticky 续期不再掷概率：上一轮既然激活了，这几轮就保持
+        stickyRenewal = true;
+        hits = normalizeKeys(entry.keys);
+      } else {
+        const probability = entry.probability ?? 100;
+        if (probability < 100 && !rollDice(seed, entry.content, probability)) {
+          return;
+        }
       }
     }
 
-    const priority = entryPriority(entry, { sceneScan, playerScan, index });
+    const priority = entryPriority(entry, { sceneScan, playerScan, index: flatIndex });
     report.byPriority[priority] += 1;
     matched.push({ entry, matchedKeys: hits, source, priority });
+
+    // 全新激活才写时效；sticky 续期不刷新窗口，不然它会自己续命到天荒地老
+    if (entry.constant !== true && !stickyRenewal && (sticky > 0 || cooldown > 0)) {
+      timing[timingKey] = { lastTurn: turnNo, stickyLeft: sticky };
+    }
 
     if (recursive || entry.cascade === true) {
       cascaded.push(entry.content);
     }
-  }
+  });
 
   // 先按优先级排，再按 order、来源具体程度、原始顺序。
   // 排序必须发生在花预算之前，否则「优先级」只是个标签。
@@ -282,7 +345,7 @@ export function matchWorldBook(params: {
   report.dropped = dropped;
   report.tokens = tokens;
 
-  return { matched, group, tokens, report };
+  return { matched, group, tokens, report, timing };
 }
 
 /**

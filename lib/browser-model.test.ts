@@ -22,7 +22,6 @@ function config(partial: Partial<ProviderConfig>): ProviderConfig {
       threshold: 6,
     },
     autoBackup: defaultAutoBackupSettings(),
-    qualityGate: true,
     encodeUserMessageWords: false,
     userName: "你",
     ...partial,

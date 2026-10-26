@@ -6,7 +6,7 @@ import type {
   ResponseStreamEvent,
 } from "openai/resources/responses/responses";
 import type { ChatMessage } from "@/lib/prompt/types";
-import { DEFAULT_CHAT_MAX_TOKENS, type ChatStreamEvent, type ChatTool, type ProviderAdapter } from "./types";
+import { DEFAULT_CHAT_MAX_TOKENS, type ChatStreamEvent, type ChatTool, type ProviderAdapter, type TokenUsage } from "./types";
 
 export interface ResponsesAdapterOptions {
   apiKey: string;
@@ -30,6 +30,15 @@ async function* toEvents(
   stream: AsyncIterable<ResponseStreamEvent>,
 ): AsyncIterable<ChatStreamEvent> {
   let sawFinish = false;
+
+  /** usage 从响应对象上取，completed / incomplete / failed 三种结束都带。 */
+  function usageOf(response: { usage?: { input_tokens?: number; output_tokens?: number } }): TokenUsage | undefined {
+    if (!response.usage) return undefined;
+    return {
+      promptTokens: response.usage.input_tokens ?? 0,
+      completionTokens: response.usage.output_tokens ?? 0,
+    };
+  }
 
   for await (const event of stream) {
     if (event.type === "response.output_text.delta") {
@@ -72,6 +81,7 @@ async function* toEvents(
       yield {
         type: "done",
         finishReason: event.response.incomplete_details?.reason ?? "incomplete",
+        ...(usageOf(event.response) ? { usage: usageOf(event.response) } : {}),
       };
       continue;
     }
@@ -79,7 +89,8 @@ async function* toEvents(
     if (event.type === "response.completed") {
       sawFinish = true;
       const calledTool = event.response.output.some((item) => item.type === "function_call");
-      yield { type: "done", finishReason: calledTool ? "tool_calls" : "stop" };
+      const usage = usageOf(event.response);
+      yield { type: "done", finishReason: calledTool ? "tool_calls" : "stop", ...(usage ? { usage } : {}) };
     }
   }
 

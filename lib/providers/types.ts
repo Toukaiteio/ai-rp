@@ -9,6 +9,12 @@ export function isReasoningEffort(value: unknown): value is ReasoningEffort {
 
 export const DEFAULT_CHAT_MAX_TOKENS = 12_000;
 
+/** 上游回报的真实 token 记账。压缩触发与观测都以它为准，估算只做兜底。 */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
 /** 流式事件。文本增量，以及函数调用的参数碎片。 */
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
@@ -19,7 +25,7 @@ export type ChatStreamEvent =
       name?: string;
       arguments?: string;
     }
-  | { type: "done"; finishReason?: string }
+  | { type: "done"; finishReason?: string; usage?: TokenUsage }
   | { type: "error"; message: string };
 
 /** OpenAI Chat Completions 的 tools 字段。中继按这个形状接收。 */

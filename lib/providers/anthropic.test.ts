@@ -161,6 +161,49 @@ describe("Anthropic Messages provider", () => {
     ]);
   });
 
+  it("把 message_start 与 message_delta 的 usage 合并进收尾事件", async () => {
+    anthropicMock.create.mockResolvedValue(fakeStream([
+      { type: "message_start", message: { usage: { input_tokens: 120 } } },
+      {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "好" },
+      },
+      { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 34 } },
+    ]));
+    const provider = createAnthropicProvider({
+      apiKey: "sk-ant-test",
+      baseURL: "https://api.anthropic.example/v1",
+    });
+
+    const stream = await provider.open(request());
+
+    await expect(collect(stream)).resolves.toEqual([
+      { type: "delta", text: "好" },
+      {
+        type: "done",
+        finishReason: "end_turn",
+        usage: { promptTokens: 120, completionTokens: 34 },
+      },
+    ]);
+  });
+
+  it("上游没带 usage 时收尾事件不凭空造一个", async () => {
+    anthropicMock.create.mockResolvedValue(fakeStream([
+      { type: "message_delta", delta: { stop_reason: "end_turn" } },
+    ]));
+    const provider = createAnthropicProvider({
+      apiKey: "sk-ant-test",
+      baseURL: "https://api.anthropic.example/v1",
+    });
+
+    const stream = await provider.open(request());
+
+    await expect(collect(stream)).resolves.toEqual([
+      { type: "done", finishReason: "end_turn" },
+    ]);
+  });
+
   it("emits a stop done event when a stream ends without stop_reason", async () => {
     anthropicMock.create.mockResolvedValue(fakeStream([
       {

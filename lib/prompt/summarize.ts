@@ -54,6 +54,23 @@ export interface SummarizeInput {
 }
 
 /**
+ * 摘要文本是否已经超出预算。
+ *
+ * 摘要自己也要有界：它每轮全量进提示词、不进前缀缓存，无界增长等于
+ * 每轮都在为一段越来越长的固定文本付费。超过后下一次压缩改为「合并压缩」，
+ * 旧细节让位给总预算。
+ */
+export function summaryOverBudget(previous: string): boolean {
+  return estimateTokens(previous) > SUMMARIZE_TARGET_TOKENS;
+}
+
+const COMPACT_INSTRUCTION = [
+  "已有摘要已经超长：把它和下面的新增对话合并，压缩成不超过 2000 字的一份摘要。",
+  "保留关键事件、人物关系、已揭示的设定、当前场景和未完成的悬念；",
+  "丢掉过程性细节和重复描写。不要新增内容，不要评价，不要续写。",
+].join("");
+
+/**
  * 生成摘要请求的消息。
  *
  * 关键：把已有摘要和新增内容分开传，让模型只总结新增部分，
@@ -67,30 +84,36 @@ export function buildSummarizeMessages(input: SummarizeInput): ChatMessage[] {
     })
     .join("\n");
 
+  const compact = summaryOverBudget(input.previous);
   const parts = [
     input.previous
-      ? `已有的摘要（保留它，只补充新增部分）：\n${input.previous}`
+      ? compact
+        ? `已有摘要（已超长，这次把它和新增对话合并压缩）：\n${input.previous}`
+        : `已有的摘要（保留它，只补充新增部分）：\n${input.previous}`
       : "目前还没有摘要。",
     `这批新增对话：\n${transcript}`,
   ];
 
-  if (input.facts) {
-    const known = formatFacts(input.facts);
-    if (known) {
-      parts.push(
-        `这些关键事实已经单独记录了，不要在摘要里重复它们：\n${known}`,
-      );
+  if (compact) {
+    parts.push(COMPACT_INSTRUCTION);
+  } else {
+    if (input.facts) {
+      const known = formatFacts(input.facts);
+      if (known) {
+        parts.push(
+          `这些关键事实已经单独记录了，不要在摘要里重复它们：\n${known}`,
+        );
+      }
     }
+    parts.push(
+      [
+        "只输出新增部分的摘要，不要复述已有摘要，也不要改写它。",
+        "如果这批对话里出现了新的人物现状、地点现状或已经发生的事，在摘要之后另起一段输出：",
+        '<facts>{"characters":{"名字":"一句话"},"places":{"地点":"一句话"},"flags":{"事件":true}}</facts>',
+        "没有新事实就不要输出 facts 段。",
+      ].join("\n"),
+    );
   }
-
-  parts.push(
-    [
-      "只输出新增部分的摘要，不要复述已有摘要，也不要改写它。",
-      "如果这批对话里出现了新的人物现状、地点现状或已经发生的事，在摘要之后另起一段输出：",
-      '<facts>{"characters":{"名字":"一句话"},"places":{"地点":"一句话"},"flags":{"事件":true}}</facts>',
-      "没有新事实就不要输出 facts 段。",
-    ].join("\n"),
-  );
 
   return [
     {

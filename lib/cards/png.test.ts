@@ -61,6 +61,33 @@ describe("PNG 内嵌角色卡", () => {
     expect(extractCardJson(png)).toBeNull();
   });
 
+  it("ccv3 块优先于 chara 块（V3 卡规范）", () => {
+    const v3 = { spec: "chara_card_v3", data: { name: "三号", nickname: "小三" } };
+    const png = buildPng([
+      IHDR,
+      textChunk("chara", base64(JSON.stringify(CARD))),
+      textChunk("ccv3", base64(JSON.stringify(v3))),
+      IEND,
+    ]);
+    expect(extractCardJson(png)).toEqual(v3);
+  });
+
+  it("只有 ccv3 块的 V3 卡也能拆出来", () => {
+    const v3 = { spec: "chara_card_v3", data: { name: "三号" } };
+    const png = buildPng([IHDR, textChunk("ccv3", base64(JSON.stringify(v3))), IEND]);
+    expect(extractCardJson(png)).toEqual(v3);
+  });
+
+  it("ccv3 块坏了就退回 chara 块", () => {
+    const png = buildPng([
+      IHDR,
+      textChunk("chara", base64(JSON.stringify(CARD))),
+      textChunk("ccv3", base64("这不是 JSON")),
+      IEND,
+    ]);
+    expect(extractCardJson(png)).toEqual(CARD);
+  });
+
   it("chara 块里不是 JSON 时返回 null，不抛", () => {
     const png = buildPng([IHDR, textChunk("chara", base64("这不是 JSON")), IEND]);
     expect(extractCardJson(png)).toBeNull();

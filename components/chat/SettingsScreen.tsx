@@ -400,27 +400,6 @@ export function SettingsScreen({
             />
           </FormGroup>
 
-          <FormGroup title={t("settings.qualityGate")}>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={config.qualityGate}
-              onClick={() => patch({ qualityGate: !config.qualityGate })}
-              className="flex w-full items-center justify-between rounded-lg border border-line bg-surface-2 px-4 py-3 text-left text-[13px] text-ink"
-            >
-              <span>
-                <span className="block">{t("settings.qualityGateEnabled")}</span>
-                <span className="mt-1 block text-[12px] text-ink-2">{t("settings.qualityGateHelp")}</span>
-              </span>
-              <span
-                aria-hidden="true"
-                className={`flex h-[22px] w-10 shrink-0 items-center rounded-pill p-0.5 ${config.qualityGate ? "justify-end bg-accent" : "justify-start bg-surface-3"}`}
-              >
-                <span className={`size-[18px] rounded-pill shadow-raised ${config.qualityGate ? "bg-accent-ink" : "bg-ink"}`} />
-              </span>
-            </button>
-          </FormGroup>
-
           <FormGroup title={t("settings.privacyEncoding")}>
             <button
               type="button"

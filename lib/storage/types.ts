@@ -1,4 +1,4 @@
-import type { ChatMessage, WorldBook } from "@/lib/prompt/types";
+import type { ChatMessage, LorebookTimingState, WorldBook } from "@/lib/prompt/types";
 import type { BranchTree } from "@/lib/chat";
 import type { SceneState } from "@/lib/scene";
 import type { StoryThread } from "@/lib/story";
@@ -69,6 +69,8 @@ export interface ChatSession {
    * 不会跟着角色卡跑到别的故事里去。
    */
   chatLorebook?: WorldBook;
+  /** 世界书时效状态（sticky / cooldown / delay 的轮次记录），跟着这场对话走。 */
+  lorebookTiming?: LorebookTimingState;
   /** 当前会话的 attachment 运行态，角色卡 JSON 不会携带它。 */
   attachmentState?: Record<string, unknown>;
   /**

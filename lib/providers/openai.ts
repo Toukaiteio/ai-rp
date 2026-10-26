@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions";
 import type { ChatMessage } from "@/lib/prompt/types";
-import { DEFAULT_CHAT_MAX_TOKENS, type ChatStreamEvent, type ProviderAdapter, type ReasoningEffort } from "./types";
+import { DEFAULT_CHAT_MAX_TOKENS, type ChatStreamEvent, type ProviderAdapter, type ReasoningEffort, type TokenUsage } from "./types";
 
 export interface OpenAIAdapterOptions {
   apiKey: string;
@@ -22,8 +22,16 @@ async function* toEvents(
   stream: AsyncIterable<ChatCompletionChunk>,
 ): AsyncIterable<ChatStreamEvent> {
   let sawFinish = false;
+  let usage: TokenUsage | undefined;
 
   for await (const chunk of stream) {
+    // OpenAI 约定 usage 在最后一个 chunk 上（需要 stream_options.include_usage）
+    if (chunk.usage) {
+      usage = {
+        promptTokens: chunk.usage.prompt_tokens ?? 0,
+        completionTokens: chunk.usage.completion_tokens ?? 0,
+      };
+    }
     const choice = chunk.choices?.[0];
     const text = choice?.delta?.content;
     if (text) {
@@ -43,13 +51,13 @@ async function* toEvents(
     }
     if (choice?.finish_reason) {
       sawFinish = true;
-      yield { type: "done", finishReason: choice.finish_reason };
+      yield { type: "done", finishReason: choice.finish_reason, ...(usage ? { usage } : {}) };
     }
   }
 
   // 有些中继不发 finish_reason，收流正常结束时补一个，前端才知道该收尾了
   if (!sawFinish) {
-    yield { type: "done", finishReason: "stop" };
+    yield { type: "done", finishReason: "stop", ...(usage ? { usage } : {}) };
   }
 }
 
@@ -80,6 +88,8 @@ export function createOpenAIProvider(
           model: request.model,
           messages: attachImage(request.messages, request.image) as OpenAI.Chat.ChatCompletionCreateParams["messages"],
           stream: true,
+          // 让上游在最后一个 chunk 带 usage；不支持的少数中继会忽略这个字段
+          stream_options: { include_usage: true },
           ...(request.temperature !== undefined
             ? { temperature: request.temperature }
             : {}),

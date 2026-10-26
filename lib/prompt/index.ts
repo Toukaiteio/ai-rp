@@ -109,6 +109,7 @@ export {
   emptySummary,
   SUMMARIZE_SYSTEM_PROMPT,
   SUMMARIZE_TARGET_TOKENS,
+  summaryOverBudget,
   summarizeThresholdFor,
 } from "./summarize";
 export { mergeFacts, parseFactsPayload, sanitizeFacts, activeThreads } from "./facts";
@@ -239,6 +240,7 @@ export function assemble(input: AssembleInput): AssembleResult {
     turn = 0,
     summary,
     facts,
+    lorebookTiming,
     journal,
     toolTrace,
     authorNote,
@@ -318,6 +320,8 @@ export function assemble(input: AssembleInput): AssembleResult {
     seed,
     budgetCap: budgetCapOf(lorebooks, lorebook),
     tokenCap: tokenCapOf(lorebooks, lorebook),
+    turn,
+    timing: lorebookTiming,
   });
 
   /* ---- 稳定层：字节级稳定 ---- */
@@ -742,6 +746,7 @@ export function assemble(input: AssembleInput): AssembleResult {
       summary,
       summarizeThresholdFor(maxContext),
     ),
+    lorebookTiming: book.timing,
     inspector: buildInspector(messages, origins, (message) => estimateTokens(message.content) + PER_MESSAGE_OVERHEAD),
   };
 }

@@ -2,11 +2,8 @@
  * 「这一轮要不要写进历史」的唯一决定点。
  *
  * ChatScreen 只负责画界面和攒流式文本；能不能进历史由这里说了算，
- * 所以这条规则是纯函数、可以单独测——Phase 1 的验收标准里
- * 「不合格回复不会污染下一轮历史」和「重新生成不会把上一版错误内容继续作为新历史」
- * 都靠它成立。
+ * 所以这条规则是纯函数、可以单独测。
  */
-import type { GenerationResult } from "./types";
 
 /** 历史里的一条消息。泛型只要求有 role 和 content，别的字段（图片、CG）原样保留。 */
 export interface HistoryTurn {
@@ -18,6 +15,14 @@ export interface PendingTurn<T> {
   user: T;
   assistant: T;
 }
+
+/**
+ * 提交进历史的一轮。质量门已从生成路径摘除（酒馆式直出），
+ * 生成侧只会传 accepted；rejected 分支保留给仍然想用引擎校验的调用方。
+ */
+export type CommitCandidate =
+  | { status: "accepted" | "repaired"; content: string }
+  | { status: "rejected"; reason: string };
 
 export interface CommitOutcome<T> {
   /** 这一轮之后的历史 */
@@ -37,7 +42,7 @@ export interface CommitOutcome<T> {
 export function commitTurn<T extends HistoryTurn>(
   base: readonly T[],
   pending: PendingTurn<T>,
-  result: GenerationResult,
+  result: CommitCandidate,
 ): CommitOutcome<T> {
   if (result.status === "rejected") {
     return { turns: [...base], written: false, content: "" };

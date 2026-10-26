@@ -16,6 +16,7 @@ import {
   planBudget,
   resetCacheStats,
   rollDice,
+  summaryOverBudget,
   summarizeThresholdFor,
   type AssembleInput,
   type ChatMessage,
@@ -651,6 +652,25 @@ describe("摘要与关键事实", () => {
     expect(messages[1]?.content).toContain("已有的摘要（保留它，只补充新增部分）");
     expect(messages[1]?.content).toContain("今晚留下。");
     expect(messages[1]?.content).not.toContain("第 1 轮");
+  });
+
+  it("摘要超预算后，下一次压缩改为合并压缩成有界的一份", () => {
+    expect(summaryOverBudget("短短几句话。")).toBe(false);
+    const overlong = "一段旧摘要。".repeat(1200);
+    expect(summaryOverBudget(overlong)).toBe(true);
+
+    const compact = buildSummarizeMessages({
+      previous: overlong,
+      additions: [{ role: "user", content: "今晚留下。" }],
+    });
+    expect(compact[1]?.content).toContain("合并压缩");
+    expect(compact[1]?.content).toContain("不超过 2000 字");
+    // 正常路径不出现压缩指令
+    const normal = buildSummarizeMessages({
+      previous: "玩家已经进店。",
+      additions: [{ role: "user", content: "今晚留下。" }],
+    });
+    expect(normal[1]?.content).not.toContain("合并压缩");
   });
 
   it("摘要只追加，不重写旧段", () => {

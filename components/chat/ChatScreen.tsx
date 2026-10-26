@@ -50,29 +50,18 @@ import { hashSeed } from "@/lib/seed";
 import {
   dialogueContinues,
   parseBlocks,
-  parseRawBlocks,
-  stripPseudoToolTags,
 } from "@/lib/blocks";
-import { bypassResponseValidation, reportForValidation, resolveGeneration, validateResponseBlocks } from "@/lib/engine";
 import { commitTurn } from "@/lib/engine/history";
-import {
-  buildRepairMessages,
-  extractRepairedText,
-  type RepairOutcome,
-} from "@/lib/engine/repair";
-import type { GenerationIssue } from "@/lib/engine/types";
 import {
   devFlagServerSnapshot,
   devReportEnabled,
-  recordReport,
   recordInspector,
-  reportLog,
   subscribeDevFlag,
 } from "@/lib/engine/dev-log";
-import { DevReportButton, DevReportPanel, logReport } from "./DevReportPanel";
+import { DevReportButton, DevReportPanel } from "./DevReportPanel";
 import { buildSuggestionMessages, parseSuggestions } from "@/lib/suggest";
 import { DICE_TOOL } from "@/lib/dice";
-import { GLOBAL_LOREBOOK, estimateTokens, type WorldBook, type WorldBookReport } from "@/lib/prompt";
+import { GLOBAL_LOREBOOK, estimateTokens, summarizeThresholdFor, type LorebookTimingState, type WorldBook } from "@/lib/prompt";
 import {
   applyMemoryWrite,
   emptyJournal,
@@ -104,7 +93,6 @@ import { openingGreetings } from "@/lib/cards/greetings";
 import type { CharacterCardData } from "@/lib/cards/types";
 import type { ChatMessage } from "@/lib/prompt/types";
 import type { KeyFacts, RollingSummary } from "@/lib/prompt/types";
-import { correctionNote } from "@/lib/prompt";
 import {
   appendToBranch,
   createBranch,
@@ -118,9 +106,17 @@ import {
   resolveBranch,
   MAIN_BRANCH,
   encodeRandomUserWords,
+  absorbToolCall,
+  historyContent,
+  markPlayer,
+  playerText,
+  userTurnsAsMessages,
   type BranchTree,
   type ChatBranch,
+  type ChatError,
+  type PendingTool,
   type StaleReport,
+  type Turn,
 } from "@/lib/chat";
 import { presetChat } from "@/lib/providers/config";
 import { resolveBaseURL } from "@/lib/providers/validate";
@@ -149,7 +145,7 @@ import { decodeSseBuffer, readSseText, type WireFrame } from "@/lib/wire";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import type { MessageKey } from "@/lib/i18n";
 import { persistGeneratedImage, readChatImage, shrinkPortrait } from "@/lib/chat-image";
-import { embedDocument, normalizeDocument, readChatDocument, type ChatDocument } from "@/lib/chat-document";
+import { normalizeDocument, readChatDocument, type ChatDocument } from "@/lib/chat-document";
 import { BROWSER_PROVIDER_ID, describeImage, probeBrowserModel, streamBrowserChat } from "@/lib/browser-model";
 import { browserChatEndpoint, streamBrowserOpenAI } from "@/lib/browser-openai";
 import {
@@ -270,58 +266,11 @@ function attachmentRuntime(
   };
 }
 
-interface Turn {
-  id: string;
-  role: "user" | "assistant";
-  /** 保留块标记的原始文本 */
-  content: string;
-  /** 新用户消息的实际发送版本；原始内容仍用于界面、编辑和导出。 */
-  outboundContent?: string;
-  cg?: StoredCg;
-  swipes?: string[];
-  swipeIndex?: number;
-  chapterBreak?: boolean;
-  image?: string;
-  /** 本机模型看图后的描述，只发给不能看图的模型 */
-  imageNote?: string;
-  document?: ChatDocument;
-}
-
 type ComposerAttachment =
   | { kind: "image"; src: string }
   | { kind: "document"; name: string; text: string };
 
-interface ChatError {
-  status: number;
-  code: string;
-  message: string;
-}
-
-interface PendingTool {
-  id: string;
-  name: string;
-  arguments: string;
-}
-
-/**
- * 被质量门拒收的一轮。
- *
- * 它不属于 turns：拒收的内容一个字都不进历史，所以单独挂在这里，
- * 只在界面上留一个「你刚才说了什么 + 为什么被丢掉 + 要不要重来」的提示。
- * 玩家点重新生成时，用这里的 baseTurns 从头跑一遍，不会把失败的那版接在后面。
- */
-interface RejectedTurn {
-  reason: string;
-  userText: string;
-  image?: string;
-  document?: ChatDocument;
-  baseTurns: Turn[];
-  /** 这一轮试过自动修复没有，以及修复为什么没救回来（只在开发模式展示） */
-  repairAttempted?: boolean;
-  repairNote?: string;
-}
-
-type GenerationStage = "attachment" | "plan" | "write" | "repair";
+type GenerationStage = "attachment" | "plan" | "write";
 
 interface TocItem {
   id: string;
@@ -357,77 +306,8 @@ function chapterAt(turns: Turn[], index: number): { n: number; title: string } |
   return { n, title: chapterHeading(turn.content) };
 }
 
-function absorbToolCall(
-  calls: PendingTool[],
-  frame: { index: number; id?: string; name?: string; arguments?: string },
-): void {
-  while (calls.length <= frame.index) calls.push({ id: "", name: "", arguments: "" });
-  const slot = calls[frame.index];
-  if (frame.id) slot.id = frame.id;
-  if (frame.name) slot.name = frame.name;
-  if (frame.arguments) slot.arguments += frame.arguments;
-}
-
 const SUGGESTION_TEMPERATURE = 0.8;
 const SUGGESTION_MAX_TOKENS = 160;
-
-/** 玩家那几轮在存储里带标记，导出时才能和旁白、对白区分开。 */
-function markPlayer(text: string): string {
-  return `<player>${text}</player>`;
-}
-
-/** 取回玩家实际说了什么。旧会话里存的是纯文本，这里要能兼容。 */
-function playerText(content: string): string {
-  const block = parseBlocks(content).find((b) => b.kind === "player");
-  return block ? block.text : content;
-}
-
-/**
- * 本轮玩家输入进历史的形态。
- * 带 <player> 标记，让模型看到自己上一轮的输出格式时也能对上玩家的；
- * 服务端的 normalizeUserContent 会在组装时抹掉标记。
- */
-function historyContent(turn: Turn): string {
-  // 模型偶尔把函数调用写成 XML 标签。原样存进历史，下一轮它就会在自己
-  // 上一轮的输出里看见这种写法，从而有样学样。喂回去之前先剥掉。
-  if (turn.role === "assistant") return stripPseudoToolTags(turn.content);
-  const content = turn.role === "user" ? turn.outboundContent ?? turn.content : turn.content;
-  const text = embedDocument(content, turn.document);
-  if (!turn.imageNote) return text;
-  return `${text}\n\n【图片】\n${turn.imageNote}`;
-}
-
-function userTurnsAsMessages(turn: Turn): ChatMessage[] {
-  return [{ role: "user", content: historyContent(turn) }];
-}
-
-/**
- * 检查器眼里的「已知人名」。
- *
- * 来源三处：角色卡上的角色、本机记忆里记下的人、历史里已经出过场的 who。
- * 只有这三处都不认识的名字才算「发明了新人物」——
- * 上一轮自己造出来的人到了下一轮已经算出场过，该管的是别让他的名字和性格变来变去。
- */
-function knownCast(turns: Turn[], cardName: string, journal: Journal): string[] {
-  const names = new Set<string>([cardName]);
-  for (const name of Object.keys(journal.characters)) names.add(name);
-  for (const turn of turns) {
-    if (turn.role !== "assistant") continue;
-    for (const block of parseRawBlocks(turn.content)) {
-      const who = block.who?.trim();
-      if (who) names.add(who);
-    }
-  }
-  return [...names];
-}
-
-/** 上一轮 assistant 的原始输出，用来判复读。 */
-function lastAssistantReply(turns: Turn[]): string {
-  for (let i = turns.length - 1; i >= 0; i -= 1) {
-    if (turns[i].role === "assistant") return turns[i].content;
-  }
-  return "";
-}
 
 /**
  * 旧存档里的聊天世界书补全。
@@ -500,9 +380,6 @@ function AssistantTurn({
     },
     write: {
       title: t("chat.stage.write.title"),
-    },
-    repair: {
-      title: t("chat.stage.repair.title"),
     },
   } satisfies Record<GenerationStage, { title: string }>;
   const stageText = stage ? stageInfo[stage] : null;
@@ -742,7 +619,6 @@ export function ChatScreen({
   style,
   onOpenSettings,
   onOpenShelf,
-  onDisableQualityGate,
   onUserNameChange,
 }: {
   cardId: string;
@@ -752,7 +628,6 @@ export function ChatScreen({
   style?: "haruhi" | "mushoku";
   onOpenSettings: () => void;
   onOpenShelf: () => void;
-  onDisableQualityGate: () => void;
   onUserNameChange?: (next: string) => void;
 }) {
   const { t, locale } = useI18n();
@@ -807,13 +682,6 @@ export function ChatScreen({
   const devEnabled = useSyncExternalStore(subscribeDevFlag, devReportEnabled, devFlagServerSnapshot);
   const [devOpen, setDevOpen] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
-  /** 被质量门拒收、还没重来的一轮 */
-  const [rejected, setRejected] = useState<RejectedTurn | null>(null);
-  const [qualityPassed, setQualityPassed] = useState(false);
-  const qualityGateOverrideRef = useRef(false);
-  useEffect(() => {
-    if (!config.qualityGate) qualityGateOverrideRef.current = false;
-  }, [config.qualityGate]);
   const [cgBusy, setCgBusy] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<ComposerAttachment | null>(null);
@@ -954,6 +822,8 @@ export function ChatScreen({
    * 和场景状态一样用 ref：只在组装时读。
    */
   const chatBookRef = useRef<WorldBook | undefined>(undefined);
+  /** 世界书时效状态（sticky / cooldown / delay）：每轮由组装结果刷新，随会话落盘 */
+  const lorebookTimingRef = useRef<LorebookTimingState>({});
   const [portraits, setPortraits] = useState<Record<string, string>>({});
   const portraitBusy = useRef(new Set<string>());
   /** 额度或频率到顶后，自动生图和头像都停。手动再点仍会试一次。 */
@@ -1132,6 +1002,7 @@ export function ChatScreen({
         sceneRef.current = normalizeSceneState(existing.sceneState);
         threadsRef.current = normalizeThreads(existing.storyThreads);
         chatBookRef.current = normalizeChatBook(existing.chatLorebook);
+        lorebookTimingRef.current = existing.lorebookTiming ?? {};
         branchTreeRef.current = normalizeTree(existing.branchTree);
         setBranches(branchTreeRef.current.branches);
         setActiveBranch(existing.activeBranch ?? MAIN_BRANCH);
@@ -1235,6 +1106,9 @@ export function ChatScreen({
       ...(chatBookRef.current?.entries.length
         ? { chatLorebook: chatBookRef.current }
         : { chatLorebook: undefined }),
+      ...(Object.keys(lorebookTimingRef.current).length > 0
+        ? { lorebookTiming: lorebookTimingRef.current }
+        : { lorebookTiming: undefined }),
       ...(Object.keys(attachmentStateRef.current).length > 0
         ? { attachmentState: attachmentStateRef.current }
         : { attachmentState: undefined }),
@@ -1274,8 +1148,6 @@ export function ChatScreen({
     setReceivedTokens(0);
     setStreaming(true);
     setSuggestions([]);
-    /** 观测用的耗时起点。整轮包括导演阶段和续写轮，和玩家体感一致。 */
-    const startedAt = performance.now();
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -1350,8 +1222,6 @@ export function ChatScreen({
 
     /** 这一轮实际用的回合模式，报告里带上 */
     let turnMode: ResponseMode | undefined;
-    /** 这一轮世界书的注入情况，随组装结果一起记下，报告里要带上 */
-    let turnLorebook: WorldBookReport | undefined;
 
     /*
      * 三来源世界书（Phase 8）：全局 + 角色卡 + 当前聊天。
@@ -1378,6 +1248,10 @@ export function ChatScreen({
       const assembled = assemble({
         card: promptCard,
         ...(Object.keys(lorebooks).length > 0 ? { lorebooks } : {}),
+        // 世界书时效：sticky / cooldown / delay 的轮次记录，上一轮的结果原样带回来
+        ...(Object.keys(lorebookTimingRef.current).length > 0
+          ? { lorebookTiming: lorebookTimingRef.current }
+          : {}),
         history,
         seed,
         maxContext: DEFAULT_MAX_CONTEXT,
@@ -1395,9 +1269,10 @@ export function ChatScreen({
         ...(mode ? { mode } : {}),
         budget: planBudget(DEFAULT_MAX_CONTEXT, DEFAULT_RESPONSE_TOKENS),
       });
-      // 记下这一轮实际用的模式和世界书注入情况，报告里要带上
+      // 记下这一轮实际用的回合模式
       turnMode = assembled.mode;
-      turnLorebook = assembled.budget.lorebook;
+      // 时效状态每轮都由组装结果刷新，冷却按轮数倒数
+      lorebookTimingRef.current = assembled.lorebookTiming;
       return assembled;
     };
 
@@ -1520,6 +1395,14 @@ export function ChatScreen({
             );
           } else if (frame.type === "tool") {
             absorbToolCall(calls, frame);
+          } else if (frame.type === "done") {
+            /*
+             * 上游在收尾帧带 usage：这是唯一的真实记账。
+             * prompt tokens 已越过压缩阈值就直接压，不等 meta 里那份估算兜底。
+             */
+            if (frame.usage && frame.usage.promptTokens >= summarizeThresholdFor(DEFAULT_MAX_CONTEXT)) {
+              needsSummarizeRef.current = true;
+            }
           } else if (frame.type === "meta") {
             needsSummarizeRef.current = frame.needsSummarize;
             // 服务端路径下导演计划在前端看不到，状态变化只能随 meta 回传
@@ -1582,6 +1465,9 @@ export function ChatScreen({
               card: { ...card, attachments: runtimeAttachmentsRef.current },
               // 三来源世界书：和服务端直连路径用同一份原料，两条路结果一致
               ...(Object.keys(lorebooks).length > 0 ? { lorebooks } : {}),
+              ...(Object.keys(lorebookTimingRef.current).length > 0
+                ? { lorebookTiming: lorebookTimingRef.current }
+                : {}),
               history,
               seed,
               maxContext: DEFAULT_MAX_CONTEXT,
@@ -1740,149 +1626,25 @@ export function ChatScreen({
       }
     } finally {
       /*
-       * 注意：这里先不关 streaming。
-       * 质量门和自动修复都还在这一轮里，界面上应该继续显示阶段提示
-       * （「正在修正格式」），直到这一轮真的落地或被拒收。
+       * 酒馆式直出：模型回什么就落什么，不再跑质量门，也不再有修复调用。
+       * 输出质量交给提示词负责；空回复（玩家中断、上游没吐字）不算一轮，
+       * 走下面 wrote=false 的分支把被替换的旧回复放回去。
        */
-      const known = knownCast(baseTurns, card.name, journalRef.current);
-      const validateOptions = {
-        cardName: card.name,
-        userName,
-        knownCharacters: known,
-        playerInput: userMessage,
-        previousReply: lastAssistantReply(baseTurns),
-        // 角色声音（Phase 9）：有档案才检查对白有没有违背声明的禁令
-        ...(card.voice ? { voice: card.voice } : {}),
-      };
-      const qualityGateEnabled = config.qualityGate && !qualityGateOverrideRef.current;
-      let validation = qualityGateEnabled
-        ? validateResponseBlocks(replyText, validateOptions)
-        : bypassResponseValidation(replyText);
-      let report = reportForValidation(validation, {
-        raw: replyText,
-        ...validateOptions,
-        qualityGateEnabled,
-        turn: turnRef.current + 1,
-        providerId: config.providerId,
-        model: chatRoute.model,
-        latencyMs: performance.now() - startedAt,
-        ...(turnMode ? { mode: turnMode } : {}),
-        ...(turnLorebook ? { lorebook: turnLorebook } : {}),
-      });
-      let result = resolveGeneration(validation, { report });
-
-      /*
-       * Phase 2：自动修复，每轮最多一次。
-       *
-        * 只有硬错误才值得修（软错误 Phase 1 已经就地降级了）。修复只改格式和
-        * 叙述分工，不重写剧情；修复结果直接落地，不再重复触发质量门。
-       * 不循环：第二次修复很容易引入新问题，代价比让玩家重生成更高。
-       */
-      let repairAttempted = false;
-      let repairNote = "";
-      if (replyText.trim() && result.status === "rejected" && !controller.signal.aborted) {
-        repairAttempted = true;
-        enterStage("repair");
-        /*
-         * 修复期间先把没通过校验的正文从画面上撤掉。
-         * 让玩家先读到一版错的、再眼睁睁看它被换掉，比直接等修复结果更糟；
-         * 屏幕上只剩「正在修正格式」，修好之后直接出现修好的版本。
-         */
-        setTurns((prev) =>
-          prev.map((turn) => (turn.id === assistantId ? { ...turn, content: "" } : turn)),
-        );
-        const repaired = await requestRepair({
-          candidate: replyText,
-          playerInput: playerText(userTurn.outboundContent ?? userTurn.content),
-          cardName: card.name,
-          knownCharacters: known,
-          issues: validation.hardIssues,
-          signal: controller.signal,
-          local,
-          directEndpoint,
-        });
-        if (repaired.text) {
-          // 修复结果仍必须走同一套质量门；只有二次校验通过或可降级时才允许落地。
-          const nextValidation = qualityGateEnabled
-            ? validateResponseBlocks(repaired.text, validateOptions)
-            : bypassResponseValidation(repaired.text);
-          const nextResult = resolveGeneration(nextValidation, {
-            report: reportForValidation(nextValidation, {
-              raw: repaired.text,
-              ...validateOptions,
-              qualityGateEnabled,
-              turn: turnRef.current + 1,
-              providerId: config.providerId,
-              model: chatRoute.model,
-              latencyMs: performance.now() - startedAt,
-              repair: { attempted: true, succeeded: nextValidation.decision !== "rejected" },
-              ...(turnLorebook ? { lorebook: turnLorebook } : {}),
-            }),
-          });
-          validation = nextValidation;
-          report = {
-            ...nextResult.report,
-            repairAttempted: true,
-            repairSucceeded: nextResult.status !== "rejected",
-          };
-          result = nextResult;
-          if (nextResult.status !== "rejected") {
-            replyText = nextResult.content;
-            setTurns((prev) =>
-              prev.map((turn) =>
-                turn.id === assistantId ? { ...turn, content: nextResult.content } : turn,
-              ),
-            );
-          } else {
-            repairNote = nextResult.reason;
-          }
-        } else {
-          repairNote = repaired.note;
-          report = { ...report, repairAttempted: true, repairSucceeded: false, repairNote };
-        }
-        setGenerationStage(null);
+      if (devEnabled && inspectorRef.current) {
+        // 提示词结构单独记（Phase 10）：它带着正文，只在内存里
+        recordInspector(inspectorRef.current);
       }
-
-      if (devEnabled) {
-        recordReport(report);
-        logReport(report, reportLog().length - 1);
-        // 提示词结构单独记（Phase 10）：它带着正文，和只存计数的报告分开放
-        if (inspectorRef.current) recordInspector(inspectorRef.current);
-      }
-
-      // 拒收：不落地、不持久化、不推轮次，把画面恢复到这一轮开始之前。
-      if (replyText.trim() && result.status === "rejected") {
-        setStreaming(false);
-        abortRef.current = null;
-        setTurns(baseTurns);
-        persist(baseTurns);
-        // 玩家主动中断的不弹「没通过校验」，那不是模型的错
-        if (!controller.signal.aborted) {
-          setRejected({
-            reason: result.reason,
-            userText: userMessage,
-            image,
-            document,
-            baseTurns,
-            repairAttempted,
-            repairNote,
-          });
-        }
-        return;
-      }
-      setRejected(null);
-      setQualityPassed(qualityGateEnabled && result.status !== "rejected");
 
       /*
        * 落地。写入规则本身在 lib/engine/history.ts 里，纯函数、有测试：
-       * 拒收时它返回的数组里根本没有这一轮，调用方想污染历史也污染不了。
+       * 空内容它不会写成一轮，调用方想污染历史也污染不了。
        */
       const carried = carrySwipesRef.current;
       carrySwipesRef.current = null;
       const committed = commitTurn(
         baseTurns,
         { user: userTurn, assistant: { id: assistantId, role: "assistant", content: "" } },
-        result,
+        { status: "accepted", content: replyText },
       );
       // 空回复（被玩家中断、上游没吐字）不算一轮，恢复被替换掉的那条旧回复
       const wrote = committed.written && committed.content.length > 0;
@@ -1992,96 +1754,13 @@ export function ChatScreen({
         turn: turnRef.current,
         updatedAt: Date.now(),
       });
-      // 压一次历史。放在这里而不是流中途，免得拖慢首字时间
+      /*
+       * 压一次历史。放在这里而不是流中途，免得拖慢首字时间。
+       * 触发判据有二：组装时按估算算出的 needsSummarize（拿不到 usage 的路径），
+       * 以及上面收尾帧里用真实 usage 做出的判断。
+       */
       if (needsSummarizeRef.current) void summarizeNow(finalTurns);
     }
-  }
-
-  /**
-   * 发一次修复请求。
-   *
-   * 只给候选正文、玩家这一句和合法人名，不重发聊天历史：
-   * 历史会让模型把「接着写」当成任务，也会把旧错误带回来。
-   *
-   * 三条通道和正文生成保持一致（本机模型 / 浏览器直连 / 服务端 complete 模式）。
-   * 修复失败不抛错：拿不到文本就是「没修好」，交给上层拒收。
-   */
-  async function requestRepair(args: {
-    candidate: string;
-    playerInput: string;
-    cardName: string;
-    knownCharacters: string[];
-    issues: GenerationIssue[];
-    signal: AbortSignal;
-    local: boolean;
-    directEndpoint: string;
-  }): Promise<RepairOutcome> {
-    const messages = buildRepairMessages({
-      candidate: args.candidate,
-      playerInput: args.playerInput,
-      cardName: args.cardName,
-      knownCharacters: args.knownCharacters,
-      issues: args.issues,
-    });
-
-    let text = "";
-    try {
-      if (args.local) {
-        await streamBrowserChat({
-          messages,
-          temperature: 0.2,
-          signal: args.signal,
-          onDelta: (delta) => {
-            text += delta;
-          },
-        });
-      } else if (args.directEndpoint) {
-        await streamBrowserOpenAI({
-          endpoint: args.directEndpoint,
-          apiKey: cleanApiKey(config.apiKey).value,
-          model: chatRoute.model,
-          messages,
-          temperature: 0.2,
-          maxTokens: 1024,
-          signal: args.signal,
-          onEvent: (event) => {
-            if (event.type === "delta") text += event.text;
-          },
-        });
-      } else {
-        // 服务端 complete 模式：原样转发 messages，不组装、不记缓存统计
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...authHeaders(config.apiKey) },
-          signal: args.signal,
-          body: JSON.stringify({
-            mode: "complete",
-            providerId: config.providerId,
-            interfaceType: config.interfaceType,
-            model: chatRoute.model,
-            messages,
-            temperature: 0.2,
-            maxTokens: 1024,
-            ...(chatRoute.baseURL ? { baseURL: chatRoute.baseURL } : {}),
-          }),
-        });
-        if (!response.ok || !response.body) {
-          return { attempted: true, text: null, note: `修复请求失败（HTTP ${response.status}）` };
-        }
-        text = await readSseText(response.body);
-      }
-    } catch (caught) {
-      if (args.signal.aborted) return { attempted: true, text: null, note: "修复被中断" };
-      return {
-        attempted: true,
-        text: null,
-        note: `修复请求失败：${caught instanceof Error ? caught.message : String(caught)}`,
-      };
-    }
-
-    const repaired = extractRepairedText(text);
-    if (!repaired) return { attempted: true, text: null, note: "修复模型没有返回内容" };
-    return { attempted: true, text: repaired, note: "" };
   }
 
   function cgStats(list: Turn[]) {
@@ -2266,11 +1945,11 @@ export function ChatScreen({
     factsRef.current = { characters: {}, places: {}, flags: {} };
     journalRef.current = emptyJournal();
     setPortraits({});
-    setRejected(null);
     // 重置会话等于回到开场，场景状态、剧情线和聊天世界书也要跟着回到起点
     sceneRef.current = emptySceneState();
     threadsRef.current = [];
     chatBookRef.current = undefined;
+    lorebookTimingRef.current = {};
     // 重置会话回到主线，分支也一起清掉
     branchTreeRef.current = { branches: [mainBranch()], messages: { [MAIN_BRANCH]: [] } };
     setBranches([mainBranch()]);
@@ -2298,35 +1977,12 @@ export function ChatScreen({
         : undefined;
     carrySwipesRef.current = null;
     carryTurnRef.current = null;
-    // 玩家直接说了新的一句，就等于放弃上一轮被拒收的那条
-    setRejected(null);
     setComposerReset((key) => key + 1);
     setAttachment(null);
     setSuggestions([]);
     const visible = userMessage || (document ? t("chat.fileOnly") : t("chat.imageOnly"));
     void runTurn(visible, turns, image, document);
     return true;
-  }
-
-  /**
-   * 重跑被拒收的那一轮。
-   *
-   * 从 rejected.baseTurns 重新开始，而不是从当前 turns——失败的那一版
-   * 从来没进过历史，重跑时必须把它当成不存在，否则错误内容会被当成上下文。
-   */
-  function retryRejected() {
-    const pending = rejected;
-    if (!pending || streaming || !memoryReadyRef.current) return;
-    setRejected(null);
-    setTurns(pending.baseTurns);
-    // 把上一版被拒收的原因当成临时作者注带进去：重新生成时最有用的信息就是「别再这样写」
-    void runTurn(
-      pending.userText,
-      pending.baseTurns,
-      pending.image,
-      pending.document,
-      correctionNote(pending.reason),
-    );
   }
 
   async function pickFile(file: File | undefined) {
@@ -2379,11 +2035,6 @@ export function ChatScreen({
 
   function regenerate() {
     if (streaming || !memoryReadyRef.current) return;
-    // 有被拒收的一轮时，「重新生成」指的是把它重跑一遍，而不是重跑上一条回复
-    if (rejected) {
-      retryRejected();
-      return;
-    }
     if (turns.length <= 1) {
       cycleGreeting();
       return;
@@ -2757,29 +2408,6 @@ export function ChatScreen({
         </div>
       ) : null}
 
-      {qualityPassed ? (
-        <div className="mx-auto mb-2 flex w-full max-w-[720px] items-center gap-2 rounded-card border border-line bg-surface-2 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-2">
-          <span className="min-w-0 flex-1">{t("chat.qualityPassed")}</span>
-          <button
-            type="button"
-            onClick={() => {
-              onDisableQualityGate();
-              setQualityPassed(false);
-            }}
-            className="shrink-0 text-[12px] text-ink-3 underline"
-          >
-            {t("chat.disableQualityGate")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setQualityPassed(false)}
-            className="shrink-0 text-[12px] text-ink-3 underline"
-          >
-            {t("common.close")}
-          </button>
-        </div>
-      ) : null}
-
       <ChatScroll
         ref={scrollRef}
         /* 顶栏浮在上面，正文要让开它的高度，否则第一条内容会被压在栏下。
@@ -2997,58 +2625,10 @@ export function ChatScreen({
               </Fragment>
             );
           })}
-          {/*
-            被拒收的那一轮：玩家那句话照常显示（他确实说了），
-            但下面没有回复，只有一行说明。它不在 turns 里，所以不会被发给模型。
-          */}
-          {rejected ? (
-            <div className="flex flex-col gap-1">
-              <PlayerBubble>
-                {rejected.image ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={rejected.image} alt="" className="mb-2 max-h-60 w-full rounded-md object-cover" />
-                ) : null}
-                <MarkdownText tone="bubble" text={rejected.userText} />
-              </PlayerBubble>
-            </div>
-          ) : null}
         </ChatColumn>
       </ChatScroll>
 
       <div className="shrink-0 px-4 pt-1.5 pb-4">
-        {rejected ? (
-          <div className="mx-auto mb-2 flex max-w-[660px] flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-danger-soft px-4 py-2.5 text-[13px] text-danger">
-            <span className="font-bold">{t("chat.rejected")}</span>
-            {/*
-              技术细节只给开发模式看：玩家只需要知道「这轮没成，要不要重来」。
-              修复失败的原因（是没修、还是修了仍不合格）留在 QA 面板里。
-            */}
-            {devEnabled ? (
-              <span className="min-w-0 flex-1 truncate text-[12px] opacity-80" title={rejected.reason}>
-                {rejected.repairAttempted ? "修复失败。" : "检测拒绝。"}
-              </span>
-            ) : null}
-            <button type="button" onClick={retryRejected} className="underline">
-              {t("chat.rejectedRetry")}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                qualityGateOverrideRef.current = true;
-                onDisableQualityGate();
-                setRejected(null);
-                void retryRejected();
-              }}
-              className="underline"
-            >
-              {t("chat.disableQualityGate")}
-            </button>
-            <button type="button" onClick={() => setRejected(null)} className="underline">
-              {t("chat.cancel")}
-            </button>
-          </div>
-        ) : null}
-
         {error ? (
           <div className="mx-auto mb-2 flex max-w-[660px] flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-danger-soft px-4 py-2.5 text-[13px] text-danger">
             <span className="font-bold">{error.message}</span>

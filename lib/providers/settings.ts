@@ -173,8 +173,6 @@ export interface ProviderConfig {
   image: ImageSettings;
   /** Automatic encrypted archive downloads, persisted in the same encrypted slot. */
   autoBackup: AutoBackupSettings;
-  /** Quality gate for generated message blocks and speaker names. */
-  qualityGate: boolean;
   /** Randomly wraps words in new player messages as marked UTF-8 Base64. */
   encodeUserMessageWords: boolean;
   /** Name used for the player in prompts and character-card previews. */
@@ -297,7 +295,6 @@ export function withImage(config: Partial<ProviderConfig> | null | undefined): P
     ),
     image: migrateImage(config.image),
     autoBackup: normalizeAutoBackupSettings(config.autoBackup),
-    qualityGate: config.qualityGate !== false,
     encodeUserMessageWords: config.encodeUserMessageWords === true,
     storySystems: {
       ...defaultStorySystemSettings(),
@@ -325,7 +322,6 @@ export function defaultProviderConfig(): ProviderConfig {
     vision: modelSeesImages(preset.models[0]),
     image: defaultImageSettings(),
     autoBackup: defaultAutoBackupSettings(),
-    qualityGate: true,
     encodeUserMessageWords: false,
     userName: DEFAULT_USER_NAME,
     storySystems: defaultStorySystemSettings(),

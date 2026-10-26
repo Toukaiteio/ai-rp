@@ -1,5 +1,5 @@
 import type { ChatMessage } from "@/lib/prompt/types";
-import type { ChatStreamEvent, ChatTool, ReasoningEffort } from "@/lib/providers/types";
+import type { ChatStreamEvent, ChatTool, ReasoningEffort, TokenUsage } from "@/lib/providers/types";
 
 export interface BrowserOpenAIRequest {
   endpoint: string;
@@ -39,6 +39,8 @@ export async function streamBrowserOpenAI(request: BrowserOpenAIRequest): Promis
       model: request.model,
       messages: attachImage(request.messages, request.image),
       stream: true,
+      // 与服务端适配器一致：让上游在最后一个 chunk 带 usage
+      stream_options: { include_usage: true },
       ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
       ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),
       ...(request.reasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}),
@@ -91,6 +93,7 @@ function consumeSse(buffer: string, onEvent: (event: ChatStreamEvent) => void): 
       .trim();
     if (!data || data === "[DONE]") continue;
     let chunk: {
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
       choices?: Array<{
         delta?: {
           content?: string | null;
@@ -108,6 +111,9 @@ function consumeSse(buffer: string, onEvent: (event: ChatStreamEvent) => void): 
     } catch {
       continue;
     }
+    const usage: TokenUsage | undefined = chunk.usage
+      ? { promptTokens: chunk.usage.prompt_tokens ?? 0, completionTokens: chunk.usage.completion_tokens ?? 0 }
+      : undefined;
     const choice = chunk.choices?.[0];
     if (choice?.delta?.content) onEvent({ type: "delta", text: choice.delta.content });
     for (const call of choice?.delta?.tool_calls ?? []) {
@@ -119,7 +125,9 @@ function consumeSse(buffer: string, onEvent: (event: ChatStreamEvent) => void): 
         arguments: call.function?.arguments,
       });
     }
-    if (choice?.finish_reason) onEvent({ type: "done", finishReason: choice.finish_reason });
+    if (choice?.finish_reason) {
+      onEvent({ type: "done", finishReason: choice.finish_reason, ...(usage ? { usage } : {}) });
+    }
   }
   return { rest };
 }

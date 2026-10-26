@@ -53,7 +53,30 @@ export interface WorldBookEntry {
   cascade?: boolean;
   /** false 则整条停用 */
   enabled?: boolean;
+  /**
+   * 激活后额外保持激活的轮数（酒馆 sticky）。期间不需要关键词再命中。
+   * 只对关键词条目生效，常驻条目本来就每轮都在。
+   */
+  sticky?: number;
+  /** sticky 窗口结束后多少轮内不能再激活（酒馆 cooldown） */
+  cooldown?: number;
+  /** 会话开始的头几轮不激活（酒馆 delay）。第 N 轮起才参与匹配。 */
+  delay?: number;
 }
+
+/** 一条世界书条目的时效记录：上次激活的轮次，以及 sticky 还剩几轮。 */
+export interface LorebookTimingEntry {
+  lastTurn: number;
+  stickyLeft: number;
+}
+
+/**
+ * 世界书时效状态，按 `${来源}#${条目在书内的序号}` 记。
+ *
+ * 序号是书在磁盘上的数组下标，改动一本书的条目顺序会让后续记录对错位——
+ * 和酒馆的 UID 行为一致，属已知取舍。三来源分开计数，互不影响。
+ */
+export type LorebookTimingState = Record<string, LorebookTimingEntry>;
 
 export interface WorldBook {
   name?: string;
@@ -142,11 +165,15 @@ export interface AssembleInput {
   card: CharacterCardCore;
   /** 世界书。简化版只有 keys/content/constant 也能跑 */
   lorebook?: WorldBook;
-  /**
-   * 三来源世界书（Phase 8）。给了就忽略 lorebook，按优先级合并三本。
+  /** 三来源世界书（Phase 8）。给了就忽略 lorebook，按优先级合并三本。
    * 只给其中一本也可以。
    */
   lorebooks?: LorebookSet;
+  /**
+   * 世界书时效状态（sticky / cooldown / delay 的轮次记录）。
+   * 上一轮 assemble 返回的 lorebookTiming 原样传回来。
+   */
+  lorebookTiming?: LorebookTimingState;
   /** 玩家扮演的角色设定，可选 */
   persona?: string;
   /** 完整历史，按时间正序。组装器自己决定丢什么 */
@@ -269,4 +296,6 @@ export interface AssembleResult {
    * 不影响发给模型的内容，也不参与前缀指纹。
    */
   inspector: PromptInspector;
+  /** 本轮结束后的世界书时效状态，调用方原样带回下一轮 */
+  lorebookTiming: LorebookTimingState;
 }

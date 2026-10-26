@@ -20,15 +20,10 @@ describe("Prompt Inspector 面板", () => {
     expect(html).not.toContain("激活的世界书条目");
   });
 
-  it("开发面板有检查结果和提示词结构两个页签", () => {
+  it("开发面板只渲染提示词结构视图", () => {
     const html = renderToStaticMarkup(<DevReportPanel open onClose={() => {}} />);
-    expect(html).toContain("检查结果");
     expect(html).toContain("提示词结构");
-  });
-
-  it("默认停在检查结果页签", () => {
-    const html = renderToStaticMarkup(<DevReportPanel open onClose={() => {}} />);
-    expect(html).toContain("还没有生成记录");
+    expect(html).not.toContain("检查结果");
   });
 });
 

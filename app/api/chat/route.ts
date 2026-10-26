@@ -9,6 +9,7 @@ import {
   emptyKeyFacts,
   mergeFacts,
   parseFactsPayload,
+  summaryOverBudget,
   type AssembleInput,
   type ChatMessage,
   type KeyFacts,
@@ -66,6 +67,8 @@ interface ChatRequestBody {
     lorebook?: AssembleInput["lorebook"];
     /** 三来源世界书（Phase 8）。给了就忽略 lorebook */
     lorebooks?: AssembleInput["lorebooks"];
+    /** 世界书时效状态，上一轮 assemble 返回的原样带回来 */
+    lorebookTiming?: AssembleInput["lorebookTiming"];
     persona?: string;
     history: ChatMessage[];
     seed: number;
@@ -241,6 +244,7 @@ function parseBody(raw: unknown): ParsedRequest {
       lorebook: context.lorebook as AssembleInput["lorebook"],
       // 三来源世界书（Phase 8）：浏览器把三本一起送上来，服务端合并匹配
       lorebooks: context.lorebooks as AssembleInput["lorebooks"],
+      lorebookTiming: context.lorebookTiming as AssembleInput["lorebookTiming"],
       persona: asString(context.persona),
       history,
       // seed 必须是数字。它是概率条目与摘要判定的确定性依据，
@@ -616,11 +620,14 @@ export async function PUT(request: Request): Promise<Response> {
   const compressedCount =
     typeof raw.compressedCount === "number" ? raw.compressedCount : 0;
   const { prose, facts: extracted } = parseFactsPayload(text);
-  const summary = applySummary(
-    { text: previous, coveredIndex: 0, compressedCount },
-    prose,
-    coveredIndex,
-  );
+  // 摘要超预算的这一轮改为「合并压缩」：整体重写成有界的一份，不再追加
+  const summary = summaryOverBudget(previous)
+    ? { text: prose, coveredIndex, compressedCount: compressedCount + 1 }
+    : applySummary(
+        { text: previous, coveredIndex: 0, compressedCount },
+        prose,
+        coveredIndex,
+      );
   const facts = mergeFacts(
     sanitizeIncomingFacts(raw.facts),
     extracted,

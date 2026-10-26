@@ -181,6 +181,94 @@ describe("世界书：三来源（第二阶段）", () => {
   });
 });
 
+describe("世界书：时效（sticky / cooldown / delay）", () => {
+  const book: WorldBook = {
+    entries: [{ keys: ["姜茶"], content: "灶上温着姜茶。", position: "after_char" }],
+  };
+
+  it("delay：会话开头几轮不激活，第 N 轮起才参与匹配", () => {
+    const delayed: WorldBook = {
+      entries: [{ keys: ["姜茶"], content: "灶上温着姜茶。", delay: 2 }],
+    };
+    expect(match([{ source: "card", book: delayed }], { turn: 1 }).matched).toHaveLength(0);
+    expect(match([{ source: "card", book: delayed }], { turn: 2 }).matched).toHaveLength(1);
+  });
+
+  it("sticky：激活后窗口内不需要关键词再命中，窗口一过就断", () => {
+    const sticky: WorldBook = {
+      entries: [{ keys: ["姜茶"], content: "灶上温着姜茶。", sticky: 2 }],
+    };
+    // 第 0 轮关键词命中，窗口覆盖第 1、2 轮
+    const first = match([{ source: "card", book: sticky }], { turn: 0 });
+    expect(first.matched).toHaveLength(1);
+    expect(first.timing["card#0"]).toEqual({ lastTurn: 0, stickyLeft: 2 });
+
+    const silent: ChatMessage[] = [{ role: "user", content: "换个话题。" }];
+    const renewed = matchWorldBook({
+      books: [{ source: "card", book: sticky }],
+      history: silent,
+      userMessage: "换个话题。",
+      seed: 7,
+      turn: 2,
+      timing: first.timing,
+    });
+    expect(renewed.matched).toHaveLength(1);
+    // 续期不刷新窗口，不然它会自己续命下去
+    expect(renewed.timing["card#0"]).toEqual({ lastTurn: 0, stickyLeft: 2 });
+
+    const expired = matchWorldBook({
+      books: [{ source: "card", book: sticky }],
+      history: silent,
+      userMessage: "换个话题。",
+      seed: 7,
+      turn: 3,
+      timing: first.timing,
+    });
+    expect(expired.matched).toHaveLength(0);
+  });
+
+  it("cooldown：窗口结束后再压几轮，期间关键词命中也不注入", () => {
+    const cooled: WorldBook = {
+      entries: [{ keys: ["姜茶"], content: "灶上温着姜茶。", cooldown: 2 }],
+    };
+    const first = match([{ source: "card", book: cooled }], { turn: 0 });
+    expect(first.matched).toHaveLength(1);
+
+    const again = matchWorldBook({
+      books: [{ source: "card", book: cooled }],
+      history: HISTORY,
+      userMessage: "来杯姜茶。",
+      seed: 7,
+      turn: 2,
+      timing: first.timing,
+    });
+    expect(again.matched).toHaveLength(0);
+
+    const freed = matchWorldBook({
+      books: [{ source: "card", book: cooled }],
+      history: HISTORY,
+      userMessage: "来杯姜茶。",
+      seed: 7,
+      turn: 3,
+      timing: first.timing,
+    });
+    expect(freed.matched).toHaveLength(1);
+  });
+
+  it("常驻条目不吃时效，没有时效字段的书也不产生状态", () => {
+    const constantBook: WorldBook = {
+      entries: [{ keys: [], content: "常驻油灯。", constant: true, delay: 5, cooldown: 5 }],
+    };
+    const result = match([{ source: "card", book: constantBook }], { turn: 0 });
+    expect(result.matched).toHaveLength(1);
+    expect(result.timing).toEqual({});
+
+    const plain = match([{ source: "card", book }], { turn: 4 });
+    expect(plain.matched).toHaveLength(1);
+    expect(plain.timing).toEqual({});
+  });
+});
+
 describe("世界书：组装器里的位置与缓存", () => {
   const card: AssembleInput["card"] = {
     name: "林晚晴",

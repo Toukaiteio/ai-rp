@@ -163,7 +163,21 @@ export function parseCharacterCard(raw: unknown): ParseResult {
     extensions[UNMAPPED_KEY] = unmapped;
   }
   const local = isRecord(extensions._local) ? { ...extensions._local } : {};
-  const importedPortrait = portraitUrl(body.avatar_url) ?? portraitUrl(body.avatar) ?? portraitUrl(body.image);
+  // V3 卡（chara_card_v3）的 assets 列表：icon 条目当头像用，整份 assets 照旧留在 unmapped 里
+  const v3Icon = Array.isArray(body.assets)
+    ? body.assets.find(
+        (asset): asset is { type: string; uri: string } =>
+          isRecord(asset) &&
+          typeof asset.uri === "string" &&
+          asset.uri.length > 0 &&
+          (asset.type === "icon" || asset.type === "avatar"),
+      )
+    : undefined;
+  const importedPortrait =
+    portraitUrl(body.avatar_url) ??
+    portraitUrl(body.avatar) ??
+    portraitUrl(body.image) ??
+    portraitUrl(v3Icon?.uri);
   if (!local.portrait && !local.portraitUrl && importedPortrait) local.portraitUrl = importedPortrait;
   if (Object.keys(local).length > 0) extensions._local = local;
 

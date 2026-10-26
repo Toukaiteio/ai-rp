@@ -54,13 +54,18 @@ function parseJson(text: string): unknown {
 }
 
 /**
- * 拆出卡数据。不是角色卡 PNG、或里面没有 chara 块时返回 null，
+ * 拆出卡数据。不是角色卡 PNG、或里面没有 chara / ccv3 块时返回 null，
  * 由调用方决定报什么错。
+ *
+ * V3 卡把 JSON 放进 keyword 为 ccv3 的 tEXt（酒馆 V3 规范），两块都在时
+ * ccv3 优先——它是更新的规范，字段更全；只有 chara 的旧卡走原路。
  */
 export function extractCardJson(bytes: Uint8Array): unknown | null {
   if (!hasSignature(bytes)) return null;
 
   let offset = PNG_SIGNATURE.length;
+  let fromChara: unknown = null;
+  let hasChara = false;
   while (offset + CHUNK_HEADER <= bytes.length) {
     const length = readUint32BE(bytes, offset);
     const type = decodeLatin1(bytes.subarray(offset + 4, offset + CHUNK_HEADER));
@@ -73,18 +78,20 @@ export function extractCardJson(bytes: Uint8Array): unknown | null {
       const split = data.indexOf(0);
       if (split > 0) {
         const keyword = decodeLatin1(data.subarray(0, split));
-        if (keyword === "chara") {
+        if (keyword === "chara" || keyword === "ccv3") {
           const payload = data.subarray(split + 1);
           // 规范是 base64。base64 只含 ASCII，按 latin1 解出来就是原文；
           // 少数卡直接把 JSON 塞进来，那得按 UTF-8 解，两条路分开走才不会互相污染。
           const decoded = base64ToText(decodeLatin1(payload));
-          if (decoded !== null) {
-            const fromBase64 = parseJson(decoded);
-            if (fromBase64 !== null) return fromBase64;
+          const parsed = decoded !== null ? parseJson(decoded) : null;
+          const raw = parsed ?? parseJson(new TextDecoder().decode(payload));
+          if (raw !== null) {
+            if (keyword === "ccv3") return raw;
+            fromChara = raw;
+            hasChara = true;
+          } else if (keyword === "chara") {
+            return null;
           }
-          const raw = parseJson(new TextDecoder().decode(payload));
-          if (raw !== null) return raw;
-          return null;
         }
       }
     }
@@ -93,5 +100,5 @@ export function extractCardJson(bytes: Uint8Array): unknown | null {
     if (type === "IEND") break;
   }
 
-  return null;
+  return hasChara ? fromChara : null;
 }

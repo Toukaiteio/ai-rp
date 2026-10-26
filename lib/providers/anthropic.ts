@@ -6,7 +6,7 @@ import type {
   Tool,
 } from "@anthropic-ai/sdk/resources/messages";
 import type { ChatMessage } from "@/lib/prompt/types";
-import { DEFAULT_CHAT_MAX_TOKENS, type ChatStreamEvent, type ChatTool, type ProviderAdapter } from "./types";
+import { DEFAULT_CHAT_MAX_TOKENS, type ChatStreamEvent, type ChatTool, type ProviderAdapter, type TokenUsage } from "./types";
 
 export interface AnthropicAdapterOptions {
   apiKey: string;
@@ -29,6 +29,8 @@ async function* toEvents(
   let sawFinish = false;
   const toolIndices = new Map<number, number>();
   let nextToolIndex = 0;
+  // usage 分两处来：message_start 给输入，message_delta 给输出，done 时合在一起
+  let usage: TokenUsage | undefined;
 
   const toolIndexFor = (blockIndex: number): number => {
     const existing = toolIndices.get(blockIndex);
@@ -40,6 +42,11 @@ async function* toEvents(
   };
 
   for await (const event of stream) {
+    if (event.type === "message_start") {
+      usage = { promptTokens: event.message.usage?.input_tokens ?? 0, completionTokens: 0 };
+      continue;
+    }
+
     if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
       yield {
         type: "tool",
@@ -65,12 +72,18 @@ async function* toEvents(
 
     if (event.type === "message_delta" && event.delta.stop_reason && !sawFinish) {
       sawFinish = true;
-      yield { type: "done", finishReason: event.delta.stop_reason };
+      if (event.usage) {
+        usage = {
+          promptTokens: usage?.promptTokens ?? 0,
+          completionTokens: event.usage.output_tokens ?? 0,
+        };
+      }
+      yield { type: "done", finishReason: event.delta.stop_reason, ...(usage ? { usage } : {}) };
     }
   }
 
   if (!sawFinish) {
-    yield { type: "done", finishReason: "stop" };
+    yield { type: "done", finishReason: "stop", ...(usage ? { usage } : {}) };
   }
 }
 

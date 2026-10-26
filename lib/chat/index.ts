@@ -44,3 +44,13 @@ export {
   type EncodedUserMessage,
   type EncodeUserMessageOptions,
 } from "./user-message-encoding";
+export {
+  absorbToolCall,
+  historyContent,
+  markPlayer,
+  playerText,
+  userTurnsAsMessages,
+  type ChatError,
+  type PendingTool,
+  type Turn,
+} from "./turn";

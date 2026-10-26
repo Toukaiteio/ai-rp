@@ -172,10 +172,6 @@ export function AppShell() {
     updateConfig({ ...config, userName });
   }, [config, updateConfig]);
 
-  const disableQualityGate = useCallback(() => {
-    updateConfig({ ...config, qualityGate: false });
-  }, [config, updateConfig]);
-
   /** 导出 / 导入走的是一个加密整包，密钥就是解锁用的那个。 */
   const exportArchive = useCallback(async (automatic: boolean) => {
     setArchiveBusy(true);
@@ -345,7 +341,6 @@ export function AppShell() {
           config={config}
           userName={config.userName}
           onUserNameChange={(next) => updateConfig({ ...config, userName: next })}
-          onDisableQualityGate={disableQualityGate}
           onOpenSettings={() => {
             setSettingsReturnScreen("chat");
             setScreen("settings");
