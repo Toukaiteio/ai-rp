@@ -122,7 +122,8 @@ import {
   type ChatBranch,
   type StaleReport,
 } from "@/lib/chat";
-import { findProvider, presetChat } from "@/lib/providers/config";
+import { presetChat } from "@/lib/providers/config";
+import { resolveBaseURL } from "@/lib/providers/validate";
 import {
   canSend,
   imageProviderId,
@@ -157,7 +158,10 @@ import {
   buildDirectorMessages,
   defaultCost,
   DIRECTOR_MAX_TOKENS,
+  DEFAULT_MAX_CONTEXT,
+  DEFAULT_RESPONSE_TOKENS,
   formatTurnPlan,
+  insertBeforeCurrentUser,
   parseTurnPlan,
   planBudget,
   shouldPlanTurn,
@@ -1376,6 +1380,7 @@ export function ChatScreen({
         ...(Object.keys(lorebooks).length > 0 ? { lorebooks } : {}),
         history,
         seed,
+        maxContext: DEFAULT_MAX_CONTEXT,
         turn: turnRef.current,
         summary: summaryRef.current ?? undefined,
         facts: factsRef.current,
@@ -1384,11 +1389,11 @@ export function ChatScreen({
         userName,
         ...(temporaryNote ? { temporaryNote } : {}),
         // 场景状态：有就带上，每个字段会标出可信度
-         ...(storySystems.events && !isEmptySceneState(sceneRef.current) ? { sceneState: sceneRef.current } : {}),
+        ...(storySystems.events && !isEmptySceneState(sceneRef.current) ? { sceneState: sceneRef.current } : {}),
         // 剧情线：给完整列表，由组装器按策略挑几条注入，不是全部塞进去
-         ...(storySystems.goals && threadsRef.current.length ? { storyThreads: threadsRef.current } : {}),
+        ...(storySystems.goals && threadsRef.current.length ? { storyThreads: threadsRef.current } : {}),
         ...(mode ? { mode } : {}),
-        budget: planBudget(16_000, 1024),
+        budget: planBudget(DEFAULT_MAX_CONTEXT, DEFAULT_RESPONSE_TOKENS),
       });
       // 记下这一轮实际用的模式和世界书注入情况，报告里要带上
       turnMode = assembled.mode;
@@ -1404,8 +1409,8 @@ export function ChatScreen({
     let directorPlanText = "";
     let planningAttempted = false;
     if (!local && !serverOnlyInterface) {
-      const preset = findProvider(config.providerId);
-      const baseURL = config.providerId === "custom" ? config.baseURL : preset?.baseURL ?? "";
+      const resolvedEndpoint = resolveBaseURL(config.providerId, config.baseURL);
+      const baseURL = "baseURL" in resolvedEndpoint ? resolvedEndpoint.baseURL : "";
       try {
         directEndpoint = browserChatEndpoint(baseURL);
         const assembled = assembleFor();
@@ -1448,10 +1453,10 @@ export function ChatScreen({
             // 导演看过完整聊天记录，它给的 mode 比只看玩家这一句的推断准。
             // 回合层是按 mode 拼的，所以覆盖之后要重新组装一次（纯函数，很便宜）。
             const base = plan.mode ? assembleFor(plan.mode) : assembled;
-            directMessages = [
-              ...base.messages,
-              { role: "system", content: formatTurnPlan(plan) },
-            ];
+            directMessages = insertBeforeCurrentUser(base.messages, {
+              role: "system",
+              content: formatTurnPlan(plan),
+            });
             /*
              * 导演计划是组装之后才拼上的（它由模型现场生成，组装时还不存在），
              * 所以面板要单独补这一条——否则 Inspector 显示的就不是最终发出去的那份。
@@ -1534,8 +1539,11 @@ export function ChatScreen({
               model: chatRoute.model,
               messages: directMessages,
               temperature: config.temperature,
-              maxTokens: 1024,
-               tools: allowTools ? [...MEMORY_TOOLS, DICE_TOOL, ...ATTACHMENT_TOOLS] : undefined,
+              maxTokens: DEFAULT_RESPONSE_TOKENS,
+              ...(config.reasoningEnabled
+                ? { reasoningEffort: config.reasoningEffort ?? "high" }
+                : {}),
+              tools: allowTools ? [...MEMORY_TOOLS, DICE_TOOL, ...ATTACHMENT_TOOLS] : undefined,
               image: outboundImage,
               signal: controller.signal,
               onEvent: (event) => handleEvent(event),
@@ -1561,6 +1569,9 @@ export function ChatScreen({
             interfaceType: config.interfaceType,
             model: chatRoute.model,
             temperature: config.temperature,
+            ...(config.reasoningEnabled
+              ? { reasoningEffort: config.reasoningEffort ?? "high" }
+              : {}),
             ...(chatRoute.baseURL ? { baseURL: chatRoute.baseURL } : {}),
             sessionId,
              tools: allowTools,
@@ -1573,6 +1584,7 @@ export function ChatScreen({
               ...(Object.keys(lorebooks).length > 0 ? { lorebooks } : {}),
               history,
               seed,
+              maxContext: DEFAULT_MAX_CONTEXT,
               turn: turnRef.current,
               summary: summaryRef.current ?? undefined,
               facts: factsRef.current,

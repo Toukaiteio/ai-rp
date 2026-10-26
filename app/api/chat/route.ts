@@ -1,6 +1,8 @@
 import {
   assemble,
   cacheStatsFor,
+  DEFAULT_MAX_CONTEXT,
+  DEFAULT_RESPONSE_TOKENS,
   planBudget,
   applySummary,
   buildSummarizeMessages,
@@ -16,6 +18,7 @@ import {
   buildDirectorMessages,
   DIRECTOR_MAX_TOKENS,
   formatTurnPlan,
+  insertBeforeCurrentUser,
   parseTurnPlan,
   shouldPlanTurn,
   type TurnPlan,
@@ -25,7 +28,9 @@ import {
   isInsecureBaseURL,
   resolveBaseURL,
   toChatError,
+  isReasoningEffort,
   type ChatErrorInfo,
+  type ReasoningEffort,
 } from "@/lib/providers";
 import { isChatImage } from "@/lib/chat-image";
 import { cleanApiKey, headerSafeValue } from "@/lib/providers/apikey";
@@ -50,9 +55,6 @@ export const maxDuration = 300;
 
 /** 单次上游请求的超时。 */
 const UPSTREAM_TIMEOUT_MS = 120_000;
-/** 给回复预留的 token，算预算时先扣掉。 */
-const RESPONSE_TOKENS = 1024;
-
 interface ChatRequestBody {
   providerId: string;
   model: string;
@@ -83,6 +85,7 @@ interface ChatRequestBody {
   };
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: ReasoningEffort;
   baseURL?: string;
   /** 会话标识，用于按会话统计缓存命中率 */
   sessionId?: string;
@@ -108,7 +111,7 @@ interface CompleteRequestBody {
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
-  reasoningEffort?: "low" | "medium" | "high";
+  reasoningEffort?: ReasoningEffort;
   baseURL?: string;
 }
 
@@ -154,6 +157,11 @@ function parseMessages(value: unknown): ChatMessage[] | null {
   return messages.length === value.length ? messages : null;
 }
 
+function parseReasoningEffort(value: unknown): ReasoningEffort | undefined | null {
+  if (value === undefined) return undefined;
+  return isReasoningEffort(value) ? value : null;
+}
+
 function parseBody(raw: unknown): ParsedRequest {
   if (!isRecord(raw)) return { error: "请求体必须是 JSON 对象" };
 
@@ -167,9 +175,9 @@ function parseBody(raw: unknown): ParsedRequest {
   if (raw.mode === "complete") {
     const messages = parseMessages(raw.messages);
     if (!messages || messages.length === 0) return { error: "messages 为空" };
-    const reasoningEffort = raw.reasoningEffort;
-    if (reasoningEffort !== undefined && reasoningEffort !== "low" && reasoningEffort !== "medium" && reasoningEffort !== "high") {
-      return { error: "reasoningEffort 必须是 low、medium 或 high" };
+    const reasoningEffort = parseReasoningEffort(raw.reasoningEffort);
+    if (reasoningEffort === null) {
+      return { error: "reasoningEffort 必须是 low、medium、high、xhigh 或 max" };
     }
     return {
       kind: "complete",
@@ -200,6 +208,11 @@ function parseBody(raw: unknown): ParsedRequest {
 
   const history = parseMessages(context.history);
   if (!history) return { error: "context.history 中存在无法识别的消息" };
+
+  const reasoningEffort = parseReasoningEffort(raw.reasoningEffort);
+  if (reasoningEffort === null) {
+    return { error: "reasoningEffort 必须是 low、medium、high、xhigh 或 max" };
+  }
 
   return {
     kind: "chat",
@@ -254,6 +267,7 @@ function parseBody(raw: unknown): ParsedRequest {
     },
     temperature: typeof raw.temperature === "number" ? raw.temperature : undefined,
     maxTokens: typeof raw.maxTokens === "number" ? raw.maxTokens : undefined,
+    reasoningEffort,
     baseURL: asString(raw.baseURL),
     sessionId: asString(raw.sessionId),
     tools: raw.tools !== false,
@@ -329,8 +343,8 @@ export async function POST(request: Request): Promise<Response> {
 
   /* ---------------- 服务端组装 ---------------- */
 
-  const maxContext = context.maxContext ?? 16_000;
-  const budget = planBudget(maxContext, RESPONSE_TOKENS);
+  const maxContext = context.maxContext ?? DEFAULT_MAX_CONTEXT;
+  const budget = planBudget(maxContext, DEFAULT_RESPONSE_TOKENS);
 
   const {
     messages: assembledMessages,
@@ -381,7 +395,7 @@ export async function POST(request: Request): Promise<Response> {
       mode = plan.mode;
       messages = assemble({ ...context, mode, budget }).messages;
     }
-    messages = [...messages, { role: "system", content: formatTurnPlan(plan) }];
+    messages = insertBeforeCurrentUser(messages, { role: "system", content: formatTurnPlan(plan) });
   };
 
   const providedPlan = body.planning === false && body.directorPlanText
@@ -423,7 +437,8 @@ export async function POST(request: Request): Promise<Response> {
       messages,
       model: body.model,
       temperature: body.temperature,
-      maxTokens: body.maxTokens,
+      maxTokens: body.maxTokens ?? DEFAULT_RESPONSE_TOKENS,
+      reasoningEffort: body.reasoningEffort,
       signal: controller.signal,
        ...(body.tools === false ? {} : { tools: [...MEMORY_TOOLS, DICE_TOOL, ...ATTACHMENT_TOOLS] }),
       ...(body.image ? { image: body.image } : {}),

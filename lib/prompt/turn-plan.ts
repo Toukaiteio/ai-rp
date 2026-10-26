@@ -49,6 +49,20 @@ export interface DirectorMessagesOptions {
   eventAfterTurns?: number;
 }
 
+/** 把回合级 system 消息插到当前用户输入之前，保持用户消息位于请求末尾。 */
+export function insertBeforeCurrentUser(
+  messages: ChatMessage[],
+  message: ChatMessage,
+): ChatMessage[] {
+  const currentUserIndex = [...messages].findLastIndex((item) => item.role === "user");
+  if (currentUserIndex < 0) return [...messages, message];
+  return [
+    ...messages.slice(0, currentUserIndex),
+    message,
+    ...messages.slice(currentUserIndex),
+  ];
+}
+
 /**
  * 导演阶段顺带做状态提取的说明（5.2 的第一版做法）。
  *
@@ -132,8 +146,12 @@ export function shouldPlanTurn(
   return systems?.events !== false || systems?.goals !== false;
 }
 
-/** 导演阶段的输出上限。状态和剧情线都在同一份 JSON 里，420 会把尾部截断。 */
-export const DIRECTOR_MAX_TOKENS = 700;
+/**
+ * 导演阶段的输出上限。状态和剧情线都在同一份 JSON 里，太小会把尾部截断。
+ * 推理模型会先烧掉一大段 reasoning 再写 JSON，几千的余量对它们都不够，
+ * 所以这里只当余量上限用：非推理模型输出完就停，不会真的花这么多。
+ */
+export const DIRECTOR_MAX_TOKENS = 65536;
 
 /** 把原始聊天记录包装成导演阶段的 system + user 消息。 */
 export function buildDirectorMessages(

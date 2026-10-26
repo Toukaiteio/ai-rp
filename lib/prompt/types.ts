@@ -157,6 +157,8 @@ export interface AssembleInput {
    * 否则同样输入两次会得到不同输出，前缀就不稳定了。
    */
   seed: number;
+  /** 上下文窗口，用于按比例决定何时开始增量摘要。 */
+  maxContext?: number;
   /** 已经跑过的轮次，用于 Author's Note 的频率判定 */
   turn?: number;
   summary?: RollingSummary;

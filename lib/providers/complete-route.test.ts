@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/chat/route";
+import { DIRECTOR_MAX_TOKENS } from "@/lib/prompt";
 import { getProvider, type ChatStreamEvent } from "@/lib/providers";
 
 vi.mock("@/lib/providers", async (importOriginal) => ({
@@ -35,11 +36,41 @@ describe("complete route translation parameters", () => {
     expect(getProvider).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 0 }));
   });
 
+  it.each(["xhigh", "max"] as const)("forwards the %s reasoning effort", async (reasoningEffort) => {
+    const response = await POST(request(reasoningEffort));
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ reasoningEffort }));
+  });
+
   it("preserves the default for other complete requests", async () => {
     const response = await POST(request());
     await response.text();
     expect(open).toHaveBeenCalledWith(expect.objectContaining({ reasoningEffort: undefined }));
     expect(getProvider).not.toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 0 }));
+  });
+
+  it("角色扮演请求默认使用 12k 回复预算，并转发开启的推理档位", async () => {
+    const response = await POST(new Request("https://app.example/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer sk-offline-test" },
+      body: JSON.stringify({
+        providerId: "custom",
+        model: "test-model",
+        baseURL: "https://provider.example/v1",
+        reasoningEffort: "max",
+        tools: false,
+        context: {
+          card: { name: "Alice", description: "", personality: "", scenario: "" },
+          history: [{ role: "user", content: "继续" }],
+          seed: 1,
+          storySystems: { events: false, goals: false },
+        },
+      }),
+    }));
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ maxTokens: 12_000, reasoningEffort: "max" }));
   });
 
   it("forwards the selected interface type to the provider adapter", async () => {
@@ -139,7 +170,7 @@ describe("complete route translation parameters", () => {
     await response.text();
     expect(open).toHaveBeenCalledTimes(2);
     expect(open.mock.calls[0][0]).toEqual(expect.objectContaining({
-      maxTokens: 700,
+      maxTokens: DIRECTOR_MAX_TOKENS,
       reasoningEffort: "low",
     }));
   });

@@ -3,7 +3,10 @@ import {
   appendSummary,
   applySummary,
   assemble,
+  buildSummarizeMessages,
   cacheStatsFor,
+  DEFAULT_MAX_CONTEXT,
+  DEFAULT_RESPONSE_TOKENS,
   emptyKeyFacts,
   emptySummary,
   estimateMessages,
@@ -13,6 +16,7 @@ import {
   planBudget,
   resetCacheStats,
   rollDice,
+  summarizeThresholdFor,
   type AssembleInput,
   type ChatMessage,
   type KeyFacts,
@@ -45,9 +49,16 @@ function indexOf(lines: string[], snippet: string): number {
 
 describe("预算公式", () => {
   it("可用预算是 maxContext - responseTokens - 3", () => {
-    expect(planBudget(16_000)).toBe(16_000 - 1024 - 3);
+    expect(DEFAULT_MAX_CONTEXT).toBe(200_000);
+    expect(DEFAULT_RESPONSE_TOKENS).toBe(12_000);
+    expect(planBudget(DEFAULT_MAX_CONTEXT)).toBe(DEFAULT_MAX_CONTEXT - DEFAULT_RESPONSE_TOKENS - 3);
     expect(planBudget(100, 90)).toBe(7);
     expect(planBudget(10, 90)).toBe(0);
+  });
+
+  it("在上下文 60% 处触发增量摘要", () => {
+    expect(summarizeThresholdFor()).toBe(120_000);
+    expect(summarizeThresholdFor(10_000)).toBe(6_000);
   });
 });
 
@@ -98,7 +109,7 @@ describe("组装顺序与字节稳定", () => {
       return index;
     };
 
-    // 稳定层：规则 → 世界书 → 角色卡 → 玩家设定 → 场景 → 风格 → 事实 → 摘要
+    // 稳定层：规则 → 世界书 → 角色卡 → 玩家设定 → 场景 → 风格 → 事实
     expect(at("不要替玩家说话")).toBeLessThan(at("常驻：油灯还亮着。"));
     expect(at("常驻：油灯还亮着。")).toBeLessThan(at("角色名：林晚晴"));
     expect(at("角色名：林晚晴")).toBeLessThan(at("玩家设定"));
@@ -107,9 +118,12 @@ describe("组装顺序与字节稳定", () => {
     expect(at("文风")).toBeLessThan(at("已确认的事实"));
     expect(at("已确认的事实")).toBeLessThan(at("之前的剧情"));
 
-    // 回合层：历史之后。整层是一条消息，内部顺序按字符串位置断言。
-    expect(at("之前的剧情")).toBeLessThan(at("酒堂还有人吗"));
-    expect(at("酒堂还有人吗")).toBeLessThan(at("本轮状态"));
+    // 参考层（关键词世界书、摘要）在历史之前，历史在回合层之前，
+    // 当前用户输入恒定是最后一条消息。
+    expect(at("场景书：六张方桌。")).toBeLessThan(at("之前的剧情"));
+    expect(at("之前的剧情")).toBeLessThan(at("本轮状态"));
+    expect(at("本轮状态")).toBeLessThan(at("酒堂还有人吗"));
+    expect(lines.at(-1)).toContain("酒堂还有人吗");
 
     const turn = lines.find((line) => line.includes("本轮状态"));
     expect(turn).toBeTruthy();
@@ -122,13 +136,10 @@ describe("组装顺序与字节稳定", () => {
     expect(within("本轮状态")).toBeLessThan(within("本轮模式"));
     expect(within("本轮模式")).toBeLessThan(within("这一轮请按下面的要求写"));
 
-    // 作者注插在历史里、最后一条玩家输入之前：比回合层更靠近玩家那句话
-    expect(at("雨声不要停。")).toBe(at("酒堂还有人吗") - 1);
-    expect(lines[at("雨声不要停。") + 1]).toContain("酒堂还有人吗");
-    expect(at("雨声不要停。")).toBeLessThan(at("本轮状态"));
-
-    // 关键词世界书排在回合层之前，回合层保持「离生成最近」
-    expect(at("场景书：六张方桌。")).toBeLessThan(at("本轮状态"));
+    // 作者注插在历史末尾：比回合层更靠近玩家那句话，又隔着回合层不盖过它
+    expect(at("雨声不要停。")).toBe(at("本轮状态") - 1);
+    expect(lines[at("雨声不要停。") + 1]).toContain("本轮状态");
+    expect(at("雨声不要停。")).toBeLessThan(at("酒堂还有人吗"));
 
     const flat = lines.join("\n");
     expect(flat).not.toMatch(/\d{4}-\d{2}-\d{2}/);
@@ -147,6 +158,28 @@ describe("组装顺序与字节稳定", () => {
     expect(flat).toContain("不要为玩家创建角色");
     expect(flat).toContain("空气凝固");
     expect(flat).toContain("不要三连排比");
+  });
+
+  it("摘要覆盖的旧历史不重复发送，当前用户消息恒定最后", () => {
+    const result = run({
+      summary: { text: "玩家已经进店。", coveredIndex: 2, compressedCount: 1 },
+      history: [
+        { role: "assistant", content: "旧开场" },
+        { role: "user", content: "旧问题" },
+        { role: "assistant", content: "最近回复" },
+        { role: "user", content: "当前输入" },
+      ],
+    });
+    const messages = result.messages;
+    const contents = linesOf(messages);
+    expect(contents).not.toContain("旧开场");
+    expect(contents).not.toContain("旧问题");
+    expect(contents).toContain("最近回复");
+    expect(messages.at(-1)).toEqual({ role: "user", content: "当前输入" });
+    expect(indexOf(contents, "之前的剧情")).toBeLessThan(indexOf(contents, "最近回复"));
+    // 未摘要历史之后是回合层，回合层之后才是当前用户消息
+    expect(indexOf(contents, "最近回复")).toBeLessThan(indexOf(contents, "本轮状态"));
+    expect(indexOf(contents, "本轮状态")).toBeLessThan(indexOf(contents, "当前输入"));
   });
 
   it("玩家改过名字时，把玩家名和身份写进前缀", () => {
@@ -314,7 +347,7 @@ describe("世界书", () => {
       },
     });
     expect(indexOf(lines, "卡前。")).toBeLessThan(indexOf(lines, "角色名："));
-    expect(indexOf(lines, "今晚只想喝姜茶。")).toBeLessThan(indexOf(lines, "聊天里。"));
+    expect(indexOf(lines, "聊天里。")).toBeLessThan(indexOf(lines, "今晚只想喝姜茶。"));
   });
 
   it("scanDepth 只看最近几条，0 不看历史", () => {
@@ -474,32 +507,41 @@ describe("Author's Note", () => {
     expect(linesOf(run({ authorNote: note, turn: 2 }).messages).join("\n")).toContain("记住雨声。");
   });
 
-  it("默认插在最后一条玩家输入之前（历史之后，不是系统提示开头）", () => {
+  it("默认插在历史末尾、最后一条玩家输入之前（不是系统提示开头）", () => {
     const messages = run({ history, authorNote: { text: "作者注正文" } }).messages;
     const noteAt = messages.findIndex((message) => message.content.includes("作者注正文"));
     expect(noteAt).toBeGreaterThan(0);
-    // 紧挨着最后一条玩家输入，且在它前面
+    // 紧跟在最后一条已完成的历史之后，下一条是回合层
     expect(messages[noteAt - 1].content).toBe("台词2");
-    expect(messages[noteAt + 1].content).toBe("台词3");
+    expect(messages[noteAt + 1].content).toContain("本轮状态");
+    // 玩家最后一句恒定是整条消息的结尾
+    expect(messages.at(-1)?.content).toBe("台词3");
     // 不在前缀里：第一条仍然是核心规则
     expect(messages[0].content).toContain("不要替玩家说话");
   });
 
-  it("depth 决定插在倒数第几条之前，0 就是最后一条之后", () => {
+  it("depth 决定插在倒数第几条之前，当前用户消息始终保持最后", () => {
     const at = (depth: number) => {
       const messages = run({ history, authorNote: { text: "作者注正文", depth } }).messages;
       return {
         note: messages.findIndex((message) => message.content.includes("作者注正文")),
-        // 历史第一句的位置就是前缀长度
+        // 历史第一句的位置就是前缀加参考层的长度
         historyStart: messages.findIndex((message) => message.content === "开场白"),
+        messages,
       };
     };
-    // depth 0：最后一条之后 → 前缀 + 全部四条历史
-    expect(at(0).note).toBe(at(0).historyStart + 4);
-    // depth 1：最后一条之前
+    // depth 0 的老语义是「最后一条之后」；当前用户消息恒定最后，取最近邻——紧挨其前
+    expect(at(0).messages[at(0).note + 1]?.content).toBe("台词3");
+    // depth 1：历史末尾，玩家最后一句之前（中间只隔回合层）
     expect(at(1).note).toBe(at(1).historyStart + 3);
+    expect(at(1).messages[at(1).note - 1]?.content).toBe("台词2");
     // depth 2：再往前一条
     expect(at(2).note).toBe(at(2).historyStart + 2);
+    expect(at(2).messages[at(2).note - 1]?.content).toBe("台词1");
+    // 三种 depth 下，玩家最后一句都是最后一条消息
+    for (const depth of [0, 1, 2]) {
+      expect(at(depth).messages.at(-1)?.content).toBe("台词3");
+    }
   });
 
   it("depth 超出历史长度时贴到最前面，不越界", () => {
@@ -508,9 +550,10 @@ describe("Author's Note", () => {
       authorNote: { text: "作者注正文", depth: 6 },
     }).messages;
     const noteAt = messages.findIndex((message) => message.content.includes("作者注正文"));
-    // 前缀之后的第一条
+    // 前缀之后的第一条，且在玩家唯一一句之前
     expect(noteAt).toBeGreaterThan(0);
-    expect(messages[noteAt + 1].content).toBe("只有一句");
+    expect(noteAt).toBeLessThan(messages.findIndex((message) => message.content === "只有一句"));
+    expect(messages.at(-1)?.content).toBe("只有一句");
   });
 
   it("包装里写明它是「这一轮怎么写」，不是新设定", () => {
@@ -566,8 +609,13 @@ describe("缓存", () => {
     });
     const flagged = marked.messages.filter((message) => message.cache_control);
     expect(flagged).toHaveLength(1);
-    expect(flagged[0]?.content).toContain("之前的剧情");
     expect(flagged[0]?.cache_control).toEqual({ type: "ephemeral" });
+    // 断点在前缀最后一条：下一条就是参考层的摘要，摘要和历史都不带断点
+    const flaggedAt = marked.messages.indexOf(flagged[0]!);
+    expect(marked.messages[flaggedAt + 1]?.content).toContain("之前的剧情");
+    expect(
+      marked.messages.slice(flaggedAt + 1).some((message) => message.cache_control),
+    ).toBe(false);
 
     const plain = run({ cache: false, summary: { text: "玩家回来了。", coveredIndex: 1, compressedCount: 1 } });
     expect(plain.messages.some((message) => message.cache_control)).toBe(false);
@@ -590,6 +638,21 @@ describe("缓存", () => {
 });
 
 describe("摘要与关键事实", () => {
+  it("摘要请求只处理新增消息，保留旧摘要而不整段重置", () => {
+    const messages = buildSummarizeMessages({
+      previous: "旧摘要：玩家已经进店。",
+      additions: [
+        { role: "user", content: "今晚留下。" },
+        { role: "assistant", content: "<dlg who=\"林晚晴\">二楼还有空房。</dlg>" },
+      ],
+    });
+    expect(messages[0]?.role).toBe("system");
+    expect(messages[1]?.role).toBe("user");
+    expect(messages[1]?.content).toContain("已有的摘要（保留它，只补充新增部分）");
+    expect(messages[1]?.content).toContain("今晚留下。");
+    expect(messages[1]?.content).not.toContain("第 1 轮");
+  });
+
   it("摘要只追加，不重写旧段", () => {
     let summary = emptySummary();
     summary = applySummary(summary, "第一段：欠着饭钱。", 4);

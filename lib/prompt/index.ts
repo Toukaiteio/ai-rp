@@ -22,7 +22,7 @@ import { formatSceneState } from "@/lib/scene";
 import { formatThreads, selectThreads } from "@/lib/story";
 import { describeVoice } from "@/lib/voice";
 import { formatAttachmentCatalog } from "@/lib/attachments";
-import { activeThreads, formatFacts, needsSummarize } from "./summarize";
+import { activeThreads, formatFacts, needsSummarize, summarizeThresholdFor } from "./summarize";
 import { dialogueLanguageInstruction } from "./language";
 import {
   decodeMarkedBase64,
@@ -109,6 +109,7 @@ export {
   emptySummary,
   SUMMARIZE_SYSTEM_PROMPT,
   SUMMARIZE_TARGET_TOKENS,
+  summarizeThresholdFor,
 } from "./summarize";
 export { mergeFacts, parseFactsPayload, sanitizeFacts, activeThreads } from "./facts";
 export {
@@ -139,6 +140,7 @@ export {
 export {
   buildDirectorMessages,
   formatTurnPlan,
+  insertBeforeCurrentUser,
   parseTurnPlan,
   shouldPlanTurn,
   DIRECTOR_SYSTEM_PROMPT,
@@ -195,10 +197,10 @@ function triggeredContents(entries: WorldBookEntry[]): string[] {
 /**
  * 提示词组装。纯函数：同样的输入永远得到同样的输出。
  *
- * 结构分两层，这条界线是 Phase 3 的重点：
+ * 结构分四层，从前往后：
  *
  * **稳定层（前缀，字节级稳定，缓存断点打在这里）**
- *   System（核心规则 + 输出协议 + 正向示例 + 卡上的 system_prompt）
+ *   System（核心规则 + 输出协议 + 卡上的 system_prompt）
  *   → [世界书 before_char 常驻]
  *   → 角色卡（description + personality + 对话示例，persona 紧跟）
  *   → [世界书 after_char 常驻]
@@ -206,16 +208,22 @@ function triggeredContents(entries: WorldBookEntry[]): string[] {
  *   → [世界书 before_scene / after_scene 常驻]
  *   → 风格包
  *   → 关键事实
- *   → 滚动摘要
+ *
+ * **参考层（缓存断点之后，仍在历史之前）**
+ *   [世界书 in_chat 与关键词条目] → 玩家消息 Base64 标记说明 → 滚动摘要
+ *
+ * **历史层**
+ *   尚未摘要的近期对话（coveredIndex 之后，中间优先丢），作者注按 depth 插在里面
  *
  * **回合层（放在历史之后，每轮都变）**
- *   语言锁定 → 当前场景状态 → 活跃剧情线 → 作者注 → 回合模式 → 输出要求（含 act 约束与正向示例）
- *   → [世界书 in_chat 与关键词条目]
- *   → 记忆目录 / 工具结果
- *   → post_history_instructions
+ *   语言锁定 → 当前场景状态 → 活跃剧情线 → 回合模式 → 输出要求（含 act 约束与正向示例）
+ *   → 记忆目录 / 工具结果 → post_history_instructions
+ *   当前用户消息恒定是最后一条。
  *
- * 为什么作者注只留在回合层：它本来就会随轮次变化，放在前缀里既打掉缓存，
- * 又会被后面的历史冲淡。放在历史之后，它离生成最近，优先级也最高。
+ * 为什么摘要紧贴历史：它是「已经发生的剧情」的文字版，和近期历史之间不该再夹
+ * 一层每轮都变的参考；放进前缀则会每压一次摘要就打掉一次缓存。
+ * 为什么回合层在历史之后：隔了几十轮历史之后约束力会明显衰减，放在离生成最近
+ * 的位置才压得住。作者注比回合层更靠近生成，所以按 depth 插进历史末尾。
  *
  * 前缀里没有时间戳、随机数、请求 ID，所以字节级稳定，各家的前缀缓存才打得中。
  */
@@ -227,6 +235,7 @@ export function assemble(input: AssembleInput): AssembleResult {
     persona,
     history: rawHistory,
     seed,
+    maxContext,
     turn = 0,
     summary,
     facts,
@@ -268,6 +277,14 @@ export function assemble(input: AssembleInput): AssembleResult {
       message.role === "user" ? { ...message, content: decodeMarkedBase64(message.content) } : message,
     ),
   ).map((message) => ({ ...message, content: apply(message.content) }));
+  const hasCurrentUser = rawHistory.length > 0 && rawHistory[rawHistory.length - 1]?.role === "user";
+  const currentUser = hasCurrentUser ? history[history.length - 1] : undefined;
+  const completedHistory = hasCurrentUser ? history.slice(0, -1) : history;
+  const coveredIndex = Math.max(
+    0,
+    Math.min(summary?.coveredIndex ?? 0, completedHistory.length),
+  );
+  const pendingHistory = completedHistory.slice(coveredIndex);
   const expandBook = (book: WorldBook): WorldBook => ({
     ...book,
     entries: book.entries.map((entry) => ({
@@ -314,23 +331,30 @@ export function assemble(input: AssembleInput): AssembleResult {
    * 下标不能边攒边算：历史夹在前缀和回合层中间，而历史长度要等裁剪完才知道。
    * 所以标签先按层分开攒，最后拼成 messages 时统一算下标。
    */
-  const prefix: ChatMessage[] = [];
-  const prefixOrigins: MessageOrigin[] = [];
-  const post: ChatMessage[] = [];
-  const postOrigins: MessageOrigin[] = [];
-  const push = (bucket: ChatMessage[], origin: MessageOrigin, message: ChatMessage) => {
-    bucket.push(message);
-    (bucket === prefix ? prefixOrigins : postOrigins).push(origin);
+  const buckets = {
+    prefix: { messages: [] as ChatMessage[], origins: [] as MessageOrigin[] },
+    /** 参考层：关键词世界书与摘要。紧随前缀、仍在历史之前，跟着吃缓存断点之后的位子。 */
+    pre: { messages: [] as ChatMessage[], origins: [] as MessageOrigin[] },
+    /** 回合层：历史之后、当前用户消息之前，离生成最近。 */
+    post: { messages: [] as ChatMessage[], origins: [] as MessageOrigin[] },
+  };
+  const push = (
+    bucket: keyof typeof buckets,
+    origin: MessageOrigin,
+    message: ChatMessage,
+  ) => {
+    buckets[bucket].messages.push(message);
+    buckets[bucket].origins.push(origin);
   };
 
   // 1. 核心规则。卡上的 system_prompt 覆盖默认核心规则，但不覆盖输出协议。
-  push(prefix, { section: "system", layer: "prefix", detail: "core_rules" }, {
+  push("prefix",{ section: "system", layer: "prefix", detail: "core_rules" }, {
     role: "system",
     content: card.system_prompt?.trim()
       ? applyMacros(card.system_prompt, { ...macroVars, original: BASE_RULES })
       : BASE_RULES,
   });
-  push(prefix, { section: "system", layer: "prefix", detail: "output_contract" }, {
+  push("prefix",{ section: "system", layer: "prefix", detail: "output_contract" }, {
     role: "system",
     content: OUTPUT_CONTRACT,
   });
@@ -340,7 +364,7 @@ export function assemble(input: AssembleInput): AssembleResult {
    * 不写出来，模型会看到历史里有人用这个名字，就顺手造一个同名 NPC 让他说话。
    */
   if (userName !== DEFAULT_USER_NAME) {
-    push(prefix, { section: "card", layer: "prefix", detail: "玩家名" }, {
+    push("prefix",{ section: "card", layer: "prefix", detail: "玩家名" }, {
       role: "system",
       content: `玩家名：${apply(userName)}。这是玩家本人，不是场景里的角色；不要创建同名人物，也不要把 who 写成这个名字。`,
     });
@@ -349,7 +373,7 @@ export function assemble(input: AssembleInput): AssembleResult {
   // 2. 常驻世界书 before_char。关键词条目不进前缀，免得缓存跟着命中闪断
   for (const text of stableContents(book.group.before_char)) {
     push(
-      prefix,
+      "prefix",
       {
         section: "worldbook",
         layer: "prefix",
@@ -362,7 +386,7 @@ export function assemble(input: AssembleInput): AssembleResult {
 
   // 3. 角色卡
   push(
-    prefix,
+    "prefix",
     { section: "card", layer: "prefix", detail: "name / description / personality" },
     {
       role: "system",
@@ -385,7 +409,7 @@ export function assemble(input: AssembleInput): AssembleResult {
    */
   const voice = card.voice ? describeVoice(card.voice) : "";
   if (voice) {
-    push(prefix, { section: "voice", layer: "prefix", detail: "describeVoice 压缩后的一句话" }, {
+    push("prefix",{ section: "voice", layer: "prefix", detail: "describeVoice 压缩后的一句话" }, {
       role: "system",
       content: `她说话的样子：${apply(voice)}`,
     });
@@ -393,7 +417,7 @@ export function assemble(input: AssembleInput): AssembleResult {
 
   if (card.mes_example?.trim()) {
     push(
-      prefix,
+      "prefix",
       { section: "voice", layer: "prefix", detail: "card.mes_example" },
       {
         role: "system",
@@ -403,7 +427,7 @@ export function assemble(input: AssembleInput): AssembleResult {
   }
 
   if (persona?.trim()) {
-    push(prefix, { section: "card", layer: "prefix", detail: "persona" }, {
+    push("prefix",{ section: "card", layer: "prefix", detail: "persona" }, {
       role: "system",
       content: `玩家设定：${apply(persona)}`,
     });
@@ -412,7 +436,7 @@ export function assemble(input: AssembleInput): AssembleResult {
   // 4. 世界书 after_char
   for (const text of stableContents(book.group.after_char)) {
     push(
-      prefix,
+      "prefix",
       {
         section: "worldbook",
         layer: "prefix",
@@ -425,7 +449,7 @@ export function assemble(input: AssembleInput): AssembleResult {
 
   // 5. 场景
   if (card.scenario.trim()) {
-    push(prefix, { section: "scene", layer: "prefix", detail: "card.scenario" }, {
+    push("prefix",{ section: "scene", layer: "prefix", detail: "card.scenario" }, {
       role: "system",
       content: `当前场景：${apply(card.scenario)}`,
     });
@@ -433,7 +457,7 @@ export function assemble(input: AssembleInput): AssembleResult {
 
   const attachmentCatalog = formatAttachmentCatalog(card.attachments);
   if (attachmentCatalog) {
-    push(prefix, { section: "card", layer: "prefix", detail: "角色卡附件目录" }, {
+    push("prefix",{ section: "card", layer: "prefix", detail: "角色卡附件目录" }, {
       role: "system",
       content: attachmentCatalog,
     });
@@ -442,7 +466,7 @@ export function assemble(input: AssembleInput): AssembleResult {
   // 6. 世界书 before_scene / after_scene
   for (const text of stableContents(book.group.before_scene)) {
     push(
-      prefix,
+      "prefix",
       {
         section: "worldbook",
         layer: "prefix",
@@ -454,7 +478,7 @@ export function assemble(input: AssembleInput): AssembleResult {
   }
   for (const text of stableContents(book.group.after_scene)) {
     push(
-      prefix,
+      "prefix",
       {
         section: "worldbook",
         layer: "prefix",
@@ -467,7 +491,7 @@ export function assemble(input: AssembleInput): AssembleResult {
 
   // 7. 风格包
   if (style) {
-    push(prefix, { section: "system", layer: "prefix", detail: `style:${style}` }, {
+    push("prefix",{ section: "system", layer: "prefix", detail: `style:${style}` }, {
       role: "system",
       content: STYLE_PROMPTS[style],
     });
@@ -477,25 +501,17 @@ export function assemble(input: AssembleInput): AssembleResult {
   if (facts) {
     const text = formatFacts(facts);
     if (text) {
-      push(prefix, { section: "worldbook", layer: "prefix", detail: "关键事实（facts）" }, {
+      push("prefix",{ section: "worldbook", layer: "prefix", detail: "关键事实（facts）" }, {
         role: "system",
         content: `已确认的事实：\n${apply(text)}`,
       });
     }
   }
 
-  // 9. 滚动摘要
-  if (summary?.text) {
-    push(prefix, { section: "history", layer: "prefix", detail: "滚动摘要" }, {
-      role: "system",
-      content: `之前的剧情：\n${apply(summary.text)}`,
-    });
-  }
-
-  const markedPrefix = input.cache === false ? prefix : markCache(prefix);
+  const markedPrefix = input.cache === false ? buckets.prefix.messages : markCache(buckets.prefix.messages);
   const prefixTokens = tokenSum(markedPrefix);
 
-  /* ---- 回合层：不进前缀，避免影响缓存 ---- */
+  /* ---- 参考层：缓存断点之后、历史之前 ---- */
 
   const triggered = new Set<string>();
   for (const group of [
@@ -508,7 +524,7 @@ export function assemble(input: AssembleInput): AssembleResult {
   }
   for (const text of triggered) {
     push(
-      post,
+      "pre",
       {
         section: "worldbook",
         layer: "post",
@@ -520,7 +536,7 @@ export function assemble(input: AssembleInput): AssembleResult {
   }
   for (const text of contents(book.group.in_chat)) {
     push(
-      post,
+      "pre",
       {
         section: "worldbook",
         layer: "post",
@@ -533,7 +549,7 @@ export function assemble(input: AssembleInput): AssembleResult {
 
   if (rawHistory.some((message) => message.role === "user" && hasMarkedBase64(message.content))) {
     push(
-      post,
+      "pre",
       { section: "history", layer: "post", detail: "玩家消息 Base64 标记说明" },
       { role: "system", content: USER_MESSAGE_BASE64_INSTRUCTION },
     );
@@ -575,7 +591,7 @@ export function assemble(input: AssembleInput): AssembleResult {
     }),
   };
   push(
-    post,
+    "post",
     {
       section: "scene",
       layer: "post",
@@ -589,7 +605,7 @@ export function assemble(input: AssembleInput): AssembleResult {
   const memoryNote = formatJournal(journal);
   const traceNote = formatToolTrace(toolTrace ?? []);
   push(
-    post,
+    "post",
     { section: "worldbook", layer: "post", detail: "记忆目录 / 工具结果" },
     {
       role: "system",
@@ -598,22 +614,29 @@ export function assemble(input: AssembleInput): AssembleResult {
   );
 
   if (card.post_history_instructions?.trim()) {
-    push(post, { section: "post_history", layer: "post", detail: "card.post_history_instructions" }, {
+    push("post", { section: "post_history", layer: "post", detail: "card.post_history_instructions" }, {
       role: "system",
       content: apply(card.post_history_instructions),
     });
   }
-  const postTokens = tokenSum(post);
+
+  if (summary?.text) {
+    push("pre", { section: "history", layer: "post", detail: "滚动摘要" }, {
+      role: "system",
+      content: `之前的剧情：\n${apply(summary.text)}`,
+    });
+  }
+  const preTokens = tokenSum(buckets.pre.messages);
+  const postTokens = tokenSum(buckets.post.messages);
 
   /* ---- 历史：最新优先，先丢中间 ---- */
 
   /*
-   * 作者注插进历史里，不放在回合层。
-   *
-   * 位置是「聊天历史之后、最终用户输入之前」：depth 1 就是最后一条消息之前。
-   * 这样它离生成最近，又不会盖过玩家刚说的那句话——放在系统提示开头，
-   * 隔了几十轮历史早就被冲淡了。
-   *
+   * 作者注（Phase 4）：插进历史末尾，比回合层更靠近生成。
+   * depth 1 = 历史末尾（当前用户消息之前）；当前用户消息恒定最后、
+   * 不参与 depth 计数，所以下标按 kept.length + 1 算。
+   * depth 0 的老语义是「最后一条之后」，现在取最近邻——紧挨当前用户消息之前，
+   * 也就是整条回合层之后，由下面单独拼。
    * 它的 token 从历史预算里扣：作者注不该把历史挤爆，也不该让总预算超出去。
    */
   const noteMessage: ChatMessage | undefined = note
@@ -621,26 +644,50 @@ export function assemble(input: AssembleInput): AssembleResult {
     : undefined;
   const noteTokens = noteMessage ? tokenSum([noteMessage]) : 0;
 
-  const historyBudget = Math.max(0, input.budget - prefixTokens - postTokens - noteTokens);
+  const currentUserTokens = currentUser ? tokenSum([currentUser]) : 0;
+  const historyBudget = Math.max(
+    0,
+    input.budget - prefixTokens - preTokens - postTokens - currentUserTokens - noteTokens,
+  );
   // 玩家那几轮在存储里带 <player> 标记（导出时要能区分），
   // 但模型只需要看到玩家说了什么，role 已经说明是谁说的了
-  const trimmed = trimHistory(history, historyBudget);
-  const kept = noteMessage
-    ? insertNote(trimmed.kept, noteMessage, note?.depth)
-    : trimmed.kept;
+  const trimmed = trimHistory(pendingHistory, historyBudget);
+  const kept =
+    note && noteMessage && note.depth !== 0
+      ? insertNote(trimmed.kept, noteMessage, note.depth)
+      : trimmed.kept;
 
-  const messages: ChatMessage[] = [...markedPrefix, ...kept, ...post];
+  const postMessages = [...buckets.post.messages];
+  const postOrigins = [...buckets.post.origins];
+  if (note && noteMessage && note.depth === 0) {
+    postMessages.push(noteMessage);
+    postOrigins.push({ section: "note", layer: "post", detail: "depth 0" });
+  }
+
+  const messages: ChatMessage[] = [
+    ...markedPrefix,
+    ...buckets.pre.messages,
+    ...kept,
+    ...postMessages,
+    ...(currentUser ? [currentUser] : []),
+  ];
 
   /*
    * 来源标签按最终顺序拼出来（Phase 10）。
    *
-   * 顺序是：前缀 → 历史（含作者注）→ 回合层。历史那一段的下标要等裁剪和
-   * 插入作者注之后才知道，所以标签在这里才拼，而不是边攒边算。
-   * 作者注夹在历史里，位置由 insertNote 决定，这里按内容把它认出来。
+   * 顺序是：稳定层 → 参考层（关键词世界书 / 摘要）→ 未摘要历史（含作者注）
+   * → 回合层 → 当前用户消息。历史那一段的下标要等裁剪之后才知道，
+   * 所以标签在这里才拼。
    */
-  const historyOrigins: MessageOrigin[] = kept.map((message) => {
+  const historyOrigins: MessageOrigin[] = [
+    ...kept,
+    ...(currentUser ? [currentUser] : []),
+  ].map((message) => {
     if (noteMessage && message === noteMessage) {
       return { section: "note", layer: "history", detail: `depth ${note?.depth ?? 1}` };
+    }
+    if (currentUser && message === currentUser) {
+      return { section: "user", layer: "history", detail: "玩家输入" };
     }
     if (message.role === "user") {
       return { section: "user", layer: "history", detail: "玩家输入" };
@@ -652,11 +699,17 @@ export function assemble(input: AssembleInput): AssembleResult {
   });
 
   const origins: Record<number, MessageOrigin> = {};
-  [...prefixOrigins, ...historyOrigins, ...postOrigins].forEach((origin, index) => {
+  [
+    ...buckets.prefix.origins,
+    ...buckets.pre.origins,
+    ...historyOrigins,
+    ...postOrigins,
+  ].forEach((origin, index) => {
     origins[index] = origin;
   });
 
-  const used = prefixTokens + trimmed.tokens + postTokens + noteTokens;
+  const used =
+    prefixTokens + preTokens + postTokens + noteTokens + trimmed.tokens + currentUserTokens;
 
   const budget: BudgetReport = {
     max: input.budget,
@@ -664,8 +717,8 @@ export function assemble(input: AssembleInput): AssembleResult {
     remaining: Math.max(0, input.budget - used),
     blocks: {
       prefix: prefixTokens,
-      history: trimmed.tokens,
-      post: postTokens,
+      history: trimmed.tokens + currentUserTokens,
+      post: preTokens + postTokens,
       note: noteTokens,
       lorebook: book.tokens,
     },
@@ -684,7 +737,11 @@ export function assemble(input: AssembleInput): AssembleResult {
     budget,
     cacheKey,
     mode: responseMode,
-    needsSummarize: needsSummarize(history, summary),
+    needsSummarize: needsSummarize(
+      history,
+      summary,
+      summarizeThresholdFor(maxContext),
+    ),
     inspector: buildInspector(messages, origins, (message) => estimateTokens(message.content) + PER_MESSAGE_OVERHEAD),
   };
 }
@@ -771,13 +828,17 @@ export function formatNote(text: string): string {
   ].join("\n");
 }
 
-/** 把作者注按 depth 插进历史。depth 1 = 最后一条之前，0 = 最后一条之后。 */
+/**
+ * 把作者注按 depth 插进历史。depth 1 = 最后一条之前。
+ * 当前用户消息恒定在最后、不参与 depth 计数，所以下标按 length + 1 算：
+ * depth 1 落在历史末尾，紧挨当前用户消息之前。depth 0 由调用方单独处理。
+ */
 function insertNote(
   history: ChatMessage[],
   note: ChatMessage,
   depth: number | undefined,
 ): ChatMessage[] {
-  const index = noteInsertIndex(history.length, depth);
+  const index = noteInsertIndex(history.length + 1, depth);
   return [...history.slice(0, index), note, ...history.slice(index)];
 }
 

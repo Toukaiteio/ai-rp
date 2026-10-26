@@ -1,14 +1,23 @@
 import { parseBlocks, stripBlocks } from "@/lib/blocks";
 import { hasMarkedBase64, USER_MESSAGE_BASE64_INSTRUCTION } from "@/lib/chat";
 import { estimateTokens } from "./budget";
+import {
+  DEFAULT_MAX_CONTEXT,
+  SUMMARY_TRIGGER_RATIO,
+  SUMMARIZE_THRESHOLD_TOKENS,
+} from "./system";
 import type { ChatMessage, KeyFacts, RollingSummary } from "./types";
 
 export { activeThreads } from "./facts";
 
-/** 历史超过这个 token 量才压一次，不要每轮都压。 */
-export const SUMMARIZE_THRESHOLD_TOKENS = 8000;
 /** 压完之后目标保留多少 token 的历史。压过头会让最近语境变薄。 */
 export const SUMMARIZE_TARGET_TOKENS = 4000;
+
+export { SUMMARIZE_THRESHOLD_TOKENS };
+
+export function summarizeThresholdFor(maxContext = DEFAULT_MAX_CONTEXT): number {
+  return Math.max(0, Math.floor(maxContext * SUMMARY_TRIGGER_RATIO));
+}
 
 /**
  * 增量摘要的提示词。

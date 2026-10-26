@@ -170,13 +170,16 @@ export const STYLE_PROMPTS: Record<StyleId, string> = {
 };
 
 /** 给回复预留的 token，算预算时先扣掉。 */
-export const DEFAULT_RESPONSE_TOKENS = 1024;
+export const DEFAULT_RESPONSE_TOKENS = 12_000;
 
 /** 默认上下文上限。 */
-export const DEFAULT_MAX_CONTEXT = 16_000;
+export const DEFAULT_MAX_CONTEXT = 200_000;
+
+/** 达到上下文窗口的这个比例后，开始增量压缩尚未摘要的历史。 */
+export const SUMMARY_TRIGGER_RATIO = 0.6;
 
 /** 玩家默认称呼，用于 {{user}} 宏。 */
 export const DEFAULT_USER_NAME = "你";
 
-/** 超过这个量就压一次历史。别每轮都压。 */
-export const SUMMARIZE_THRESHOLD_TOKENS = 8000;
+/** 默认上下文下的摘要触发点。摘要只覆盖新增历史，不会重写旧摘要。 */
+export const SUMMARIZE_THRESHOLD_TOKENS = Math.floor(DEFAULT_MAX_CONTEXT * SUMMARY_TRIGGER_RATIO);
