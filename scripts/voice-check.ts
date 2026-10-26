@@ -7,7 +7,7 @@
  * 一遍带声音。用可数的指标比，不靠感觉——
  * 对白平均长度、最长一句、省略主语的句子比例、是否出现口头禅。
  *
- * 输出 doc/phase9-voice-check.json。Key 只从环境变量读。
+ * 输出 runs/phase9-voice-check.json。Key 只从环境变量读。
  *
  * 用法：
  *   node --experimental-loader ./scripts/alias-loader.mjs scripts/voice-check.ts
@@ -23,7 +23,7 @@ import { describeVoice, type CharacterVoiceProfile } from "@/lib/voice";
 const API_KEY = process.env.YOSEI_API_KEY ?? process.env.BASELINE_API_KEY ?? "";
 const MODEL = process.env.BASELINE_MODEL ?? "dots3-note-prev";
 const BASE_URL = process.env.BASELINE_BASE_URL ?? "https://router.dys.asia/v1";
-const OUT = process.env.VOICE_OUT ?? path.join("doc", "phase9-voice-check.json");
+const OUT = process.env.VOICE_OUT ?? path.join("runs", "phase9-voice-check.json");
 
 if (!API_KEY) {
   console.error('缺少 API Key：$env:YOSEI_API_KEY = "sk-..."');
@@ -116,7 +116,7 @@ async function complete(messages: ChatMessage[], temperature: number, maxTokens:
   let lastError: unknown;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const events = await provider.open({ messages, model: MODEL, temperature, maxTokens });
+      const events = await provider.open({ messages, model: MODEL, temperature, maxTokens, reasoningEffort: "low" });
       let text = "";
       for await (const event of events) {
         if (event.type === "delta") text += event.text;
@@ -146,7 +146,7 @@ async function run(label: string, withVoice: boolean): Promise<RunResult> {
       userName: "你",
       budget: planBudget(16_000, 1024),
     });
-    const reply = await complete(assembled.messages, 0.9, 1024);
+    const reply = await complete(assembled.messages, 0.9, 4096);
     history = [...history, { role: "assistant", content: reply }];
 
     const measured = measure(reply);

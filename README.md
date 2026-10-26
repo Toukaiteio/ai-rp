@@ -14,7 +14,7 @@ The application is built with Next.js and is deployable to Vercel or any compati
 - **Novel export**: select the current swipe, remove or retain OOC text and narration, split the session into chapters, and export a standards-compatible EPUB with a cover, table of contents, formatted dialogue, and embedded scene images.
 - **Local-first data**: encrypted sessions, cards, settings, memories, and branches remain on the client. Use archive export/import for backup and migration.
 
-Common read-only SillyTavern macros are expanded for display and model requests while the original card templates remain unchanged. This is intentionally not a full STscript or variable-runtime implementation; see [macro compatibility](doc/macros-compatibility.md).
+Common read-only SillyTavern macros are expanded for display and model requests while the original card templates remain unchanged. This is intentionally not a full STscript or variable-runtime implementation.
 
 ## Requirements
 
@@ -111,8 +111,6 @@ The design is deliberately layered:
 - story threads are selected by scene relevance and budget;
 - memory writes require an explicit reason and preserve conflicts rather than overwriting established facts;
 - voice profiles constrain delivery without turning the prompt into a checklist.
-
-Detailed design notes and regression baselines are in [`doc/`](doc/).
 
 ## Brand assets
 

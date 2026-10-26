@@ -3,7 +3,7 @@
  *
  * 把 lib/engine/cases.ts 里的用例逐条喂给真实模型，走和游戏里完全一样的
  * 两步流程（导演计划 → 正文生成），然后对每一轮的输出跑一遍文本引擎检查，
- * 把结果写成 doc/phase0-baseline.json。
+ * 把结果写成 runs/phase0-baseline.json。
  *
  * 这一步的目的不是「证明现在好」，而是留一份可以对比的底：
  * 后面每次改提示词、改解析、改记忆，重跑一次就知道是真变好了还是只是感觉变好了。
@@ -22,7 +22,7 @@ import { checkGeneration } from "@/lib/engine/report";
 import { resolveGeneration, validateResponseBlocks } from "@/lib/engine/validate";
 import type { GenerationReport, GenerationResult, IssueCode } from "@/lib/engine/types";
 import { ISSUE_LABELS } from "@/lib/engine/types";
-import { assemble, buildDirectorMessages, formatTurnPlan, parseTurnPlan, planBudget } from "@/lib/prompt";
+import { assemble, buildDirectorMessages, DIRECTOR_MAX_TOKENS, formatTurnPlan, parseTurnPlan, planBudget } from "@/lib/prompt";
 import type { ChatMessage } from "@/lib/prompt/types";
 import { createOpenAIProvider } from "@/lib/providers/openai";
 
@@ -39,10 +39,10 @@ const PROVIDER_ID = args.get("provider") ?? "yosei-router";
 const MODEL = args.get("model") ?? "dots3-note-prev";
 const BASE_URL = args.get("base-url") ?? "https://router.dys.asia/v1";
 const TEMPERATURE = Number(args.get("temperature") ?? "0.9");
-const MAX_TOKENS = Number(args.get("max-tokens") ?? "1024");
+const MAX_TOKENS = Number(args.get("max-tokens") ?? "4096");
 const KEEP_TEXT = args.get("keep-text") !== "false";
 const ONLY = args.get("only");
-const OUT = args.get("out") ?? path.join("doc", "phase0-baseline.json");
+const OUT = args.get("out") ?? path.join("runs", "phase0-baseline.json");
 const LABEL = args.get("label") ?? "";
 /**
  * 给所有用例套一条临时作者注，用来量「作者注到底有没有影响」。
@@ -96,7 +96,7 @@ function historyOf(testCase: BaselineCase): ChatMessage[] {
 
 async function complete(messages: ChatMessage[], temperature: number, maxTokens: number) {
   const started = Date.now();
-  const events = await provider.open({ messages, model: MODEL, temperature, maxTokens });
+  const events = await provider.open({ messages, model: MODEL, temperature, maxTokens, reasoningEffort: "low" });
   let text = "";
   for await (const event of events) {
     if (event.type === "delta") text += event.text;
@@ -129,7 +129,7 @@ async function runCase(testCase: BaselineCase): Promise<CaseResult> {
   let directorPlan = "";
   let messages = assembled.messages;
   try {
-    const director = await complete(buildDirectorMessages(assembled.messages), 0.2, 420);
+    const director = await complete(buildDirectorMessages(assembled.messages), 0.2, DIRECTOR_MAX_TOKENS);
     directorPlan = director.text;
     const plan = parseTurnPlan(directorPlan);
     if (plan) messages = [...assembled.messages, { role: "system", content: formatTurnPlan(plan) }];

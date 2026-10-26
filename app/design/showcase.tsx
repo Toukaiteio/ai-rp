@@ -168,7 +168,7 @@ export function Showcase() {
           UI 组件总览
         </h1>
         <p className="m-0 max-w-[62ch] text-[15px] text-ink-2">
-          从 doc/html-plan.html 的交互原型中提取。所有颜色、圆角、阴影、字体都来自
+          从早期交互原型中提取。所有颜色、圆角、阴影、字体都来自
           <code className="mx-1 rounded-sm bg-surface-2 px-1.5 py-0.5 text-[13px] text-ink">
             app/globals.css
           </code>

@@ -8,9 +8,9 @@
  * 几秒钟出结果，不花钱。
  *
  * **真机**（`--live`）：真的调模型，把三族指标都算出来，
- * 和 `doc/phase12-eval.json` 里的基线比，找出退化的项。
+ * 和 `runs/phase12-eval-live.json` 里的基线比，找出退化的项。
  *
- * 输出 doc/phase12-eval.json（离线）或 doc/phase12-eval-live.json（真机）。
+ * 输出 runs/phase12-eval.json（离线）或 runs/phase12-eval-live.json（真机）。
  *
  * 用法：
  *   node --experimental-loader ./scripts/alias-loader.mjs scripts/eval.ts
@@ -39,7 +39,7 @@ import {
 } from "@/lib/eval";
 import { emptySceneState, applyScenePatch, isEmptySceneState } from "@/lib/scene";
 import { applyThreadPatch, type StoryThread } from "@/lib/story";
-import { buildDirectorMessages, formatTurnPlan, parseTurnPlan } from "@/lib/prompt";
+import { buildDirectorMessages, DIRECTOR_MAX_TOKENS, formatTurnPlan, parseTurnPlan } from "@/lib/prompt";
 import { createOpenAIProvider } from "@/lib/providers/openai";
 
 const args = new Map<string, string>();
@@ -55,7 +55,7 @@ const MODEL = args.get("model") ?? "dots3-note-prev";
 const BASE_URL = args.get("base-url") ?? "https://router.dys.asia/v1";
 const OUT =
   args.get("out") ??
-  path.join("doc", LIVE ? (ONLY ? `phase12-eval-live-${ONLY}.json` : "phase12-eval-live.json") : "phase12-eval.json");
+  path.join("runs", LIVE ? (ONLY ? `phase12-eval-live-${ONLY}.json` : "phase12-eval-live.json") : "phase12-eval.json");
 /**
  * 只有跑全量时才和基线比。
  *
@@ -64,7 +64,7 @@ const OUT =
  * 否则下一次全量跑批会拿一个子集当基准。
  */
 const COMPARE = !ONLY;
-const BASELINE = args.get("baseline") ?? path.join("doc", "phase12-eval-live.json");
+const BASELINE = args.get("baseline") ?? path.join("runs", "phase12-eval-live.json");
 
 const cases = ONLY
   ? EVAL_CASES.filter((item) => item.category === (ONLY as EvalCategory))
@@ -234,7 +234,8 @@ async function liveTurn(item: EvalCase): Promise<EvalTurn> {
     messages,
     model: MODEL,
     temperature: 0.9,
-    maxTokens: 1024,
+    maxTokens: 4096,
+    reasoningEffort: "low",
   });
   let text = "";
   for await (const event of events) {
@@ -298,7 +299,8 @@ async function liveSequence(sequence: EvalSequence): Promise<EvalTurn[]> {
         messages: buildDirectorMessages(assembled.messages),
         model: MODEL,
         temperature: 0.2,
-        maxTokens: 420,
+        maxTokens: DIRECTOR_MAX_TOKENS,
+        reasoningEffort: "low",
       });
       let directorText = "";
       for await (const event of directorEvents) {
@@ -323,7 +325,8 @@ async function liveSequence(sequence: EvalSequence): Promise<EvalTurn[]> {
         : assembled.messages,
       model: MODEL,
       temperature: 0.9,
-      maxTokens: 1024,
+      maxTokens: 4096,
+      reasoningEffort: "low",
     });
     let text = "";
     for await (const event of events) {

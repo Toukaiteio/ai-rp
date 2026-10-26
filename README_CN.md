@@ -63,7 +63,7 @@ pnpm start
 
 ## 文本引擎观测
 
-角色卡中的常用酒馆文本宏会在显示和发送时展开，原卡保留模板。支持列表、示例及不支持的变量/脚本边界见 [酒馆宏兼容说明](doc/macros-compatibility.md)。
+角色卡中的常用酒馆文本宏会在显示和发送时展开，原卡保留模板。
 
 每轮生成都会产出一份结构化报告：块数、act 是否合格、有没有替玩家行动、有没有复读、
 语言是否切错，以及判定结果是合格 / 可修复 / 不合格。
@@ -72,11 +72,12 @@ pnpm start
 - 报告只在内存里，不含正文和玩家输入，不落盘。
 - 不合格的回复不会写进历史：先自动降级一次（act 改旁白、对白剥掉动作），
   救不回来时再让模型只修格式修一次，仍然不合格就丢弃并提示重新生成。
-- 提示词分两层：稳定层（规则、角色卡、文风、世界书、摘要）负责缓存命中，
-  回合层（语言、当前场景、活跃剧情线、回合模式、act 约束与正向示例）
-  放在历史之后，让最容易漂移的要求离生成最近。
+- 提示词分四层：稳定层（规则、角色卡、文风、常驻世界书、关键事实）负责缓存命中，
+  参考层（关键词世界书、滚动摘要）紧跟其后、历史之前；未摘要的近期历史之后是
+  回合层（语言、当前场景、活跃剧情线、回合模式、act 约束与正向示例），
+  让最容易漂移的要求离生成最近；当前用户消息恒定最后。
 - 作者注（顶栏大脑图标）只管「这一轮怎么写」：节奏、重点、格式提醒、临时风格。
-  它插在最后一条玩家输入之前，可以设出现频率和插入位置，也能按角色卡给默认值。
+  它插在未摘要历史的末尾，可以设出现频率和插入位置，也能按角色卡给默认值。
 - 场景状态记「此刻」：在哪儿、什么时候、谁在场、正在发生什么、有哪些线没收。
   每轮只保存变化项，每个字段带可信度——模型猜的内容标成推断，不会悄悄变成设定。
 - 未完成的剧情线单独记：每轮最多把和当前场景有关的三条交给模型，
@@ -97,7 +98,7 @@ pnpm start
   不自动重算。每条消息都能「分出去」建剧情分支，主干不会被覆盖。
 - 有一份 50 组的评测集和三族指标（结构 / 叙事 / 连贯性），
   改完提示词跑一遍就知道有没有变差。连贯性那四项靠 4 轮序列才测得出。
-- 改动提示词或解析之后，重跑用例并对比基线：
+- 改动提示词或解析之后，重跑用例并和本地上一次的结果比：
 
 ```bash
 $env:YOSEI_API_KEY = "sk-..."   # Key 只从环境变量读，不写进输出文件
@@ -108,19 +109,7 @@ pnpm lorebook-check   # 三来源世界书的注入与预算分配
 pnpm voice-check      # 角色声音 A/B：同一段对话，加不加声音差多少
 pnpm regenerate-check # 重新生成：错误回复有没有泄漏、纠偏有没有生效
 pnpm test:roleplay    # 50 组评测集的装配检查（不调模型，几秒）
-pnpm test:roleplay:live  # 同上但调模型，出三族指标并和基线比（要 Key）
+pnpm test:roleplay:live  # 同上但调模型，出三族指标并和本地上一次的结果比（要 Key）
 ```
 
-细节见 [doc/phase0-baseline.md](doc/phase0-baseline.md)、
-[doc/phase1-quality-gate.md](doc/phase1-quality-gate.md)、
-[doc/phase2-repair.md](doc/phase2-repair.md)、
-[doc/phase3-prompt-layers.md](doc/phase3-prompt-layers.md)、
-[doc/phase4-author-note.md](doc/phase4-author-note.md)、
-[doc/phase5-scene-state.md](doc/phase5-scene-state.md)、
-[doc/phase6-story-threads.md](doc/phase6-story-threads.md)、
-[doc/phase7-memory-layers.md](doc/phase7-memory-layers.md)、
-[doc/phase8-worldbook.md](doc/phase8-worldbook.md)、
-[doc/phase9-voice.md](doc/phase9-voice.md)、
-[doc/phase10-prompt-inspector.md](doc/phase10-prompt-inspector.md)、
-[doc/phase11-regenerate-edit-branch.md](doc/phase11-regenerate-edit-branch.md)、
-[doc/phase12-eval-regression.md](doc/phase12-eval-regression.md)。
+跑批与检查的结果写在 `runs/` 目录，只留在本机，不进仓库。

@@ -6,7 +6,7 @@
  * 2. 优先级是不是真的决定预算：常驻和场景相关的先拿到额度，背景被丢；
  * 3. 注入之后的正文有没有变差——这一条才需要真模型。
  *
- * 输出 doc/phase8-lorebook-check.json。Key 只从环境变量读。
+ * 输出 runs/phase8-lorebook-check.json。Key 只从环境变量读。
  *
  * 用法：
  *   node --experimental-loader ./scripts/alias-loader.mjs scripts/lorebook-check.ts
@@ -20,7 +20,7 @@ import { createOpenAIProvider } from "@/lib/providers/openai";
 const API_KEY = process.env.YOSEI_API_KEY ?? process.env.BASELINE_API_KEY ?? "";
 const MODEL = process.env.BASELINE_MODEL ?? "dots3-note-prev";
 const BASE_URL = process.env.BASELINE_BASE_URL ?? "https://router.dys.asia/v1";
-const OUT = process.env.LOREBOOK_OUT ?? path.join("doc", "phase8-lorebook-check.json");
+const OUT = process.env.LOREBOOK_OUT ?? path.join("runs", "phase8-lorebook-check.json");
 
 if (!API_KEY) {
   console.error('缺少 API Key：$env:YOSEI_API_KEY = "sk-..."');
@@ -93,7 +93,7 @@ async function complete(messages: ChatMessage[], temperature: number, maxTokens:
   let lastError: unknown;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const events = await provider.open({ messages, model: MODEL, temperature, maxTokens });
+      const events = await provider.open({ messages, model: MODEL, temperature, maxTokens, reasoningEffort: "low" });
       let text = "";
       for await (const event of events) {
         if (event.type === "delta") text += event.text;
@@ -169,7 +169,7 @@ async function main(): Promise<void> {
       budget: planBudget(16_000, 1024),
     });
 
-    const reply = await complete(assembled.messages, 0.9, 1024);
+    const reply = await complete(assembled.messages, 0.9, 4096);
     history = [...history, { role: "assistant", content: reply }];
 
     const report = assembled.budget.lorebook;

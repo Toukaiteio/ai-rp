@@ -20,7 +20,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 6. 需要写死的数据一律数据驱动，放进 `data/` 或配置模块，禁止硬编码进脚本和组件。
 7. 未经允许不得修改本文件。
 
-改完至少跑 `pnpm test`、`pnpm lint`、`pnpm build`。动过提示词、解析、记忆、场景、剧情线、世界书、声音之后，再跑 `pnpm test:roleplay`（离线，几秒）和对应的 `*-check` 脚本，与 `doc/` 下同名基线 JSON 对比。
+改完至少跑 `pnpm test`、`pnpm lint`、`pnpm build`。动过提示词、解析、记忆、场景、剧情线、世界书、声音之后，再跑 `pnpm test:roleplay`（离线，几秒）和对应的 `*-check` 脚本。跑批与检查结果只写本机 `runs/`（已在 `.gitignore` 里），不进仓库；要判断有没有退化，就和本地上一次的结果比。
 
 ## 怎么找代码
 
@@ -89,24 +89,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ### data/ — 数据驱动的内容
 
 `providers.json` 提供商预设（`lib/providers/config.ts` 读） · `announcements.json` 公告（`lib/announcements.ts` 读）。加这类内容改 JSON，不改代码。
-
-### doc/ — 设计文档与基线
-
-- `doc/phase0-baseline.md` 引擎基线：指标 / 错误类型 / 检查流水线 / 开发模式 / 用例表 / 跑批 / 已知盲区
-- `doc/phase1-quality-gate.md` 质量门：`validateResponseBlocks` / 三档严重程度 / 结构校验清单（块、who、act、dlg、player）/ 降级规则 / 防止坏回复进历史
-- `doc/phase2-repair.md` 自动修复：只修结构不重写剧情 / 每轮最多一次 / 修复请求组成 / UI 行为
-- `doc/phase3-prompt-layers.md` 两层提示词：稳定层 / 回合层 / 正向示例 / 回合模式 / 预算影响
-- `doc/phase4-author-note.md` 作者注：用途 / 插入位置 / 三层来源 / 重新生成纠偏
-- `doc/phase5-scene-state.md` 场景状态：模型 / 只保存变化项 / 状态不覆盖事实 / 拼进提示词
-- `doc/phase6-story-threads.md` 剧情线：数据结构 / 按标题认线 / 注入策略
-- `doc/phase7-memory-layers.md` 记忆：分层 / 写入规则 / 冲突处理 / 接在真实链路上
-- `doc/phase8-worldbook.md` 世界书：预算和优先级 / 角色级与聊天级 / 第三阶段（暂不引入）
-- `doc/phase9-voice.md` 角色声音：数据结构 / 压成一句话 / 只查明确禁令
-- `doc/phase10-prompt-inspector.md` Inspector：显示什么 / 标签是组装的副产品 / 两个刻意的设计
-- `doc/phase11-regenerate-edit-branch.md` 重新生成 / 编辑消息 / 分支聊天
-- `doc/phase12-eval-regression.md` 评测集 / 自动检查 / 三族指标 / 真机结果
-- `doc/html-plan.html` 早期单文件 UI 设计稿
-- `doc/*.json` 各阶段基线或跑批结果，与同名 `.md` 一一对应，由 `scripts/` 读写；改行为之后要与它们比对
 
 ### 根配置
 

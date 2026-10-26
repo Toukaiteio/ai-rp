@@ -11,7 +11,7 @@
  * 所以这里用低温（0.2）跑，让「重跑还是原样」这件事真的发生，
  * 再比带纠偏和不带纠偏的区别。
  *
- * 输出 doc/phase11-regenerate-check.json。Key 只从环境变量读。
+ * 输出 runs/phase11-regenerate-check.json。Key 只从环境变量读。
  *
  * 用法：
  *   node --experimental-loader ./scripts/alias-loader.mjs scripts/regenerate-check.ts
@@ -26,7 +26,7 @@ import { planRegenerate, regenerateNote } from "@/lib/chat";
 const API_KEY = process.env.YOSEI_API_KEY ?? process.env.BASELINE_API_KEY ?? "";
 const MODEL = process.env.BASELINE_MODEL ?? "dots3-note-prev";
 const BASE_URL = process.env.BASELINE_BASE_URL ?? "https://router.dys.asia/v1";
-const OUT = process.env.REGEN_OUT ?? path.join("doc", "phase11-regenerate-check.json");
+const OUT = process.env.REGEN_OUT ?? path.join("runs", "phase11-regenerate-check.json");
 /**
  * 用低温跑。高温下模型本来就换写法，测不出纠偏的作用；
  * 低温才是「模型倾向复用上一版」的场合，也就是纠偏真正要解决的场合。
@@ -64,7 +64,7 @@ async function complete(messages: ChatMessage[], temperature: number, maxTokens:
   let lastError: unknown;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const events = await provider.open({ messages, model: MODEL, temperature, maxTokens });
+      const events = await provider.open({ messages, model: MODEL, temperature, maxTokens, reasoningEffort: "low" });
       let text = "";
       for await (const event of events) {
         if (event.type === "delta") text += event.text;
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
   const base = assemble({ card: CARD, history, seed: 5, turn: 0, budget: planBudget(16_000, 1024) });
 
   // 第一版：不带纠偏，就是普通生成
-  const first = await complete(base.messages, TEMPERATURE, 1024);
+  const first = await complete(base.messages, TEMPERATURE, 4096);
   const versions: Version[] = [{ label: "第一版（原始）", reply: first, ...measure(first) }];
 
   console.log(`—— 第一版 ——`);
@@ -149,7 +149,7 @@ async function main(): Promise<void> {
       budget: planBudget(16_000, 1024),
     }).messages,
     TEMPERATURE,
-    1024,
+    4096,
   );
   versions.push({
     label: "第二版（带纠偏）",
@@ -165,7 +165,7 @@ async function main(): Promise<void> {
   console.log("");
 
   // 对照：不带纠偏再跑一遍，看重合度是多少
-  const control = await complete(base.messages, TEMPERATURE, 1024);
+  const control = await complete(base.messages, TEMPERATURE, 4096);
   const controlOverlap = overlap(first, control);
   console.log(`—— 对照：不带纠偏重跑一遍 ——`);
   console.log(`  与第一版重合度：${Math.round(controlOverlap * 100)}%`);

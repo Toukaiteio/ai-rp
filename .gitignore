@@ -44,3 +44,7 @@ next-env.d.ts
 /probe-raw*.txt
 /fuka-tmp.json
 /.opencode/
+/.zcode/
+
+# 跑批与检查结果，只在本机留存，不进仓库
+/runs/

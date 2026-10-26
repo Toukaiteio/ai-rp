@@ -7,7 +7,7 @@
  * 2. 修完有没有偷偷改写剧情（锚点词还在不在）；
  * 3. 有没有扩写（修复后比原文长多少）。
  *
- * 输出 doc/phase2-repair-check.json。Key 只从环境变量读，不写进文件。
+ * 输出 runs/phase2-repair-check.json。Key 只从环境变量读，不写进文件。
  *
  * 用法：
  *   node --experimental-loader ./scripts/alias-loader.mjs scripts/repair-check.ts
@@ -23,7 +23,7 @@ import { createOpenAIProvider } from "@/lib/providers/openai";
 const API_KEY = process.env.YOSEI_API_KEY ?? process.env.BASELINE_API_KEY ?? "";
 const MODEL = process.env.BASELINE_MODEL ?? "dots3-note-prev";
 const BASE_URL = process.env.BASELINE_BASE_URL ?? "https://router.dys.asia/v1";
-const OUT = process.env.REPAIR_OUT ?? path.join("doc", "phase2-repair-check.json");
+const OUT = process.env.REPAIR_OUT ?? path.join("runs", "phase2-repair-check.json");
 
 if (!API_KEY) {
   console.error('缺少 API Key：$env:YOSEI_API_KEY = "sk-..."');
@@ -139,7 +139,7 @@ interface FixtureResult {
 }
 
 async function complete(messages: ReturnType<typeof buildRepairMessages>): Promise<string> {
-  const events = await provider.open({ messages, model: MODEL, temperature: 0.2, maxTokens: 1024 });
+  const events = await provider.open({ messages, model: MODEL, temperature: 0.2, maxTokens: 4096, reasoningEffort: "low" });
   let text = "";
   for await (const event of events) {
     if (event.type === "delta") text += event.text;

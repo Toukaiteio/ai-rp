@@ -6,14 +6,14 @@
  * 2. 可信度标得对不对（不该把猜测写成 confirmed）；
  * 3. 连着跑几轮，状态会不会漂（地点、在场的人被无依据地改掉）。
  *
- * 输出 doc/phase5-state-check.json。Key 只从环境变量读。
+ * 输出 runs/phase5-state-check.json。Key 只从环境变量读。
  *
  * 用法：
  *   node --experimental-loader ./scripts/alias-loader.mjs scripts/state-check.ts
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { assemble, buildDirectorMessages, parseTurnPlan, planBudget } from "@/lib/prompt";
+import { assemble, buildDirectorMessages, DIRECTOR_MAX_TOKENS, parseTurnPlan, planBudget } from "@/lib/prompt";
 import type { ChatMessage } from "@/lib/prompt/types";
 import {
   applyScenePatch,
@@ -39,7 +39,7 @@ import { createOpenAIProvider } from "@/lib/providers/openai";
 const API_KEY = process.env.YOSEI_API_KEY ?? process.env.BASELINE_API_KEY ?? "";
 const MODEL = process.env.BASELINE_MODEL ?? "dots3-note-prev";
 const BASE_URL = process.env.BASELINE_BASE_URL ?? "https://router.dys.asia/v1";
-const OUT = process.env.STATE_OUT ?? path.join("doc", "phase5-state-check.json");
+const OUT = process.env.STATE_OUT ?? path.join("runs", "phase5-state-check.json");
 /** 连跑几轮，用来看状态会不会漂。 */
 const ROUNDS = Number(process.env.STATE_ROUNDS ?? "6");
 
@@ -86,7 +86,7 @@ interface RoundResult {
 }
 
 async function complete(messages: ChatMessage[], temperature: number, maxTokens: number) {
-  const events = await provider.open({ messages, model: MODEL, temperature, maxTokens });
+  const events = await provider.open({ messages, model: MODEL, temperature, maxTokens, reasoningEffort: "low" });
   let text = "";
   for await (const event of events) {
     if (event.type === "delta") text += event.text;
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     });
 
     // 导演阶段：顺便给出状态变化和剧情线变化
-    const directorText = await complete(buildDirectorMessages(assembled.messages), 0.2, 420);
+    const directorText = await complete(buildDirectorMessages(assembled.messages), 0.2, DIRECTOR_MAX_TOKENS);
     const plan = parseTurnPlan(directorText);
     const patch = plan?.statePatch ? sanitizePatch(plan.statePatch) : null;
     const update = applyScenePatch(state, patch, round, { now: Date.now() });
@@ -148,7 +148,7 @@ async function main(): Promise<void> {
         ? [...assembled.messages, { role: "system", content: JSON.stringify(plan) }]
         : assembled.messages,
       0.9,
-      1024,
+      4096,
     );
     history = [...history, { role: "assistant", content: reply }];
 
