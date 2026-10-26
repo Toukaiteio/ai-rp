@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions";
 import type { ChatMessage } from "@/lib/prompt/types";
-import type { ChatStreamEvent, ProviderAdapter } from "./types";
+import { DEFAULT_CHAT_MAX_TOKENS, type ChatStreamEvent, type ProviderAdapter, type ReasoningEffort } from "./types";
 
 export interface OpenAIAdapterOptions {
   apiKey: string;
@@ -83,12 +83,10 @@ export function createOpenAIProvider(
           ...(request.temperature !== undefined
             ? { temperature: request.temperature }
             : {}),
-          ...(request.maxTokens !== undefined
-            ? { max_tokens: request.maxTokens }
-            : {}),
-          reasoning_effort: request.reasoningEffort ?? "high",
+          max_tokens: request.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
+          ...(request.reasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}),
           ...(request.tools?.length ? { tools: request.tools } : {}),
-        } as OpenAI.Chat.ChatCompletionCreateParams & { reasoning_effort?: "low" | "medium" | "high" },
+        } as OpenAI.Chat.ChatCompletionCreateParams & { reasoning_effort?: ReasoningEffort },
         // signal 是中断链的末端：浏览器断开 → 路由 abort → 这里掐断上游连接
         { signal: request.signal },
       )) as AsyncIterable<ChatCompletionChunk>;

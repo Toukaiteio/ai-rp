@@ -11,6 +11,7 @@ export {
 export { Segmented } from "./Segmented";
 export { Field, FieldInput, FieldAction, SliderRow } from "./Field";
 export { FormGroup, OptRow } from "./FormGroup";
+export { SettingsCard } from "./SettingsCard";
 export { Bar, Badge, Toast } from "./Feedback";
 export { Veil, Grab, Sheet, MenuRow, Panel } from "./Sheet";
 export { Dialog } from "./Dialog";

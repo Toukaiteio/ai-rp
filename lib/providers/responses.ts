@@ -6,7 +6,7 @@ import type {
   ResponseStreamEvent,
 } from "openai/resources/responses/responses";
 import type { ChatMessage } from "@/lib/prompt/types";
-import type { ChatStreamEvent, ChatTool, ProviderAdapter } from "./types";
+import { DEFAULT_CHAT_MAX_TOKENS, type ChatStreamEvent, type ChatTool, type ProviderAdapter } from "./types";
 
 export interface ResponsesAdapterOptions {
   apiKey: string;
@@ -18,7 +18,6 @@ export interface ResponsesAdapterOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000;
-const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
 
 /**
  * 把 Responses 的流事件收敛成中立事件流。
@@ -112,17 +111,18 @@ export function createResponsesProvider(
     name: `Responses · ${safeHost(options.baseURL)}`,
 
     async open(request) {
-      const stream = (await client.responses.create(
-        {
+      const requestBody = {
           model: request.model,
           input: translateInput(request.messages, request.image),
           stream: true,
           store: false,
-          max_output_tokens: request.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
-          reasoning: { effort: request.reasoningEffort ?? "high" },
+          max_output_tokens: request.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
+          ...(request.reasoningEffort ? { reasoning: { effort: request.reasoningEffort } } : {}),
           ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
           ...(request.tools?.length ? { tools: request.tools.map(toResponsesTool) } : {}),
-        },
+        } as unknown as Parameters<typeof client.responses.create>[0];
+      const stream = (await client.responses.create(
+        requestBody,
         // signal 是中断链的末端：浏览器断开 → 路由 abort → 这里掐断上游连接
         { signal: request.signal },
       )) as AsyncIterable<ResponseStreamEvent>;

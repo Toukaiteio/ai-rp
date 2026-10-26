@@ -1,5 +1,14 @@
 import type { ChatMessage } from "@/lib/prompt/types";
 
+export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+
+export function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return typeof value === "string" && (REASONING_EFFORTS as readonly string[]).includes(value);
+}
+
+export const DEFAULT_CHAT_MAX_TOKENS = 12_000;
+
 /** 流式事件。文本增量，以及函数调用的参数碎片。 */
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
@@ -34,8 +43,7 @@ export interface ChatRequest {
   model: string;
   temperature?: number;
   maxTokens?: number;
-  /** Reasoning-capable models use the strongest default effort. */
-  reasoningEffort?: "low" | "medium" | "high";
+  reasoningEffort?: ReasoningEffort;
   signal?: AbortSignal;
   /** 不传就不向模型提供函数调用 */
   tools?: ChatTool[];

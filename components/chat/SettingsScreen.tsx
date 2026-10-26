@@ -1,7 +1,7 @@
 "use client";
 
-import { ChevronDown, Image as ImageIcon, Moon, Sun } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Moon, Sun } from "lucide-react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import {
   BackPill,
   Field,
@@ -13,29 +13,21 @@ import {
   OptRow,
   PillButton,
   ScreenHead,
+  SettingsCard,
   SliderRow,
   VaultWarn,
 } from "@/components/ui";
-import { IconDownload, IconEye, IconLock, IconTrash, IconX } from "@/components/icons";
-import { BROWSER_PROVIDER_ID, probeBrowserModel } from "@/lib/browser-model";
-import {
-  defaultInterfaceType,
-  getProvidersConfig,
-  findProvider,
-  listProviders,
-  modelName,
-  modelSeesImages,
-  type ProviderPreset,
-} from "@/lib/providers/config";
+import { IconDownload, IconEye, IconLock, IconTrash } from "@/components/icons";
+import { listProviders, type ProviderPreset } from "@/lib/providers/config";
 import { IMAGE_STYLES } from "@/lib/image";
 import {
   defaultImageSettings,
   defaultStorySystemSettings,
-  effectiveInterfaceType,
   type ImageSettings,
   type ProviderConfig,
 } from "@/lib/providers/settings";
 import { cleanApiKey } from "@/lib/providers/apikey";
+import { SettingsModelCard } from "@/components/chat/SettingsModelCard";
 import { hasMessage } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { useTheme } from "@/lib/use-theme";
@@ -77,23 +69,12 @@ export function SettingsScreen({
 }) {
   const [showKey, setShowKey] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
-  const [browserReady, setBrowserReady] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"general" | "model" | "image" | "story" | "data">("general");
   const fileRef = useRef<HTMLInputElement>(null);
   const { t, locale, setLocale } = useI18n();
   const { theme, setTheme } = useTheme();
   const unfiltered = useSyncExternalStore(subscribeUnfiltered, getUnfiltered, getUnfilteredServerSnapshot);
-
-  useEffect(() => {
-    let cancelled = false;
-    void probeBrowserModel().then((ready) => {
-      if (!cancelled) setBrowserReady(ready);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   async function chooseArchiveFile() {
     setFileError(null);
@@ -112,23 +93,6 @@ export function SettingsScreen({
     }
   }
 
-  const remoteProviders = getProvidersConfig().providers;
-  const browserPreset: ProviderPreset = {
-    id: BROWSER_PROVIDER_ID,
-    name: t("settings.browser"),
-    baseURL: "",
-    models: [],
-    keyUrl: "",
-    docUrl: "",
-  };
-  const providers = browserReady ? [browserPreset, ...remoteProviders] : remoteProviders;
-  const browserSelected = browserReady && config.providerId === BROWSER_PROVIDER_ID;
-  const interfaceTypes = getProvidersConfig().interfaceTypes;
-  const preset = findProvider(config.providerId);
-  const activeInterfaceType = effectiveInterfaceType(config);
-  // 预设已经定死协议；只有自定义提供商能选。
-  const interfaceLocked = Boolean(preset?.interfaceType);
-
   function patch(next: Partial<ProviderConfig>) {
     onChange({ ...config, ...next });
   }
@@ -139,7 +103,6 @@ export function SettingsScreen({
   /* 粘贴 Key 时常混进全角空格、零宽字符、BOM 或整段中文说明。
      这些字符进不了 HTTP 头，浏览器会在发请求前直接抛错，
      表现却只是「网络请求失败」，所以在这里就说清楚。 */
-  const keyJunk = cleanApiKey(config.apiKey).removed;
   const imageKeyJunk = cleanApiKey(image.apiKey).removed;
 
   function patchImage(next: Partial<ImageSettings>) {
@@ -228,181 +191,7 @@ export function SettingsScreen({
 
           </> : null}
 
-          {activeTab === "model" ? <SettingsCard title={t("settings.languageModel")}>
-          <FormGroup title={t("settings.provider")}>
-            <OptRow>
-              {providers.map((provider) => (
-                <OptChip
-                  key={provider.id}
-                  selected={config.providerId === provider.id}
-                  onClick={() => {
-                    if (provider.id === BROWSER_PROVIDER_ID) {
-                      patch({ providerId: provider.id, vision: true });
-                      return;
-                    }
-                    const first = provider.models[0];
-                    patch({
-                      providerId: provider.id,
-                      interfaceType: provider.interfaceType ?? defaultInterfaceType(),
-                      model: modelName(first),
-                      vision: modelSeesImages(first),
-                      baseURL: "",
-                    });
-                  }}
-                  badge={provider.badge === "free" ? t("settings.free") : undefined}
-                >
-                  {provider.name}
-                </OptChip>
-              ))}
-            </OptRow>
-            {browserSelected ? (
-              <p className="m-0 text-[12.5px] leading-relaxed text-ink-2">{t("settings.browserNote")}</p>
-            ) : preset?.keyUrl ? (
-              <a
-                href={preset.keyUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="self-start text-[12.5px] text-ink-2 underline"
-              >
-                {t("settings.getKey")}
-              </a>
-            ) : null}
-          </FormGroup>
-
-          {browserSelected || preset?.hideEndpoint ? null : (
-          <FormGroup title={t("settings.interface")}>
-            <OptRow>
-              {interfaceTypes.map((type) => (
-                <OptChip
-                  key={type.id}
-                  selected={type.id === activeInterfaceType}
-                  disabled={!type.enabled || (interfaceLocked && type.id !== activeInterfaceType)}
-                  onClick={() => {
-                    if (!interfaceLocked && type.enabled) patch({ interfaceType: type.id });
-                  }}
-                >
-                  {type.enabled ? type.name : t("settings.later", { name: type.name })}
-                </OptChip>
-              ))}
-            </OptRow>
-          </FormGroup>
-          )}
-
-          {browserSelected || preset?.hideEndpoint ? null : (
-          <FormGroup title={t("settings.baseUrl")}>
-            <Field>
-              <FieldInput
-                type="url"
-                inputMode="url"
-                spellCheck={false}
-                autoComplete="off"
-                placeholder={preset?.baseURL || "https://api.example.com/v1"}
-                value={config.baseURL}
-                onChange={(event) => patch({ baseURL: event.target.value })}
-              />
-              {config.baseURL ? (
-                <FieldAction
-                  aria-label={t("settings.clearUrl")}
-                  onClick={() => patch({ baseURL: "" })}
-                >
-                  <IconX className="size-[15px]" />
-                </FieldAction>
-              ) : null}
-            </Field>
-          </FormGroup>
-          )}
-
-          {browserSelected ? null : (
-          <FormGroup title="API Key">
-            <Field>
-              <FieldInput
-                type={showKey ? "text" : "password"}
-                placeholder="sk-…"
-                autoComplete="off"
-                spellCheck={false}
-                value={config.apiKey}
-                onChange={(event) => patch({ apiKey: event.target.value })}
-              />
-              <FieldAction
-                aria-label={showKey ? t("settings.hideKey") : t("settings.showKey")}
-                onClick={() => setShowKey((value) => !value)}
-              >
-                <IconEye className="size-[17px]" />
-              </FieldAction>
-            </Field>
-            {keyJunk > 0 ? (
-              <p className="m-0 text-[12.5px] leading-relaxed">
-                <VaultWarn>{t("settings.keyJunk", { count: keyJunk })}</VaultWarn>
-              </p>
-            ) : null}
-          </FormGroup>
-          )}
-
-          {browserSelected || preset?.hideModel ? null : (
-          <FormGroup title={t("settings.model")}>
-            {(preset?.models.length ?? 0) > 0 ? (
-              <OptRow>
-                {preset?.models.map((model) => {
-                  const name = modelName(model);
-                  const sees = modelSeesImages(model);
-                  return (
-                    <OptChip
-                      key={name}
-                      selected={config.model === name}
-                      onClick={() => patch({ model: name, vision: sees })}
-                    >
-                      {sees ? <ImageIcon className="size-3.5" strokeWidth={1.8} aria-hidden="true" /> : null}
-                      {name}
-                    </OptChip>
-                  );
-                })}
-              </OptRow>
-            ) : null}
-            <Field>
-              <FieldInput
-                type="text"
-                spellCheck={false}
-                autoComplete="off"
-                placeholder={t("settings.modelPlaceholder")}
-                value={config.model}
-                onChange={(event) => patch({ model: event.target.value })}
-              />
-            </Field>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={config.vision}
-              onClick={() => patch({ vision: !config.vision })}
-              className="flex w-full items-center justify-between rounded-pill border border-line bg-surface px-4 py-2.5 text-[13px] text-ink"
-            >
-              <span className="inline-flex items-center gap-2">
-                {config.vision ? <ImageIcon className="size-3.5" strokeWidth={1.8} aria-hidden="true" /> : null}
-                {t("settings.vision")}
-              </span>
-              <span
-                aria-hidden="true"
-                className={`flex h-[22px] w-10 shrink-0 items-center justify-start rounded-pill p-0.5 transition-colors duration-200 ease-out motion-reduce:transition-none ${config.vision ? "bg-accent" : "bg-surface-3"}`}
-              >
-                <span
-                  className={`size-[18px] rounded-pill shadow-raised ${config.vision ? "bg-accent-ink" : "bg-ink"}`}
-                  style={{ transform: config.vision ? "translateX(20px)" : "translateX(0px)", transition: "transform 200ms ease" }}
-                />
-              </span>
-            </button>
-          </FormGroup>
-          )}
-
-          <FormGroup title={t("settings.sampling")}>
-            <SliderRow
-              label={t("settings.temperature")}
-              min={0}
-              max={20}
-              value={Math.round(config.temperature * 10)}
-              display={config.temperature.toFixed(1)}
-              onChange={(value) => patch({ temperature: value / 10 })}
-            />
-          </FormGroup>
-          </SettingsCard> : null}
+          {activeTab === "model" ? <SettingsModelCard config={config} onChange={onChange} /> : null}
 
           {activeTab === "image" ? <SettingsCard title={t("settings.image")}>
           <div className="flex flex-col gap-3">
@@ -472,6 +261,12 @@ export function SettingsScreen({
                   value={image.apiKey}
                   onChange={(event) => patchImage({ apiKey: event.target.value })}
                 />
+                <FieldAction
+                  aria-label={showKey ? t("settings.hideKey") : t("settings.showKey")}
+                  onClick={() => setShowKey((value) => !value)}
+                >
+                  <IconEye className="size-[17px]" />
+                </FieldAction>
               </Field>
             ) : null}
             {imageKeyJunk > 0 ? (
@@ -692,28 +487,6 @@ export function SettingsScreen({
         </div>
       </div>
     </div>
-  );
-}
-
-function SettingsCard({ title, children }: { title: string; children: ReactNode }) {
-  const [open, setOpen] = useState(true);
-  return (
-    <section className="overflow-hidden rounded-card border border-line-strong bg-surface">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between bg-surface-2 px-4 py-3.5 text-left"
-      >
-        <span className="text-[16px] font-black text-ink">{title}</span>
-        <ChevronDown
-          aria-hidden="true"
-          strokeWidth={1.8}
-          className={`size-4 text-ink-2 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-      {open ? <div className="flex flex-col gap-7 border-t border-line-strong px-4 py-4">{children}</div> : null}
-    </section>
   );
 }
 

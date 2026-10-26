@@ -7,7 +7,7 @@ import {
   presetChat,
   resolveInterfaceType,
 } from "./config";
-import { DEFAULT_USER_NAME, defaultProviderConfig, normalizeUserName, withImage } from "./settings";
+import { DEFAULT_USER_NAME, defaultProviderConfig, nextCustomProviderId, normalizeUserName, withImage } from "./settings";
 import { resolveBaseURL } from "./validate";
 
 describe("提供商预设", () => {
@@ -86,10 +86,18 @@ describe("提供商预设", () => {
   it("旧配置缺少用户名时使用安全默认值，并清理空白用户名", () => {
     expect(defaultProviderConfig().userName).toBe(DEFAULT_USER_NAME);
     expect(defaultProviderConfig().encodeUserMessageWords).toBe(false);
+    expect(defaultProviderConfig().reasoningEnabled).toBe(false);
+    expect(defaultProviderConfig().reasoningEffort).toBe("high");
     expect(withImage({ providerId: "openai", model: "gpt-6-luna" }).userName).toBe(DEFAULT_USER_NAME);
     expect(withImage({}).encodeUserMessageWords).toBe(false);
     expect(withImage({ userName: "  Lin  " }).userName).toBe("Lin");
     expect(normalizeUserName("   ")).toBe(DEFAULT_USER_NAME);
+  });
+
+  it("推理设置默认关闭，旧值归一化为 high，并保留合法档位", () => {
+    expect(withImage({}).reasoningEnabled).toBe(false);
+    expect(withImage({ reasoningEnabled: true, reasoningEffort: "xhigh" }).reasoningEffort).toBe("xhigh");
+    expect(withImage({ reasoningEnabled: true, reasoningEffort: "invalid" as never }).reasoningEffort).toBe("high");
   });
 
   it("Agnes 的生图模型沿用它自己的地址，不借用对话提供商的自定义地址", () => {
@@ -98,5 +106,82 @@ describe("提供商预设", () => {
     expect(imageProviderForModel("不存在的模型")).toBeUndefined();
     const resolved = resolveBaseURL("agnes");
     expect("baseURL" in resolved && resolved.baseURL).toBe("https://apihub.agnes-ai.com/v1");
+  });
+
+  it("旧存档的「自定义」槽位迁移成可保存的提供商条目，且幂等", () => {
+    const migrated = withImage({
+      providerId: "custom",
+      interfaceType: "anthropic-messages",
+      model: "my-model",
+      apiKey: "sk-test",
+      baseURL: "https://api.example.com/v1",
+      vision: true,
+    });
+    expect(migrated.customProviders).toEqual([
+      {
+        id: "custom",
+        name: "",
+        interfaceType: "anthropic-messages",
+        baseURL: "https://api.example.com/v1",
+        apiKey: "sk-test",
+        models: ["my-model"],
+        vision: true,
+      },
+    ]);
+    expect(withImage(migrated).customProviders).toHaveLength(1);
+  });
+
+  it("选中的自定义条目跟着顶层字段回写，模型列表不被逐字输入污染", () => {
+    const base = withImage({
+      providerId: "custom",
+      model: "m1",
+      baseURL: "https://api.example.com/v1",
+    });
+    const edited = withImage({
+      ...base,
+      model: "m2-ha",
+      baseURL: "https://other.example.com/v1",
+      apiKey: "sk-new",
+    });
+    expect(edited.customProviders?.find((item) => item.id === "custom")).toMatchObject({
+      baseURL: "https://other.example.com/v1",
+      apiKey: "sk-new",
+      models: ["m1"],
+    });
+  });
+
+  it("没有自定义条目的存档补空列表，切到预设后条目原样保留", () => {
+    expect(withImage({}).customProviders).toEqual([]);
+    const withDef = withImage({
+      providerId: "custom",
+      model: "m1",
+      baseURL: "https://api.example.com/v1",
+    });
+    const switched = withImage({
+      ...withDef,
+      providerId: "deepseek",
+      model: "deepseek-chat",
+      baseURL: "",
+    });
+    expect(switched.customProviders?.[0]).toMatchObject({
+      id: "custom",
+      baseURL: "https://api.example.com/v1",
+      models: ["m1"],
+    });
+  });
+
+  it("新建自定义提供商的 id 避开已用 id 和预设 id", () => {
+    const def = (id: string) => ({
+      id,
+      name: "",
+      interfaceType: "chat-completions",
+      baseURL: "",
+      apiKey: "",
+      models: [],
+      vision: false,
+    });
+    expect(nextCustomProviderId([])).toBe("custom");
+    expect(nextCustomProviderId([def("custom")])).toBe("custom-2");
+    expect(nextCustomProviderId([def("custom"), def("custom-2")])).toBe("custom-3");
   });
 });

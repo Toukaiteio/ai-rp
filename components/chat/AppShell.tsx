@@ -162,8 +162,10 @@ export function AppShell() {
   const config = useMemo<ProviderConfig>(() => withImage(edited ?? stored), [edited, stored]);
 
   const updateConfig = useCallback((next: ProviderConfig) => {
-    setEdited(next);
-    void saveProviderConfig(next);
+    // 先归一化再落盘：自定义提供商条目在这里跟着顶层字段同步
+    const merged = withImage(next);
+    setEdited(merged);
+    void saveProviderConfig(merged);
   }, []);
 
   const handleVaultSetup = useCallback((userName: string) => {

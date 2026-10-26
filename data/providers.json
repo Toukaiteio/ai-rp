@@ -78,14 +78,6 @@
       "models": ["deepseek-chat", "deepseek-reasoner"],
       "keyUrl": "https://platform.deepseek.com/api_keys",
       "docUrl": "https://api-docs.deepseek.com/"
-    },
-    {
-      "id": "custom",
-      "name": "自定义",
-      "baseURL": "",
-      "models": [],
-      "keyUrl": "",
-      "docUrl": ""
     }
   ],
   "interfaceTypes": [

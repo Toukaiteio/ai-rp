@@ -6,12 +6,16 @@ import {
   findProvider,
   getDefaultProvider,
   imageProviderForModel,
+  isInterfaceTypeEnabled,
   listProviders,
   modelName,
   modelSeesImages,
   resolveInterfaceType,
 } from "./config";
 import { defaultAutoBackupSettings, normalizeAutoBackupSettings, type AutoBackupSettings } from "@/lib/storage/backup";
+import { isReasoningEffort, type ReasoningEffort } from "./types";
+
+export { REASONING_EFFORTS, type ReasoningEffort } from "./types";
 
 export const DEFAULT_USER_NAME = "你";
 
@@ -46,6 +50,100 @@ export function needsServerAdapter(config: {
   return effectiveInterfaceType(config) !== "chat-completions";
 }
 
+/** 用户自建的提供商，随这份加密配置一起存，在设置页与预设并列。 */
+export interface CustomProvider {
+  /** 旧「自定义」槽位迁移而来的一条固定叫 "custom"，新建的依次是 custom-2、custom-3… */
+  id: string;
+  /** 空名字在界面上回退显示本地化的「自定义」。 */
+  name: string;
+  interfaceType: string;
+  baseURL: string;
+  /** 每家自带 Key，切走再切回不用重填。 */
+  apiKey: string;
+  /** 模型名列表，由设置页显式增删。 */
+  models: string[];
+  /** 整家一个开关：这些模型能不能看图。 */
+  vision: boolean;
+}
+
+/** 给新建的自定义提供商挑一个不与现有条目和预设冲突的 id。 */
+export function nextCustomProviderId(existing: CustomProvider[]): string {
+  const used = new Set([
+    ...existing.map((item) => item.id),
+    ...listProviders().map((item) => item.id),
+  ]);
+  for (let index = 1; ; index += 1) {
+    const id = index === 1 ? "custom" : `custom-${index}`;
+    if (!used.has(id)) return id;
+  }
+}
+
+function normalizeCustomProviders(value: CustomProvider[] | undefined): CustomProvider[] {
+  if (!value?.length) return [];
+  return value
+    .filter((item) => typeof item.id === "string" && item.id.length > 0)
+    .map((item) => ({
+      id: item.id,
+      name: typeof item.name === "string" ? item.name : "",
+      interfaceType: isInterfaceTypeEnabled(item.interfaceType)
+        ? item.interfaceType
+        : defaultInterfaceType(),
+      baseURL: typeof item.baseURL === "string" ? item.baseURL : "",
+      apiKey: typeof item.apiKey === "string" ? item.apiKey : "",
+      models: Array.isArray(item.models)
+        ? item.models.filter((name) => typeof name === "string" && name.trim().length > 0)
+        : [],
+      vision: item.vision === true,
+    }));
+}
+
+/**
+ * 自定义条目与顶层字段的同步。顶层字段是当前生效值，条目只负责保存与恢复：
+ * 旧存档的 providerId 还是遗留的 "custom" 时，用顶层字段建出第一条；
+ * 选中的是自定义条目时，把顶层协议 / 地址 / Key / 看图开关回写进条目。
+ * 模型列表不在这里回写，避免逐字输入留下半截名字。
+ */
+function syncCustomProviders(
+  defs: CustomProvider[],
+  live: {
+    providerId: string;
+    interfaceType: string;
+    model: string;
+    apiKey: string;
+    baseURL: string;
+    vision: boolean;
+  },
+): CustomProvider[] {
+  let next = defs;
+  if (live.providerId === "custom" && !defs.some((item) => item.id === "custom")) {
+    next = [
+      ...defs,
+      {
+        id: "custom",
+        name: "",
+        interfaceType: live.interfaceType,
+        baseURL: live.baseURL,
+        apiKey: live.apiKey,
+        models: live.model.trim() ? [live.model.trim()] : [],
+        vision: live.vision,
+      },
+    ];
+  }
+  const index = next.findIndex((item) => item.id === live.providerId);
+  if (index < 0) return next;
+  return next.map((item, position) =>
+    position === index
+      ? {
+          ...item,
+          interfaceType: live.interfaceType,
+          baseURL: live.baseURL,
+          apiKey: live.apiKey,
+          vision: live.vision,
+        }
+      : item,
+  );
+}
+
 export interface ProviderConfig {
   providerId: string;
   /**
@@ -59,10 +157,16 @@ export interface ProviderConfig {
    * 未解锁时整份配置都读不出来，界面上也不会显示。
    */
   apiKey: string;
-  /** 只在「自定义」时需要，预设提供商留空 */
+  /** 只在自定义提供商时需要，预设提供商留空 */
   baseURL: string;
+  /** 用户自建的提供商。顶层字段是当前生效值，这里保存全部自定义条目。 */
+  customProviders?: CustomProvider[];
   /** 0 到 2 */
   temperature: number;
+  /** Whether to send a reasoning effort to the selected provider. */
+  reasoningEnabled?: boolean;
+  /** Selected reasoning effort when reasoning is enabled. */
+  reasoningEffort?: ReasoningEffort;
   /** 当前选中的模型能不能看图。预设模型会带上，自定义名字靠开关。 */
   vision: boolean;
   /** 生图。model 为空表示没配，界面上的 CG 按钮保持禁用。 */
@@ -157,25 +261,40 @@ export function withImage(config: Partial<ProviderConfig> | null | undefined): P
     ? modelName(provider.models[0]) || storedModel
     : storedModel;
   const migratedModel = model !== storedModel;
+  const interfaceType = effectiveInterfaceType({
+    providerId,
+    interfaceType: config.interfaceType,
+  });
+  const vision = migratedModel
+    ? modelSeesImages(provider?.models[0])
+    : typeof config.vision === "boolean"
+      ? config.vision
+      : modelSeesImages(provider?.models.find(
+          (item) => modelName(item) === model,
+        ));
+  const apiKey = config.apiKey ?? "";
   return {
     ...base,
     ...config,
     providerId,
-    interfaceType: effectiveInterfaceType({
-      providerId,
-      interfaceType: config.interfaceType,
-    }),
+    interfaceType,
     model,
-    apiKey: config.apiKey ?? "",
+    apiKey,
+    reasoningEnabled: config.reasoningEnabled === true,
+    reasoningEffort: isReasoningEffort(config.reasoningEffort) ? config.reasoningEffort : "high",
     userName: normalizeUserName(config.userName),
-    vision:
-      migratedModel
-        ? modelSeesImages(provider?.models[0])
-        : typeof config.vision === "boolean"
-        ? config.vision
-        : modelSeesImages(provider?.models.find(
-            (item) => modelName(item) === model,
-          )),
+    vision,
+    customProviders: syncCustomProviders(
+      normalizeCustomProviders(config.customProviders),
+      {
+        providerId,
+        interfaceType,
+        model,
+        apiKey,
+        baseURL: config.baseURL ?? "",
+        vision,
+      },
+    ),
     image: migrateImage(config.image),
     autoBackup: normalizeAutoBackupSettings(config.autoBackup),
     qualityGate: config.qualityGate !== false,
@@ -199,7 +318,10 @@ export function defaultProviderConfig(): ProviderConfig {
     model: modelName(preset.models[0]),
     apiKey: "",
     baseURL: "",
+    customProviders: [],
     temperature: 0.9,
+    reasoningEnabled: false,
+    reasoningEffort: "high",
     vision: modelSeesImages(preset.models[0]),
     image: defaultImageSettings(),
     autoBackup: defaultAutoBackupSettings(),

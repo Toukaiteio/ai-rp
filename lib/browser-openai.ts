@@ -1,5 +1,5 @@
 import type { ChatMessage } from "@/lib/prompt/types";
-import type { ChatStreamEvent, ChatTool } from "@/lib/providers/types";
+import type { ChatStreamEvent, ChatTool, ReasoningEffort } from "@/lib/providers/types";
 
 export interface BrowserOpenAIRequest {
   endpoint: string;
@@ -8,7 +8,7 @@ export interface BrowserOpenAIRequest {
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
-  reasoningEffort?: "low" | "medium" | "high";
+  reasoningEffort?: ReasoningEffort;
   tools?: ChatTool[];
   image?: string;
   signal?: AbortSignal;
@@ -41,7 +41,7 @@ export async function streamBrowserOpenAI(request: BrowserOpenAIRequest): Promis
       stream: true,
       ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
       ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),
-      reasoning_effort: request.reasoningEffort ?? "high",
+      ...(request.reasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}),
       ...(request.tools?.length ? { tools: request.tools } : {}),
     }),
     signal: request.signal,

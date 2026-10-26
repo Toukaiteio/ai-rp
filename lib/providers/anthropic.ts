@@ -6,7 +6,7 @@ import type {
   Tool,
 } from "@anthropic-ai/sdk/resources/messages";
 import type { ChatMessage } from "@/lib/prompt/types";
-import type { ChatStreamEvent, ChatTool, ProviderAdapter } from "./types";
+import { DEFAULT_CHAT_MAX_TOKENS, type ChatStreamEvent, type ChatTool, type ProviderAdapter } from "./types";
 
 export interface AnthropicAdapterOptions {
   apiKey: string;
@@ -18,7 +18,6 @@ export interface AnthropicAdapterOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000;
-const DEFAULT_MAX_TOKENS = 1024;
 
 type ConversationMessage = Extract<MessageParam, { role: "user" | "assistant" }>;
 type SystemContent = string | TextBlockParam[];
@@ -96,7 +95,7 @@ export function createAnthropicProvider(
       const stream = await client.messages.create(
         {
           model: request.model,
-          max_tokens: request.maxTokens ?? DEFAULT_MAX_TOKENS,
+          max_tokens: request.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
           messages: translated.messages,
           stream: true,
           ...(translated.system ? { system: translated.system } : {}),
