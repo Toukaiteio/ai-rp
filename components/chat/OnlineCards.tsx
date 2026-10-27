@@ -32,6 +32,14 @@ import { resolveOnlineCardStartAction } from "./online-card-action";
 
 const CLIENT_CACHE_KEY = "ai-rp:online-cards:v1";
 const CLIENT_CACHE_TTL_MS = 5 * 60 * 60 * 1000;
+/**
+ * 网络 tab 的信息流单独一份缓存。
+ *
+ * 切到本地再切回来，组件会重新挂载，没有这份缓存就每次都过一遍卡源。
+ * TTL 比搜索列表短：信息流的第一屏看得多，两小时后该看到新卡了。
+ */
+const FEED_CACHE_KEY = "ai-rp:online-cards-feed:v1";
+const FEED_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const MAX_TAGS = 8;
 
 /** 聚焦搜索框时先给这些常见标签。分级词不放进来。 */
@@ -71,22 +79,22 @@ interface CacheRecord {
   payload: OnlineCardsPayload;
 }
 
-function readCache(key: string): OnlineCardsPayload | null {
+function readCache(key: string, storageKey: string, ttlMs: number): OnlineCardsPayload | null {
   try {
-    const stored = window.localStorage.getItem(CLIENT_CACHE_KEY);
+    const stored = window.localStorage.getItem(storageKey);
     if (!stored) return null;
     const record = JSON.parse(stored) as CacheRecord;
-    if (record.key !== key || Date.now() - record.at > CLIENT_CACHE_TTL_MS) return null;
+    if (record.key !== key || Date.now() - record.at > ttlMs) return null;
     return record.payload;
   } catch {
     return null;
   }
 }
 
-function writeCache(key: string, payload: OnlineCardsPayload): void {
+function writeCache(key: string, payload: OnlineCardsPayload, storageKey: string): void {
   try {
     const record: CacheRecord = { at: Date.now(), key, payload };
-    window.localStorage.setItem(CLIENT_CACHE_KEY, JSON.stringify(record));
+    window.localStorage.setItem(storageKey, JSON.stringify(record));
   } catch {
     // 存不下就每次展开都重新从浏览器请求卡源
   }
@@ -122,14 +130,22 @@ export function OnlineCards({ onAdded, compact = false, feed = false, localCards
 
   useEffect(() => {
     if (!feed) return;
+    const cacheKey = `feed#${feedApplied}#${includeAdult ? "1" : "0"}#1`;
+    // 两小时内切回网络 tab：直接用缓存的第一屏，不过卡源
+    const cached = readCache(cacheKey, FEED_CACHE_KEY, FEED_CACHE_TTL_MS);
     const controller = new AbortController();
     let active = true;
     feedLoadingRef.current = true;
-    void fetch(onlineSearchUrl(feedApplied, 1, includeAdult, []), { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`${t("online.fetchFail")}（HTTP ${response.status}）`);
-        const payload = normalizeOnlineSearchResponse(await response.json(), feedApplied, 1);
+    void (cached
+      ? Promise.resolve(cached)
+      : fetch(onlineSearchUrl(feedApplied, 1, includeAdult, []), { signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) throw new Error(`${t("online.fetchFail")}（HTTP ${response.status}）`);
+          return normalizeOnlineSearchResponse(await response.json(), feedApplied, 1);
+        }))
+      .then((payload) => {
         if (!active) return;
+        if (!cached) writeCache(cacheKey, payload, FEED_CACHE_KEY);
         setFeedItems(payload.items);
         setFeedPage(1);
         setFeedHasMore(payload.items.length > 0 && payload.items.length < payload.total);
@@ -188,7 +204,7 @@ export function OnlineCards({ onAdded, compact = false, feed = false, localCards
   async function load(nextQuery: string, nextTags: string[], adult: boolean, force: boolean) {
     const key = listKey(nextQuery, nextTags, adult);
     if (!force) {
-      const cached = readCache(key);
+      const cached = readCache(key, CLIENT_CACHE_KEY, CLIENT_CACHE_TTL_MS);
       if (cached) {
         loadedKeyRef.current = key;
         setPayload(cached);
@@ -223,7 +239,7 @@ export function OnlineCards({ onAdded, compact = false, feed = false, localCards
         throw new Error(`${t("online.fetchFail")}：卡源返回格式异常`);
       }
       loadedKeyRef.current = key;
-      writeCache(key, nextPayload);
+      writeCache(key, nextPayload, CLIENT_CACHE_KEY);
       setPayload(nextPayload);
       setStatus("ready");
     } catch (caught) {
