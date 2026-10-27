@@ -72,7 +72,7 @@ describe("translation response validation", () => {
     ['{"a":"plain"}', "protected_tokens"], ['{"a":"hi","extra":"hi"}', "unexpected_fields"],
   ])("reports a safe validation reason for %s", (text, reason) => {
     expect(() => parseTranslationDictionary(text, { a: "{{char}} hello" })).toThrowError(
-      expect.objectContaining({ details: { reason } }));
+      expect.objectContaining({ details: expect.objectContaining({ reason }) }));
   });
 });
 
@@ -99,30 +99,31 @@ describe("translation segmentation", () => {
 });
 
 describe("translateCharacterCard", () => {
-  it("requests and validates the name first, then supplies its fixed glossary in every prose batch", async () => {
+  it("sends the whole card in one request with the fixed glossary in the system prompt", async () => {
     const original = card();
     original.data.description = "Alice knows Bob. ".repeat(300);
     fetchMock.mockImplementation(async (_url, init) => {
       const request = JSON.parse(String(init?.body));
       const source = JSON.parse(request.messages[1].content);
-      if (fetchMock.mock.calls.length === 1) {
-        expect(Object.values(source)).toEqual(["Alice"]);
-        expect(request.messages[0].content).toContain(settings.namePrompt);
-        return sse(JSON.stringify({ [Object.keys(source)[0]]: "艾丽丝" }));
-      }
-      expect(request.messages[0].content).toContain('{"Alice":"艾丽丝"}');
-      expect(request.messages[0].content).not.toContain("Preserve the character name:");
+      // 名字和全部正文片段在同一个字典里，只发一次
+      expect(source.s0).toBe("Alice");
+      expect(Object.keys(source).length).toBeGreaterThan(5);
+      expect(request.messages[0].content).toContain(settings.namePrompt);
+      expect(request.messages[0].content).toContain(`Source character name: ${original.data.name}`);
       return sse(JSON.stringify(Object.fromEntries(Object.entries(source).map(([key, value]) =>
-        [key, String(value).replaceAll("Alice knows Bob", "艾丽丝认识 Bob")]))));
+        [key, key === "s0" ? "艾丽丝" : String(value).replaceAll("Alice knows Bob", "艾丽丝认识 Bob")]))));
     });
     const result = await translateCharacterCard(original, "Simplified Chinese", config());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.data.name).toBe("艾丽丝");
     expect(result.data.description).toBe("艾丽丝认识 Bob. ".repeat(300));
     expect(result.data.first_mes).toContain('who="艾丽丝"');
-    expect(fetchMock.mock.calls.length).toBeGreaterThan(5);
   });
-  it("reports name validation failure and never requests other fields", async () => {
-    fetchMock.mockResolvedValue(sse('{"s0":""}'));
+  it("reports name validation failure and writes nothing else", async () => {
+    fetchMock.mockImplementation(async (_url, init) => {
+      const source = JSON.parse(JSON.parse(String(init?.body)).messages[1].content);
+      return sse(JSON.stringify({ ...source, s0: "" }));
+    });
     const checkpoint: CardTranslationCheckpoint = { translations: {} };
     await expect(translateCharacterCard(card(), "Simplified Chinese", config(), { checkpoint })).rejects.toMatchObject({
       code: "translation_invalid_response", details: { field: "name", completed: 0, reason: "invalid_value" },
@@ -145,28 +146,24 @@ describe("translateCharacterCard", () => {
       details: { field: "first_mes", reason: "protected_tokens" },
     });
   });
-  it("reuses the validated name after cancellation and reconstructs the glossary", async () => {
+  it("retries the whole card after a mid-stream cancellation without caching anything", async () => {
     const original = card();
     const checkpoint: CardTranslationCheckpoint = { translations: {} };
     const controller = new AbortController();
     successfulRequests();
     await expect(translateCharacterCard(original, "Simplified Chinese", config(), { checkpoint, signal: controller.signal,
-      onProgress: (event) => { if (event.field === "name" && event.completed === 1) controller.abort(); },
-    })).rejects.toMatchObject({ details: { field: "name", completed: 1 } });
-    expect(checkpoint.translations).toEqual({ s0: "译Alice" });
+      onProgress: (event) => { if (event.receivedCharacters > 0) controller.abort(); },
+    })).rejects.toMatchObject({ code: "translation_cancelled", details: { completed: 0 } });
+    expect(checkpoint.translations).toEqual({});
     expect(fetchMock).toHaveBeenCalledTimes(1);
     fetchMock.mockClear();
     const result = await translateCharacterCard(original, "Simplified Chinese", config(), { checkpoint });
     expect(result.data.name).toBe("译Alice");
     expect(result.data.first_mes).toContain('who="译Alice"');
-    for (const [, init] of fetchMock.mock.calls) {
-      const request = JSON.parse(String(init?.body));
-      expect(JSON.parse(request.messages[1].content)).not.toHaveProperty("s0");
-      expect(request.messages[0].content).toContain('{"Alice":"译Alice"}');
-    }
-    fetchMock.mockClear();
-    expect(await translateCharacterCard(original, "Simplified Chinese", config(), { checkpoint })).toEqual(result);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // 重试的字典里再次包含名字，没有靠缓存跳过
+    const source = JSON.parse(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).messages[1].content);
+    expect(source.s0).toBe("Alice");
   });
   it("invalidates checkpoints signed with the old settings schema", async () => {
     const original = card();
@@ -183,7 +180,8 @@ describe("translateCharacterCard", () => {
     expect(result.data.name).toBe("译Alice");
     expect(checkpoint.signature).not.toBe(signature);
     expect(checkpoint.translations).not.toHaveProperty("orphan");
-    expect(JSON.parse(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).messages[1].content)).toEqual({ s0: "Alice" });
+    expect(JSON.parse(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).messages[1].content)).toMatchObject({ s0: "Alice" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it("translates all supported text while retaining metadata and leaving the source untouched", async () => {
     successfulRequests();
@@ -208,15 +206,20 @@ describe("translateCharacterCard", () => {
     expect(url).toBe("/api/chat");
     expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-test" });
     expect(JSON.parse(String(init?.body))).toMatchObject({ mode: "complete", model: "test-model", reasoningEffort: "low" });
-    expect(JSON.parse(String(init?.body)).maxTokens).toBe(10000);
+    // 小卡的输出下限：固定余量 + 每字 2 token 还不够 minTokens 时保底
+    expect(JSON.parse(String(init?.body)).maxTokens).toBe(1024);
     expect(String(init?.body)).not.toContain("sk-test");
   });
-  it("splits a large field and completes multiple batches without splitting markers", async () => {
+  it("sends a large field as fragments inside the one request without splitting markers", async () => {
     successfulRequests();
     const original = card();
     original.data.description = "x".repeat(1597) + "{{char}}<narr>" + "y".repeat(7000) + "</narr>";
     const result = await translateCharacterCard(original, "English", config());
-    expect(fetchMock.mock.calls.length).toBeGreaterThan(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // 大卡的输出上限跟着输入体量走，但仍在天花板内
+    const maxTokens = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).maxTokens as number;
+    expect(maxTokens).toBeGreaterThan(10_000);
+    expect(maxTokens).toBeLessThanOrEqual(settings.maxTokens);
     expect(result.data.description.replaceAll("译", "")).toBe(original.data.description);
   });
   it("rejects missing configuration without requesting a model", async () => {
@@ -241,17 +244,14 @@ describe("translateCharacterCard", () => {
     });
     await expect(translateCharacterCard(card(), "Simplified Chinese", config())).rejects.toMatchObject({ code: "translation_invalid_response" });
   });
-  it("leaves the original card intact when a later batch fails", async () => {
-    successfulRequests();
-    const success = fetchMock.getMockImplementation()!;
-    let calls = 0;
-    fetchMock.mockImplementation(async (url, init) => ++calls === 1 ? success(url, init) : sse("{}"));
+  it("leaves the original card intact when the single request fails", async () => {
+    fetchMock.mockResolvedValue(sse("{}"));
     const original = card();
     original.data.description = "a".repeat(7000);
     const snapshot = structuredClone(original);
     await expect(translateCharacterCard(original, "Simplified Chinese", config())).rejects.toMatchObject({ code: "translation_invalid_response" });
     expect(original).toEqual(snapshot);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it.each(["http", "network", "event"])("redacts %s errors without retries", async (failure) => {
     if (failure === "http") fetchMock.mockResolvedValue(new Response("sk-secret upstream payload", { status: 500 }));
@@ -309,28 +309,25 @@ describe("translateCharacterCard", () => {
     expect(events.every((event, index) => ["name", "description"].includes(event.field) && (!index
       || event.completed >= events[index - 1].completed && event.receivedCharacters >= events[index - 1].receivedCharacters))).toBe(true);
   });
-  it("manually resumes verified segments without paying for them again, including after API key replacement", async () => {
+  it("retries the whole card after a truncated response without caching partial output", async () => {
     const original = createEmptyCard();
     original.data.description = "word ".repeat(1000);
     const checkpoint: CardTranslationCheckpoint = { translations: {} };
-    successfulRequests();
-    const success = fetchMock.getMockImplementation()!;
-    let calls = 0;
-    fetchMock.mockImplementation(async (url, init) => ++calls === 1 ? success(url, init) : sse("{}", "length"));
+    fetchMock.mockResolvedValue(sse('{"s0":"partial', "length"));
     await expect(translateCharacterCard(original, "Simplified Chinese", config(), { checkpoint })).rejects.toMatchObject({
-      code: "translation_incomplete", details: { reason: "output_limit", completed: 1 },
+      code: "translation_incomplete", details: { reason: "output_limit", completed: 0 },
     });
-    const verified = Object.keys(checkpoint.translations);
-    expect(verified).toHaveLength(1);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(Object.keys(checkpoint.translations)).toHaveLength(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(checkpoint)).not.toContain("sk-test");
     fetchMock.mockClear();
     successfulRequests();
     const resumed = await translateCharacterCard(original, "Simplified Chinese", { ...config(), apiKey: "sk-replaced" }, { checkpoint });
     expect(resumed.data.description.replaceAll("译", "")).toBe(original.data.description);
+    // 重试不带任何已缓存片段：单请求没有部分成功的片段
     for (const [, init] of fetchMock.mock.calls) {
       const source = JSON.parse(JSON.parse(String(init?.body)).messages[1].content);
-      expect(Object.keys(source).some((key) => verified.includes(key))).toBe(false);
+      expect(Object.keys(source).length).toBeGreaterThan(1);
     }
     fetchMock.mockClear();
     expect(await translateCharacterCard(original, "Simplified Chinese", config(), { checkpoint })).toEqual(resumed);
@@ -351,25 +348,25 @@ describe("translateCharacterCard", () => {
     checkpoint.translations.orphan = "must clear";
     fetchMock.mockClear();
     await translateCharacterCard(original, change === "language" ? "English" : "Simplified Chinese", next, { checkpoint });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(checkpoint.signature).not.toBe(signature);
     expect(checkpoint.translations).not.toHaveProperty("orphan");
   });
-  it("retains verified checkpoint on cancellation and never caches unfinished output", async () => {
+  it("retains nothing on cancellation and never caches unfinished output", async () => {
     const original = createEmptyCard();
     original.data.description = "word ".repeat(800);
     const checkpoint: CardTranslationCheckpoint = { translations: {} };
     const controller = new AbortController();
     successfulRequests();
     await expect(translateCharacterCard(original, "Simplified Chinese", config(), { checkpoint, signal: controller.signal,
-      onProgress: (event) => { if (event.completed > 0) controller.abort(); },
-    })).rejects.toMatchObject({ code: "translation_cancelled", details: { reason: "cancelled", completed: 1 } });
+      onProgress: (event) => { if (event.receivedCharacters > 0) controller.abort(); },
+    })).rejects.toMatchObject({ code: "translation_cancelled", details: { reason: "cancelled", completed: 0 } });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(Object.keys(checkpoint.translations)).toHaveLength(1);
+    expect(Object.keys(checkpoint.translations)).toHaveLength(0);
     fetchMock.mockClear();
     const result = await translateCharacterCard(original, "Simplified Chinese", config(), { checkpoint });
     expect(result.data.description.replaceAll("译", "")).toBe(original.data.description);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     const empty: CardTranslationCheckpoint = { translations: {} };
     fetchMock.mockResolvedValue(sse('{"s0":"partial', "length"));
     await expect(translateCharacterCard(original, "Simplified Chinese", config(), { checkpoint: empty })).rejects.toMatchObject({
@@ -389,17 +386,14 @@ describe("translateCharacterCard", () => {
       message: "translation_incomplete", details: { reason: "stream_interrupted", completed: 0 },
     });
   });
-  it("keeps batches within one field so progress identifies the actual failure", async () => {
+  it("reports the request's first field when the single request is cut short", async () => {
     const original = createEmptyCard();
     original.data.description = "Description only";
     original.data.personality = "Personality only";
-    successfulRequests();
-    const success = fetchMock.getMockImplementation()!;
-    let calls = 0;
-    fetchMock.mockImplementation(async (url, init) => ++calls <= 2 ? success(url, init) : sse("{}", "content_filter"));
+    fetchMock.mockResolvedValue(sse("{}", "content_filter"));
     await expect(translateCharacterCard(original, "Simplified Chinese", config())).rejects.toMatchObject({
-      details: { reason: "content_filter", field: "personality", completed: 2, total: 3 },
+      details: { reason: "content_filter", field: "name", completed: 0 },
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

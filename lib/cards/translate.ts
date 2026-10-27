@@ -103,6 +103,8 @@ export async function translateCharacterCard(
     progress = { ...progress, ...patch };
     options?.onProgress?.({ ...progress });
   };
+  // catch 里要按 key 反查字段，声明放外面
+  let segments: TranslationSegment[] = [];
   try {
     checkAbort(signal);
     emit({});
@@ -115,7 +117,7 @@ export async function translateCharacterCard(
       throw new CardTranslationError("translation_not_configured", { reason: "not_configured" });
     }
     const result = structuredClone(card);
-    const segments = collectTranslationSegments(result);
+    segments = collectTranslationSegments(result);
     const checkpoint = options?.checkpoint ?? { translations: {} };
     const signatureInput = JSON.stringify([card, targetLanguage, config.providerId, config.model.trim(),
       resolved && "baseURL" in resolved ? resolved.baseURL : config.baseURL, local, settings]);
@@ -130,6 +132,12 @@ export async function translateCharacterCard(
       field: segments[0]?.field ?? "description" });
     const write = (segment: TranslationSegment, translation: string) => segment.write(segment.field === "name"
       ? translation : synchronizeTranslationSpeakers(translation, card.data.name, result.data.name));
+    /*
+     * 单请求：整张卡的全部片段放进一个字典一次发完。
+     * 断点续传只对旧版本留下的部分缓存有意义——单请求要么整份成功（全部入缓存），
+     * 要么整份失败（什么都不缓存，重头再来）。
+     */
+    const pending: TranslationSegment[] = [];
     for (let index = 0; index < segments.length;) {
       checkAbort(signal);
       const current = segments[index];
@@ -148,23 +156,22 @@ export async function translateCharacterCard(
           continue;
         }
       }
-      const batch: TranslationSegment[] = [];
-      let size = 0;
-      while (index < segments.length && (!batch.length ||
-        !Object.hasOwn(checkpoint.translations, segments[index].key) && segments[index].field === batch[0].field
-        && size + segments[index].text.length <= settings.batchCharacters)) {
-        const segment = segments[index++];
-        batch.push(segment);
-        size += segment.text.length;
-      }
-      emit({ phase: "translating", field: batch[0].field });
+      pending.push(current);
+      index++;
+    }
+
+    if (pending.length > 0) {
+      emit({ phase: "translating", field: pending[0].field });
       checkAbort(signal);
-      const source = Object.fromEntries(batch.map(({ key, text }) => [key, text]));
+      const source = Object.fromEntries(pending.map(({ key, text }) => [key, text]));
       const messages: ChatMessage[] = [
-        { role: "system", content: `${settings.systemPrompt}\nTarget language: ${targetLanguage}.\n${batch[0].field === "name"
-          ? settings.namePrompt : `${settings.glossaryPrompt} ${JSON.stringify({ [card.data.name]: result.data.name })}`}` },
+        { role: "system", content: `${settings.systemPrompt}\nTarget language: ${targetLanguage}.\n${settings.namePrompt}\n${settings.glossaryPrompt} ${card.data.name}` },
         { role: "user", content: JSON.stringify(source) },
       ];
+      // 输出上限按输入体量算：翻译通常不比原文长，2 token/字加固定余量，
+      // 下限保底、上限兜住极端大卡
+      const maxTokens = Math.min(settings.maxTokens, Math.max(settings.minTokens,
+        settings.outputTokenOverhead + pending.reduce((sum, segment) => sum + segment.characters, 0) * settings.outputTokensPerCharacter));
       const onDelta = (delta: string) => emit({ receivedCharacters: progress.receivedCharacters + delta.length });
       let text = "";
       if (local) {
@@ -178,7 +185,7 @@ export async function translateCharacterCard(
             interfaceType: config.interfaceType, model: config.model.trim(),
             baseURL: resolved && "baseURL" in resolved ? resolved.baseURL : undefined,
             messages, temperature: settings.temperature, reasoningEffort: "low",
-            maxTokens: settings.maxTokens }),
+            maxTokens }),
         });
         if (!response.ok) throw new CardTranslationError("translation_request_failed", { reason: "http_error", status: response.status });
         if (!response.body) throw new CardTranslationError("translation_incomplete", { reason: "stream_interrupted" });
@@ -188,12 +195,12 @@ export async function translateCharacterCard(
       emit({ phase: "validating" });
       checkAbort(signal);
       const translated = parseTranslationDictionary(text, source);
-      for (const segment of batch) {
+      for (const segment of pending) {
         write(segment, translated[segment.key]);
         checkpoint.translations[segment.key] = translated[segment.key];
       }
-      emit({ completed: progress.completed + batch.length,
-        completedCharacters: progress.completedCharacters + batch.reduce((sum, segment) => sum + segment.characters, 0) });
+      emit({ completed: progress.completed + pending.length,
+        completedCharacters: progress.completedCharacters + pending.reduce((sum, segment) => sum + segment.characters, 0) });
     }
     checkAbort(signal);
     emit({ phase: "complete" });
@@ -205,7 +212,15 @@ export async function translateCharacterCard(
       throw new CardTranslationError("translation_cancelled", { reason: "cancelled", ...context });
     }
     if (error instanceof CardTranslationError) {
-      error.details = { ...error.details!, ...context };
+      // 单请求里哪个片段没过校验，就把 field 定位到它的字段，而不是笼统报第一个字段
+      const failedKey = typeof error.details?.key === "string"
+        ? segments.find((segment) => segment.key === error.details!.key)
+        : undefined;
+      error.details = {
+        ...error.details!,
+        ...context,
+        ...(failedKey ? { field: failedKey.field } : {}),
+      };
       throw error;
     }
     throw new CardTranslationError("translation_request_failed", { reason: "network_error", ...context });

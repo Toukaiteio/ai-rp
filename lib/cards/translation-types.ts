@@ -31,6 +31,8 @@ export interface CardTranslationErrorDetails {
   total?: number;
   status?: number;
   receivedCharacters?: number;
+  /** 校验失败时出问题的那个字典键，调用方用它把 field 定位到具体字段 */
+  key?: string;
 }
 
 export class CardTranslationError extends Error {
@@ -108,10 +110,10 @@ export function parseTranslationDictionary(text: string, source: Record<string, 
   for (const key of keys) {
     const translated = result[key];
     if (typeof translated !== "string" || !translated.trim()) {
-      throw new CardTranslationError("translation_invalid_response", { reason: "invalid_value" });
+      throw new CardTranslationError("translation_invalid_response", { reason: "invalid_value", key });
     }
     if (JSON.stringify(translationMarkers(translated)) !== JSON.stringify(translationMarkers(source[key]))) {
-      throw new CardTranslationError("translation_invalid_response", { reason: "protected_tokens" });
+      throw new CardTranslationError("translation_invalid_response", { reason: "protected_tokens", key });
     }
   }
   return result as Record<string, string>;
