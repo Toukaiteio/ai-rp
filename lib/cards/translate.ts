@@ -173,10 +173,8 @@ export async function translateCharacterCard(
         { role: "system", content: `${settings.systemPrompt}\nTarget language: ${targetLanguage}.\n${settings.namePrompt}\n${settings.glossaryPrompt} ${card.data.name}` },
         { role: "user", content: JSON.stringify(source) },
       ];
-      // 输出上限按输入体量算：翻译通常不比原文长，2 token/字加固定余量，
-      // 下限保底、上限兜住极端大卡
-      const maxTokens = Math.min(settings.maxTokens, Math.max(settings.minTokens,
-        settings.outputTokenOverhead + pending.reduce((sum, segment) => sum + segment.characters, 0) * settings.outputTokensPerCharacter));
+      // 固定 64k 输出预算：模型在这个预算里答，答到一半被截断就续传
+      const maxTokens = settings.maxTokens;
       const onDelta = (delta: string) => emit({ receivedCharacters: progress.receivedCharacters + delta.length });
       let text = "";
       if (local) {

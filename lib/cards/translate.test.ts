@@ -206,8 +206,8 @@ describe("translateCharacterCard", () => {
     expect(url).toBe("/api/chat");
     expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-test" });
     expect(JSON.parse(String(init?.body))).toMatchObject({ mode: "complete", model: "test-model", reasoningEffort: "low" });
-    // 小卡的输出下限：固定余量 + 每字 2 token 还不够 minTokens 时保底
-    expect(JSON.parse(String(init?.body)).maxTokens).toBe(4096);
+    // 固定 64k 输出预算，不按卡的大小浮动
+    expect(JSON.parse(String(init?.body)).maxTokens).toBe(64000);
     expect(String(init?.body)).not.toContain("sk-test");
   });
   it("sends a large field as fragments inside the one request without splitting markers", async () => {
@@ -216,10 +216,8 @@ describe("translateCharacterCard", () => {
     original.data.description = "x".repeat(1597) + "{{char}}<narr>" + "y".repeat(7000) + "</narr>";
     const result = await translateCharacterCard(original, "English", config());
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    // 大卡的输出上限跟着输入体量走，但仍在天花板内
-    const maxTokens = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).maxTokens as number;
-    expect(maxTokens).toBeGreaterThan(10_000);
-    expect(maxTokens).toBeLessThanOrEqual(settings.maxTokens);
+    // 再大的卡也是同一个固定预算，装不下就靠续传
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).maxTokens).toBe(64000);
     expect(result.data.description.replaceAll("译", "")).toBe(original.data.description);
   });
   it("rejects missing configuration without requesting a model", async () => {

@@ -1,11 +1,8 @@
 {
   "schemaVersion": 3,
   "segmentCharacters": 1000,
-  "maxTokens": 65536,
-  "minTokens": 4096,
+  "maxTokens": 64000,
   "maxContinuations": 8,
-  "outputTokensPerCharacter": 2,
-  "outputTokenOverhead": 512,
   "temperature": 0.2,
   "fields": ["name", "description", "personality", "scenario", "first_mes", "mes_example", "system_prompt", "post_history_instructions", "author_note"],
   "voiceFields": ["vocabulary", "habits", "avoidances", "sampleLines"],
