@@ -5,7 +5,7 @@ import { ChevronDown, Languages, LoaderCircle, X } from "lucide-react";
 import { Bar, IconButton, PillButton } from "@/components/ui";
 import type { MessageKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/use-i18n";
-import { translationFieldKey, translationLanguageLabel, translationPercent } from "./CardTranslationFlow";
+import { translationLanguageLabel, translationPercent } from "./CardTranslationFlow";
 import {
   removeCardTranslation,
   retryCardTranslation,
@@ -31,11 +31,11 @@ export function sortTranslationTasks(tasks: TranslationTaskView[]): TranslationT
 }
 
 function statusText(task: TranslationTaskView, t: Translate): string {
-  const field = translationFieldKey(task.progress?.field);
   if (task.status === "saving") return t("card.translationSaving");
   if (task.progress?.phase === "preparing") return t("card.translationPreparing");
   if (task.progress?.phase === "validating" || task.progress?.phase === "complete") return t("card.translationValidating");
-  return field ? t("card.translationTranslatingField", { field: t(field) }) : t("card.translationPreparing");
+  if (task.progress?.phase === "translating") return t("card.translationTranslating");
+  return t("card.translationPreparing");
 }
 
 export function TranslationTaskRow({ task, onRetry, onRemove, onOpenSettings }: {

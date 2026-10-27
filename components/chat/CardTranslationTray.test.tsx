@@ -21,9 +21,10 @@ function task(patch: Partial<TranslationTaskView>): TranslationTaskView {
 const handlers = { onRetry: () => {}, onRemove: () => {} };
 
 describe("translation task tray", () => {
-  it("shows one progress bar and the translating field, not raw stream counters", () => {
+  it("shows one progress bar and whole-card translation status, not per-field or raw stream counters", () => {
     const html = renderToStaticMarkup(<TranslationTaskList tasks={[task({ progress })]} {...handlers} />);
-    expect(html).toContain("Translating: Description");
+    expect(html).toContain("Translating character card");
+    expect(html).not.toContain("Translating: Description");
     expect(html).toContain("200 / 800 characters · 25%");
     expect(html).toContain('aria-valuenow="25"');
     expect(html).not.toContain("Characters received");
@@ -46,7 +47,7 @@ describe("translation task tray", () => {
     expect(html).toContain(translate("en", "card.translationIncomplete").replaceAll("'", "&#x27;"));
     expect(html).toContain(translate("en", diagnostic.reason).replaceAll("'", "&#x27;"));
     expect(html).toContain("Failed at: World book");
-    expect(html).toContain("Continue translation");
+    expect(html).toContain("Retry translation");
     expect(html).not.toContain("private payload");
     expect(html).not.toContain("secret");
   });
@@ -57,7 +58,7 @@ describe("translation task tray", () => {
         onRetry={() => {}} onRemove={() => {}} onOpenSettings={() => {}} />,
     );
     expect(config).toContain("Open Settings");
-    expect(config).toContain("Continue translation");
+    expect(config).toContain("Retry translation");
     const save = renderToStaticMarkup(
       <TranslationTaskList tasks={[task({ status: "failed", error: "card.translationSaveFailed", diagnostic: translationDiagnostic(null) })]} {...handlers} />,
     );

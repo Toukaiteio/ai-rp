@@ -175,7 +175,14 @@ export async function translateCharacterCard(
       ];
       // 固定 64k 输出预算：模型在这个预算里答，答到一半被截断就续传
       const maxTokens = settings.maxTokens;
-      const onDelta = (delta: string) => emit({ receivedCharacters: progress.receivedCharacters + delta.length });
+      const baseCompletedCharacters = progress.completedCharacters;
+      const onDelta = (delta: string) => {
+        const receivedCharacters = progress.receivedCharacters + delta.length;
+        emit({
+          receivedCharacters,
+          completedCharacters: Math.min(progress.totalCharacters, baseCompletedCharacters + receivedCharacters),
+        });
+      };
       let text = "";
       if (local) {
         // 浏览器 Prompt API 没有 finishReason，拿不到「被截断」的信号，一次到底
@@ -198,7 +205,7 @@ export async function translateCharacterCard(
             body: JSON.stringify({ mode: "complete", providerId: config.providerId,
               interfaceType: config.interfaceType, model: config.model.trim(),
               baseURL: resolved && "baseURL" in resolved ? resolved.baseURL : undefined,
-              messages: attemptMessages, temperature: settings.temperature, reasoningEffort: "low",
+              messages: attemptMessages, temperature: settings.temperature,
               maxTokens }),
           });
           if (!response.ok) throw new CardTranslationError("translation_request_failed", { reason: "http_error", status: response.status });
@@ -221,7 +228,7 @@ export async function translateCharacterCard(
         checkpoint.translations[segment.key] = translated[segment.key];
       }
       emit({ completed: progress.completed + pending.length,
-        completedCharacters: progress.completedCharacters + pending.reduce((sum, segment) => sum + segment.characters, 0) });
+        completedCharacters: baseCompletedCharacters + pending.reduce((sum, segment) => sum + segment.characters, 0) });
     }
     checkAbort(signal);
     emit({ phase: "complete" });

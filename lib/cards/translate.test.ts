@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyCard } from "./validate";
 import { CardTranslationError, parseTranslationDictionary, translateCharacterCard, type CardTranslationCheckpoint,
   type CardTranslationProgress } from "./translate";
-import { collectTranslationSegments, splitTranslationText } from "./translation-segments";
+import { collectTranslationSegments } from "./translation-segments";
 import settings from "@/data/card-translation.json";
 import { resolveBaseURL } from "@/lib/providers/validate";
 import { defaultProviderConfig } from "@/lib/providers/settings";
@@ -57,10 +57,10 @@ describe("translation response validation", () => {
     ("rejects invalid dictionary %s", (text) => {
       expect(() => parseTranslationDictionary(text, { a: "hello" })).toThrowError(CardTranslationError);
     });
-  it("requires exact ordered macros and tags, including speaker attributes", () => {
+  it("accepts natural macro reordering, omitted redundant macros, and translated tags or speaker attributes", () => {
     const source = { a: '<dlg who="Alice">{{char}} {{user}}</dlg>' };
     for (const a of ['<dlg who="艾丽丝">{{char}} {{user}}</dlg>', '<dlg who="Alice">{{user}} {{char}}</dlg>', "plain"]) {
-      expect(() => parseTranslationDictionary(JSON.stringify({ a }), source)).toThrow();
+      expect(parseTranslationDictionary(JSON.stringify({ a }), source)).toEqual({ a });
     }
     expect(parseTranslationDictionary(JSON.stringify(source), source)).toEqual(source);
   });
@@ -69,7 +69,7 @@ describe("translation response validation", () => {
   });
   it.each([
     ['{"a":"cut', "json_truncated"], ["broken", "invalid_json"], ["{}", "missing_fields"],
-    ['{"a":"plain"}', "protected_tokens"], ['{"a":"hi","extra":"hi"}', "unexpected_fields"],
+    ['{"a":""}', "invalid_value"], ['{"a":"hi","extra":"hi"}', "unexpected_fields"],
   ])("reports a safe validation reason for %s", (text, reason) => {
     expect(() => parseTranslationDictionary(text, { a: "{{char}} hello" })).toThrowError(
       expect.objectContaining({ details: expect.objectContaining({ reason }) }));
@@ -77,24 +77,14 @@ describe("translation response validation", () => {
 });
 
 describe("translation segmentation", () => {
-  it("keeps the name in one first segment even beyond the normal segment limit", () => {
+  it("keeps each card field in a single whole entry without artificial splitting", () => {
     const original = card();
     original.data.name = "Long name ".repeat(400);
+    original.data.description = "Long description ".repeat(400);
     const segments = collectTranslationSegments(original);
     expect(segments[0]).toMatchObject({ field: "name", text: original.data.name.trim() });
     expect(segments.filter((segment) => segment.field === "name")).toHaveLength(1);
-  });
-  it("prefers paragraph, then sentence, then word boundaries and retains every character", () => {
-    expect(splitTranslationText("First.\n\nSecond sentence. Last", 24)).toEqual(["First.\n\n", "Second sentence. Last"]);
-    expect(splitTranslationText("First sentence. Second phrase", 22)).toEqual(["First sentence. ", "Second phrase"]);
-    expect(splitTranslationText("alpha beta gamma", 12)).toEqual(["alpha beta ", "gamma"]);
-    const text = "😀".repeat(10) + '{{a sentence. and\n\nmacro}}<dlg who="a b">Text</dlg>';
-    const parts = splitTranslationText(text, 7);
-    expect(parts.join("")).toBe(text);
-    expect(parts).toContain("{{a sentence. and\n\nmacro}}");
-    expect(parts).toContain('<dlg who="a b">');
-    expect(splitTranslationText('<dlg title="a > b" who="Alice">Hello</dlg>', 7)).toContain('<dlg title="a > b" who="Alice">');
-    expect(parts.every((part) => !/[\uD800-\uDBFF]$/.test(part))).toBe(true);
+    expect(segments.filter((segment) => segment.field === "description")).toHaveLength(1);
   });
 });
 
@@ -131,7 +121,7 @@ describe("translateCharacterCard", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(checkpoint.translations).toEqual({});
   });
-  it("rejects model-translated speaker attributes before local synchronization", async () => {
+  it("accepts model-translated speaker attributes as well as synchronizing untranslated ones", async () => {
     successfulRequests();
     const success = fetchMock.getMockImplementation()!;
     fetchMock.mockImplementation(async (url, init) => {
@@ -142,9 +132,8 @@ describe("translateCharacterCard", () => {
       }
       return success(url, init);
     });
-    await expect(translateCharacterCard(card(), "Simplified Chinese", config())).rejects.toMatchObject({
-      details: { field: "first_mes", reason: "protected_tokens" },
-    });
+    const result = await translateCharacterCard(card(), "Simplified Chinese", config());
+    expect(result.data.first_mes).toContain('who="译Alice"');
   });
   it("retries the whole card after a mid-stream cancellation without caching anything", async () => {
     const original = card();
@@ -205,7 +194,8 @@ describe("translateCharacterCard", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/chat");
     expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-test" });
-    expect(JSON.parse(String(init?.body))).toMatchObject({ mode: "complete", model: "test-model", reasoningEffort: "low" });
+    expect(JSON.parse(String(init?.body))).toMatchObject({ mode: "complete", model: "test-model" });
+    expect(JSON.parse(String(init?.body)).reasoningEffort).toBeUndefined();
     // 固定 64k 输出预算，不按卡的大小浮动
     expect(JSON.parse(String(init?.body)).maxTokens).toBe(64000);
     expect(String(init?.body)).not.toContain("sk-test");
@@ -315,7 +305,7 @@ describe("translateCharacterCard", () => {
     const result = await translateCharacterCard(original, "Simplified Chinese", config(), { onProgress: (event) => events.push(event) });
     expect(result).toEqual(original);
     expect(events[0].phase).toBe("preparing");
-    expect(events.some((event) => event.phase === "translating" && event.completed === 0 && event.receivedCharacters > 0)).toBe(true);
+    expect(events.some((event) => event.phase === "translating" && event.completed === 0 && event.receivedCharacters > 0 && event.completedCharacters > 0)).toBe(true);
     expect(events.some((event) => event.phase === "validating" && event.completed === 0)).toBe(true);
     const final = events.at(-1)!;
     expect(final.phase).toBe("complete");

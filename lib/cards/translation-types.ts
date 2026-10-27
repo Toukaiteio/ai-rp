@@ -46,10 +46,6 @@ export function checkTranslationAbort(signal?: AbortSignal): void {
   if (signal?.aborted) throw new CardTranslationError("translation_cancelled", { reason: "cancelled" });
 }
 
-export function translationMarkers(text: string): string[] {
-  return text.match(/\{\{[\s\S]*?\}\}|<(?:"[^"]*"|'[^']*'|[^'">])*>/g) ?? [];
-}
-
 export function synchronizeTranslationSpeakers(text: string, originalName: string, translatedName: string): string {
   if (!originalName || originalName === translatedName) return text;
   const escaped = encodeBlockAttribute(translatedName);
@@ -111,9 +107,6 @@ export function parseTranslationDictionary(text: string, source: Record<string, 
     const translated = result[key];
     if (typeof translated !== "string" || !translated.trim()) {
       throw new CardTranslationError("translation_invalid_response", { reason: "invalid_value", key });
-    }
-    if (JSON.stringify(translationMarkers(translated)) !== JSON.stringify(translationMarkers(source[key]))) {
-      throw new CardTranslationError("translation_invalid_response", { reason: "protected_tokens", key });
     }
   }
   return result as Record<string, string>;

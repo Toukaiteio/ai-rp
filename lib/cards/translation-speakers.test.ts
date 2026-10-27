@@ -34,7 +34,9 @@ describe("translation speaker synchronization", () => {
       `<dlg title="a > b" who="艾丽丝">Hi</dlg><script who="Alice">Alice</script>{{<act who="Alice">}}`,
     );
     expect(parseTranslationDictionary(JSON.stringify({ a: source }), { a: source })).toEqual({ a: source });
-    expect(() => parseTranslationDictionary(JSON.stringify({ a: source.replace('a > b', 'a > c') }), { a: source })).toThrow();
+    expect(parseTranslationDictionary(JSON.stringify({ a: source.replace('a > b', 'a > c') }), { a: source })).toEqual({
+      a: source.replace('a > b', 'a > c'),
+    });
     expect(synchronizeTranslationSpeakers('<dlg who="{{char}}">Hi</dlg>', "{{char}}", "艾丽丝"))
       .toBe('<dlg who="{{char}}">Hi</dlg>');
   });

@@ -83,6 +83,16 @@ export function getTranslationTasksServerSnapshot(): TranslationTaskView[] {
   return emptyViews;
 }
 
+export function hasLiveTranslationTasksSnapshot(): boolean {
+  return views.some(
+    (task) => task.status === "running" || task.status === "saving" || task.status === "failed",
+  );
+}
+
+export function hasLiveTranslationTasksServerSnapshot(): boolean {
+  return false;
+}
+
 export function getTranslationTraySnapshot(): TranslationTrayState {
   return tray;
 }

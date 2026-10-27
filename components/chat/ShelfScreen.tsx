@@ -31,8 +31,8 @@ import { Avatar } from "./Avatar";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
 import { CardTranslation } from "./CardTranslation";
 import {
-  getTranslationTasksServerSnapshot,
-  getTranslationTasksSnapshot,
+  hasLiveTranslationTasksServerSnapshot,
+  hasLiveTranslationTasksSnapshot,
   setTranslationTray,
   subscribeTranslationTasks,
 } from "./CardTranslationTasks";
@@ -85,10 +85,8 @@ export function ShelfScreen({
   const jumpingRef = useRef(false);
   const { t } = useI18n();
   const androidApp = useSyncExternalStore(() => () => {}, isAndroidApp, () => false);
-  const translationTasks = useSyncExternalStore(
-    subscribeTranslationTasks, getTranslationTasksSnapshot, getTranslationTasksServerSnapshot);
-  const hasLiveTranslations = translationTasks.some((task) =>
-    task.status === "running" || task.status === "saving" || task.status === "failed");
+  const hasLiveTranslations = useSyncExternalStore(
+    subscribeTranslationTasks, hasLiveTranslationTasksSnapshot, hasLiveTranslationTasksServerSnapshot);
 
   const tags = useMemo(
     () => {
