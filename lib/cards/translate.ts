@@ -20,15 +20,20 @@ export function translationLanguages(): Record<string, string> {
   return settings.languages;
 }
 
+/**
+ * 读完整条流。finish=length 不是错误：预算用完了、答案被截断，
+ * 交给调用方决定续传还是报错，这里原样带回 finishReason。
+ */
 async function readTranslationStream(
   body: ReadableStream<Uint8Array>, onDelta: (text: string) => void, signal?: AbortSignal,
-): Promise<string> {
+): Promise<{ text: string; finishReason: string }> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let text = "";
   let finished = false;
   let terminated = false;
+  let finishReason = "";
   const cancel = () => { void reader.cancel().catch(() => undefined); };
   signal?.addEventListener("abort", cancel, { once: true });
   try {
@@ -69,11 +74,11 @@ async function readTranslationStream(
           onDelta(frame.text);
         } else if (frame.type === "done") {
           if (finished) throw new CardTranslationError("translation_invalid_response", { reason: "invalid_sse" });
-          if (frame.finishReason !== "stop") {
-            const reason = frame.finishReason === "length" ? "output_limit"
-              : frame.finishReason === "content_filter" ? "content_filter" : "unexpected_finish_reason";
+          if (frame.finishReason !== "stop" && frame.finishReason !== "length") {
+            const reason = frame.finishReason === "content_filter" ? "content_filter" : "unexpected_finish_reason";
             throw new CardTranslationError("translation_incomplete", { reason });
           }
+          finishReason = frame.finishReason ?? "stop";
           finished = true;
         } else {
           throw new CardTranslationError("translation_invalid_response", { reason: "invalid_sse" });
@@ -82,7 +87,7 @@ async function readTranslationStream(
       if (done) break;
     }
     if (!finished || !terminated || buffer.trim()) throw new CardTranslationError("translation_incomplete", { reason: "stream_interrupted" });
-    return text;
+    return { text, finishReason };
   } finally {
     signal?.removeEventListener("abort", cancel);
     await reader.cancel().catch(() => undefined);
@@ -175,21 +180,39 @@ export async function translateCharacterCard(
       const onDelta = (delta: string) => emit({ receivedCharacters: progress.receivedCharacters + delta.length });
       let text = "";
       if (local) {
+        // 浏览器 Prompt API 没有 finishReason，拿不到「被截断」的信号，一次到底
         await streamBrowserChat({ messages, temperature: settings.temperature, signal, onDelta: (delta) => { text += delta; onDelta(delta); } });
       } else {
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...authHeaders(cleanApiKey(config.apiKey).value) },
-          signal,
-          body: JSON.stringify({ mode: "complete", providerId: config.providerId,
-            interfaceType: config.interfaceType, model: config.model.trim(),
-            baseURL: resolved && "baseURL" in resolved ? resolved.baseURL : undefined,
-            messages, temperature: settings.temperature, reasoningEffort: "low",
-            maxTokens }),
-        });
-        if (!response.ok) throw new CardTranslationError("translation_request_failed", { reason: "http_error", status: response.status });
-        if (!response.body) throw new CardTranslationError("translation_incomplete", { reason: "stream_interrupted" });
-        text = await readTranslationStream(response.body, onDelta, signal);
+        /*
+         * 续传：finish=length 不是错误，是这次预算用完了。
+         * 把已生成的部分作为 assistant 消息带回去，让模型从截断处接着写，
+         * 直到正常收尾或续传次数用尽。用尽了还有 parseTranslationDictionary 兜底，
+         * 真的拼不回来才报错。
+         */
+        for (let attempt = 0; ; attempt += 1) {
+          const attemptMessages: ChatMessage[] = attempt === 0
+            ? messages
+            : [...messages, { role: "assistant", content: text }, { role: "user", content: settings.continuePrompt }];
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders(cleanApiKey(config.apiKey).value) },
+            signal,
+            body: JSON.stringify({ mode: "complete", providerId: config.providerId,
+              interfaceType: config.interfaceType, model: config.model.trim(),
+              baseURL: resolved && "baseURL" in resolved ? resolved.baseURL : undefined,
+              messages: attemptMessages, temperature: settings.temperature, reasoningEffort: "low",
+              maxTokens }),
+          });
+          if (!response.ok) throw new CardTranslationError("translation_request_failed", { reason: "http_error", status: response.status });
+          if (!response.body) throw new CardTranslationError("translation_incomplete", { reason: "stream_interrupted" });
+          const chunk = await readTranslationStream(response.body, onDelta, signal);
+          text += chunk.text;
+          if (chunk.finishReason !== "length") break;
+          // attempt 0 是原始请求，后面每次都是续传，用尽才放弃
+          if (attempt >= settings.maxContinuations) break;
+          emit({ phase: "translating" });
+          checkAbort(signal);
+        }
       }
       checkAbort(signal);
       emit({ phase: "validating" });

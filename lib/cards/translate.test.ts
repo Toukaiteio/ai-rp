@@ -207,7 +207,7 @@ describe("translateCharacterCard", () => {
     expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-test" });
     expect(JSON.parse(String(init?.body))).toMatchObject({ mode: "complete", model: "test-model", reasoningEffort: "low" });
     // 小卡的输出下限：固定余量 + 每字 2 token 还不够 minTokens 时保底
-    expect(JSON.parse(String(init?.body)).maxTokens).toBe(1024);
+    expect(JSON.parse(String(init?.body)).maxTokens).toBe(4096);
     expect(String(init?.body)).not.toContain("sk-test");
   });
   it("sends a large field as fragments inside the one request without splitting markers", async () => {
@@ -226,10 +226,30 @@ describe("translateCharacterCard", () => {
     await expect(translateCharacterCard(card(), "Simplified Chinese", { ...config(), apiKey: "中文" })).rejects.toMatchObject({ code: "translation_not_configured" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
-  it.each([["length", "output_limit"], ["content_filter", "content_filter"], ["tool_calls", "unexpected_finish_reason"]])("rejects incomplete finish reason %s", async (reason, detail) => {
+  it.each([["content_filter", "content_filter"], ["tool_calls", "unexpected_finish_reason"]])("rejects abnormal finish reason %s", async (reason, detail) => {
     fetchMock.mockResolvedValue(sse("{}", reason));
     await expect(translateCharacterCard(card(), "Simplified Chinese", config())).rejects.toMatchObject({ code: "translation_incomplete", details: { reason: detail } });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it("continues from the truncation point instead of failing on the output limit", async () => {
+    const original = createEmptyCard();
+    original.data.name = "Alice";
+    original.data.description = "A scholar";
+    // 第一次在 JSON 中间被截断，续传请求带上残缺的 assistant 消息，模型从截断处接着写
+    fetchMock.mockImplementation(async (_url, init) => {
+      const request = JSON.parse(String(init?.body));
+      const continued = request.messages.some((message: { role: string }) => message.role === "assistant");
+      if (!continued) {
+        return sse('{"s0":"Alice","s1":"A schol', "length");
+      }
+      expect(request.messages.at(-1)?.content).toBe(settings.continuePrompt);
+      expect(request.messages.at(-2)?.content).toBe('{"s0":"Alice","s1":"A schol');
+      return sse('ar"}');
+    });
+    const result = await translateCharacterCard(original, "Simplified Chinese", config());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.data.name).toBe("Alice");
+    expect(result.data.description).toBe("A scholar");
   });
   it("requires the terminal SSE frame", async () => {
     fetchMock.mockResolvedValue(sse("{}", "stop", false));
@@ -309,16 +329,18 @@ describe("translateCharacterCard", () => {
     expect(events.every((event, index) => ["name", "description"].includes(event.field) && (!index
       || event.completed >= events[index - 1].completed && event.receivedCharacters >= events[index - 1].receivedCharacters))).toBe(true);
   });
-  it("retries the whole card after a truncated response without caching partial output", async () => {
+  it("exhausts continuations and still reports a truncated response without caching partial output", async () => {
     const original = createEmptyCard();
     original.data.description = "word ".repeat(1000);
     const checkpoint: CardTranslationCheckpoint = { translations: {} };
-    fetchMock.mockResolvedValue(sse('{"s0":"partial', "length"));
+    // 每次调用都要新 Response：body 只能读一次，续传会读多次
+    fetchMock.mockImplementation(async () => sse('{"s0":"partial', "length"));
     await expect(translateCharacterCard(original, "Simplified Chinese", config(), { checkpoint })).rejects.toMatchObject({
-      code: "translation_incomplete", details: { reason: "output_limit", completed: 0 },
+      code: "translation_invalid_response", details: { reason: "json_truncated", completed: 0 },
     });
+    // 1 次原始请求 + 全部续传次数用尽才放弃
+    expect(fetchMock).toHaveBeenCalledTimes(1 + settings.maxContinuations);
     expect(Object.keys(checkpoint.translations)).toHaveLength(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(checkpoint)).not.toContain("sk-test");
     fetchMock.mockClear();
     successfulRequests();
@@ -367,12 +389,14 @@ describe("translateCharacterCard", () => {
     const result = await translateCharacterCard(original, "Simplified Chinese", config(), { checkpoint });
     expect(result.data.description.replaceAll("译", "")).toBe(original.data.description);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockClear();
     const empty: CardTranslationCheckpoint = { translations: {} };
-    fetchMock.mockResolvedValue(sse('{"s0":"partial', "length"));
+    fetchMock.mockImplementation(async () => sse('{"s0":"partial', "length"));
     await expect(translateCharacterCard(original, "Simplified Chinese", config(), { checkpoint: empty })).rejects.toMatchObject({
-      details: { reason: "output_limit", completed: 0 },
+      code: "translation_invalid_response", details: { reason: "json_truncated", completed: 0 },
     });
     expect(empty.translations).toEqual({});
+    expect(fetchMock).toHaveBeenCalledTimes(1 + settings.maxContinuations);
   });
   it("distinguishes HTTP status and reader interruption without exposing upstream messages", async () => {
     fetchMock.mockResolvedValue(new Response("sk-secret unsafe upstream text", { status: 429 }));
