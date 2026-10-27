@@ -44,7 +44,7 @@ describe("OpenAI Responses provider", () => {
     openaiMock.constructors.length = 0;
   });
 
-  it("keeps system messages in the input order and maps tools to flat function tools", async () => {
+  it("extracts the top system prompt into instructions and maps tools to flat function tools", async () => {
     openaiMock.create.mockResolvedValue(fakeStream([]));
     const signal = new AbortController().signal;
     const provider = createResponsesProvider({
@@ -54,8 +54,9 @@ describe("OpenAI Responses provider", () => {
 
     await provider.open(request({
       messages: [
-        { role: "system", content: "Rule one" },
+        { role: "system", content: "Rule one\n\n角色名：Alice" },
         { role: "assistant", content: "Hi" },
+        { role: "system", content: "本轮状态：正常推进" },
         { role: "user", content: "Describe this image" },
       ],
       temperature: 0.4,
@@ -77,9 +78,10 @@ describe("OpenAI Responses provider", () => {
 
     expect(openaiMock.create).toHaveBeenCalledWith({
       model: "gpt-test",
+      instructions: "Rule one\n\n角色名：Alice",
       input: [
-        { role: "system", content: "Rule one" },
         { role: "assistant", content: "Hi" },
+        { role: "system", content: "本轮状态：正常推进" },
         { role: "user", content: "Describe this image" },
       ],
       stream: true,

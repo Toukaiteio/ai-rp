@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/chat/route";
-import { DIRECTOR_MAX_TOKENS } from "@/lib/prompt";
 import { getProvider, type ChatStreamEvent } from "@/lib/providers";
 
 vi.mock("@/lib/providers", async (importOriginal) => ({
@@ -148,7 +147,7 @@ describe("complete route translation parameters", () => {
     expect(finalRequest.tools?.map((tool) => tool.function.name)).toContain("attachment_update");
   });
 
-  it("retries the director stage when a browser fallback has no valid plan", async () => {
+  it("streams chat replies in a single upstream request without a pre-turn director call", async () => {
     const response = await POST(new Request("https://app.example/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer sk-offline-test" },
@@ -156,22 +155,21 @@ describe("complete route translation parameters", () => {
         providerId: "custom",
         model: "test-model",
         baseURL: "https://provider.example/v1",
-        planning: false,
         tools: false,
         context: {
           card: { name: "Alice", description: "", personality: "", scenario: "" },
           history: [{ role: "user", content: "继续" }],
           seed: 1,
+          storySystems: { events: true, goals: true, eventAfterTurns: 4, stagnantTurns: 4 },
         },
       }),
     }));
 
     expect(response.status).toBe(200);
     await response.text();
-    expect(open).toHaveBeenCalledTimes(2);
-    expect(open.mock.calls[0][0]).toEqual(expect.objectContaining({
-      maxTokens: DIRECTOR_MAX_TOKENS,
-      reasoningEffort: "low",
-    }));
+    expect(open).toHaveBeenCalledTimes(1);
+    const messages = open.mock.calls[0][0].messages as { content: string }[];
+    expect(messages[0]?.content).toContain("角色名：Alice");
+    expect(messages.some((message) => message.content.includes("故事辅助提醒"))).toBe(true);
   });
 });

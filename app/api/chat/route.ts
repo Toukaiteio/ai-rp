@@ -16,12 +16,9 @@ import {
   type RollingSummary,
 } from "@/lib/prompt";
 import {
-  buildDirectorMessages,
-  DIRECTOR_MAX_TOKENS,
   formatTurnPlan,
   insertBeforeCurrentUser,
   parseTurnPlan,
-  shouldPlanTurn,
   type TurnPlan,
 } from "@/lib/prompt";
 import {
@@ -406,33 +403,7 @@ export async function POST(request: Request): Promise<Response> {
     ? parseTurnPlan(body.directorPlanText)
     : null;
   if (providedPlan) {
-    // 浏览器直连已经跑过导演：用它带回来的计划，不再请求一次上游。
     applyPlan(providedPlan);
-  } else if (shouldPlanTurn(context.storySystems)) {
-    try {
-      const directorEvents = await provider.open({
-        messages: buildDirectorMessages(assembledMessages, {
-          eventsEnabled: context.storySystems?.events,
-          goalsEnabled: context.storySystems?.goals,
-          stagnantTurns: context.storySystems?.stagnantTurns,
-          eventAfterTurns: context.storySystems?.eventAfterTurns,
-        }),
-        model: body.model,
-        temperature: 0.2,
-        maxTokens: DIRECTOR_MAX_TOKENS,
-        reasoningEffort: "low",
-        signal: controller.signal,
-      });
-      let directorText = "";
-      for await (const event of directorEvents) {
-        if (controller.signal.aborted) break;
-        if (event.type === "delta") directorText += event.text;
-      }
-      const plan = parseTurnPlan(directorText);
-      if (plan) applyPlan(plan);
-    } catch {
-      // 计划阶段只是质量增强，连接已经能用时不因它失败而让整轮失败。
-    }
   }
 
   let events: Awaited<ReturnType<typeof provider.open>>;

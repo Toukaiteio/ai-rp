@@ -151,19 +151,10 @@ import { browserChatEndpoint, streamBrowserOpenAI } from "@/lib/browser-openai";
 import {
   applyMacros,
   assemble,
-  buildDirectorMessages,
-  defaultCost,
-  DIRECTOR_MAX_TOKENS,
   DEFAULT_MAX_CONTEXT,
   DEFAULT_RESPONSE_TOKENS,
-  formatTurnPlan,
-  insertBeforeCurrentUser,
-  parseTurnPlan,
   planBudget,
-  shouldPlanTurn,
-  withExtraMessage,
   type PromptInspector,
-  type TurnPlan,
 } from "@/lib/prompt";
 import type { ResponseMode } from "@/lib/prompt";
 import { cardPortraitUrl } from "@/lib/cards/online";
@@ -1266,6 +1257,12 @@ export function ChatScreen({
         ...(storySystems.events && !isEmptySceneState(sceneRef.current) ? { sceneState: sceneRef.current } : {}),
         // 剧情线：给完整列表，由组装器按策略挑几条注入，不是全部塞进去
         ...(storySystems.goals && threadsRef.current.length ? { storyThreads: threadsRef.current } : {}),
+        storySystems: {
+          events: storySystems.events,
+          goals: storySystems.goals,
+          eventAfterTurns: storySystems.eventAfterTurns,
+          stagnantTurns: stagnantTurnsRef.current,
+        },
         ...(mode ? { mode } : {}),
         budget: planBudget(DEFAULT_MAX_CONTEXT, DEFAULT_RESPONSE_TOKENS),
       });
@@ -1280,9 +1277,6 @@ export function ChatScreen({
     // 组装器是纯函数，因此可以安全地在浏览器运行；服务端路径仍保留作后备。
     let directMessages: ChatMessage[] | null = null;
     let directEndpoint = "";
-    /** 浏览器直连已经跑过的导演计划，回退到服务端时原样带上，避免再跑一次。 */
-    let directorPlanText = "";
-    let planningAttempted = false;
     if (!local && !serverOnlyInterface) {
       const resolvedEndpoint = resolveBaseURL(config.providerId, config.baseURL);
       const baseURL = "baseURL" in resolvedEndpoint ? resolvedEndpoint.baseURL : "";
@@ -1290,60 +1284,7 @@ export function ChatScreen({
         directEndpoint = browserChatEndpoint(baseURL);
         const assembled = assembleFor();
         directMessages = assembled.messages;
-        // 先按当前组装结果记一份：导演失败时这就是最终发给模型的东西
         inspectorRef.current = assembled.inspector;
-        // 两个剧情系统都关掉时没有导演，但仍然走浏览器直连，不为此退回服务端。
-        if (shouldPlanTurn(storySystems)) {
-          enterStage("plan");
-          let planText = "";
-          planningAttempted = true;
-          await streamBrowserOpenAI({
-            endpoint: directEndpoint,
-            apiKey: cleanApiKey(config.apiKey).value,
-            model: chatRoute.model,
-            messages: buildDirectorMessages(assembled.messages, {
-              eventsEnabled: storySystems.events,
-              goalsEnabled: storySystems.goals,
-              stagnantTurns: stagnantTurnsRef.current,
-              eventAfterTurns: storySystems.eventAfterTurns,
-            }),
-            temperature: 0.2,
-            maxTokens: DIRECTOR_MAX_TOKENS,
-            reasoningEffort: "low",
-            signal: controller.signal,
-            onEvent: (event) => {
-              if (event.type === "delta") {
-                planText += event.text;
-                setReceivedTokens(estimateTokens(planText));
-              }
-            },
-          });
-          const plan: TurnPlan | null = parseTurnPlan(planText);
-          if (plan) {
-            directorPlanText = planText;
-            // 状态变化等这一轮落地之后再应用：导演给的是「这一轮会变成什么」，
-            // 提前写进状态会让模型把还没发生的事当成已确认的事实。
-            if (storySystems.events && plan.statePatch) pendingPatchRef.current = plan.statePatch;
-            if (storySystems.goals && plan.threadPatch) pendingThreadsRef.current = plan.threadPatch;
-            // 导演看过完整聊天记录，它给的 mode 比只看玩家这一句的推断准。
-            // 回合层是按 mode 拼的，所以覆盖之后要重新组装一次（纯函数，很便宜）。
-            const base = plan.mode ? assembleFor(plan.mode) : assembled;
-            directMessages = insertBeforeCurrentUser(base.messages, {
-              role: "system",
-              content: formatTurnPlan(plan),
-            });
-            /*
-             * 导演计划是组装之后才拼上的（它由模型现场生成，组装时还不存在），
-             * 所以面板要单独补这一条——否则 Inspector 显示的就不是最终发出去的那份。
-             */
-            inspectorRef.current = withExtraMessage(
-              base.inspector,
-              { role: "system", content: formatTurnPlan(plan) },
-              { section: "director", layer: "post", detail: "导演计划（beats / mode / statePatch）" },
-              defaultCost,
-            );
-          }
-        }
       } catch {
         directMessages = null;
       }
@@ -1458,8 +1399,6 @@ export function ChatScreen({
             ...(chatRoute.baseURL ? { baseURL: chatRoute.baseURL } : {}),
             sessionId,
              tools: allowTools,
-            ...(planningAttempted ? { planning: false } : {}),
-            ...(directorPlanText ? { directorPlanText } : {}),
             ...(outboundImage ? { image: outboundImage } : {}),
             context: {
               card: { ...card, attachments: runtimeAttachmentsRef.current },
@@ -1743,7 +1682,12 @@ export function ChatScreen({
 
       turnRef.current += 1;
       if (wrote) {
-        stagnantTurnsRef.current = storyChanged ? 0 : stagnantTurnsRef.current + 1;
+        const progressed =
+          storyChanged ||
+          toolTrace.length > 0 ||
+          parseBlocks(committed.content).some((block) => block.kind === "scene") ||
+          (storySystems.events && stagnantTurnsRef.current >= storySystems.eventAfterTurns);
+        stagnantTurnsRef.current = progressed ? 0 : stagnantTurnsRef.current + 1;
       }
       if (wrote) void maybeAutoCg(finalTurns);
       void saveCardMemory({

@@ -122,9 +122,11 @@ export function createResponsesProvider(
     name: `Responses · ${safeHost(options.baseURL)}`,
 
     async open(request) {
+      const translated = translateRequest(request.messages, request.image);
       const requestBody = {
           model: request.model,
-          input: translateInput(request.messages, request.image),
+          ...(translated.instructions ? { instructions: translated.instructions } : {}),
+          input: translated.input,
           stream: true,
           store: false,
           max_output_tokens: request.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
@@ -144,17 +146,21 @@ export function createResponsesProvider(
 }
 
 /**
- * 中立消息转 input 数组。
- *
- * system 消息保持原位留在 input 里（而不是抽成 instructions）：
- * 世界书、作者注、回合层的顺序本身就是提示词语义，抽走会打乱。
+ * 顶层 System Prompt（首条 system 消息，含核心规则、输出协议与角色卡）抽进 instructions；
+ * 其余世界书、作者注、回合层与历史保持原位留在 input 里。
  */
-function translateInput(messages: ChatMessage[], image: string | undefined): ResponseInputItem[] {
+function translateRequest(
+  messages: ChatMessage[],
+  image: string | undefined,
+): { instructions?: string; input: ResponseInputItem[] } {
+  const hasTopSystem = messages.length > 1 && messages[0]?.role === "system";
+  const instructions = hasTopSystem ? messages[0].content : undefined;
+  const rest = hasTopSystem ? messages.slice(1) : messages;
   const imageIndex = image
-    ? messages.findLastIndex((message) => message.role === "user")
+    ? rest.findLastIndex((message) => message.role === "user")
     : -1;
 
-  return messages.map((message, index): ResponseInputItem => {
+  const input = rest.map((message, index): ResponseInputItem => {
     if (index === imageIndex) {
       return {
         role: "user",
@@ -167,6 +173,11 @@ function translateInput(messages: ChatMessage[], image: string | undefined): Res
     const easy: EasyInputMessage = { role: message.role, content: message.content };
     return easy;
   });
+
+  return {
+    ...(instructions ? { instructions } : {}),
+    input,
+  };
 }
 
 /** Chat Completions 的嵌套 function 形状转成 Responses 的扁平 FunctionTool。 */

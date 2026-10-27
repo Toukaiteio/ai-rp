@@ -22,8 +22,9 @@ describe("assemble 宏真实链路", () => {
     const snapshot = structuredClone(source);
     const result = assemble(source);
     const flat = result.messages.map((message) => message.content).join("\n");
-    expect(result.messages[0].content).toBe(`${BASE_RULES}\n额外：林晚晴认识旅人。`);
-    expect(flat).toContain("性格：林晚晴认识旅人。");
+    expect(result.messages[0].content.startsWith(`${BASE_RULES}\n额外：林晚晴认识旅人。`)).toBe(true);
+    expect(result.messages[0].content).toContain("角色名：林晚晴");
+    expect(result.messages[0].content).toContain("性格：林晚晴认识旅人。");
     expect(flat).toContain("林晚晴称呼旅人。");
     expect(flat).toContain("旅人呀");
     expect(flat).toContain('<dlg who="林晚晴">旅人回来了。</dlg>');
@@ -46,6 +47,6 @@ describe("assemble 宏真实链路", () => {
   it("不展开默认核心规则里的示例宏", () => {
     const source = input();
     source.card.system_prompt = "";
-    expect(assemble(source).messages[0].content).toBe(BASE_RULES);
+    expect(assemble(source).messages[0].content.startsWith(BASE_RULES)).toBe(true);
   });
 });

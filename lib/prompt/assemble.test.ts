@@ -110,13 +110,19 @@ describe("组装顺序与字节稳定", () => {
       return index;
     };
 
-    // 稳定层：规则 → 世界书 → 角色卡 → 玩家设定 → 场景 → 风格 → 事实
-    expect(at("不要替玩家说话")).toBeLessThan(at("常驻：油灯还亮着。"));
-    expect(at("常驻：油灯还亮着。")).toBeLessThan(at("角色名：林晚晴"));
-    expect(at("角色名：林晚晴")).toBeLessThan(at("玩家设定"));
-    expect(at("玩家设定")).toBeLessThan(at("当前场景：深秋雨夜，一楼酒堂。"));
-    expect(at("当前场景：深秋雨夜，一楼酒堂。")).toBeLessThan(at("文风"));
-    expect(at("文风")).toBeLessThan(at("已确认的事实"));
+    // 顶层 System Prompt：核心规则 → 输出协议 → 角色卡 → 玩家设定 → 场景 → 风格，全部合在首条 system 消息
+    const topSystem = first.messages[0]?.content ?? "";
+    expect(first.messages[0]?.role).toBe("system");
+    expect(topSystem.indexOf("不要替玩家说话")).toBeLessThan(topSystem.indexOf("每轮只输出下面这几种块"));
+    expect(topSystem.indexOf("每轮只输出下面这几种块")).toBeLessThan(topSystem.indexOf("角色名：林晚晴"));
+    expect(topSystem.indexOf("角色名：林晚晴")).toBeLessThan(topSystem.indexOf("玩家设定"));
+    expect(topSystem.indexOf("玩家设定")).toBeLessThan(topSystem.indexOf("当前场景：深秋雨夜，一楼酒堂。"));
+    expect(topSystem.indexOf("当前场景：深秋雨夜，一楼酒堂。")).toBeLessThan(topSystem.indexOf("文风"));
+
+    // 稳定层：顶层 System Prompt → 常驻世界书 → 事实 → 之前的剧情
+    expect(at("角色名：林晚晴")).toBe(0);
+    expect(at("角色名：林晚晴")).toBeLessThan(at("常驻：油灯还亮着。"));
+    expect(at("常驻：油灯还亮着。")).toBeLessThan(at("已确认的事实"));
     expect(at("已确认的事实")).toBeLessThan(at("之前的剧情"));
 
     // 参考层（关键词世界书、摘要）在历史之前，历史在回合层之前，
@@ -347,7 +353,8 @@ describe("世界书", () => {
         ],
       },
     });
-    expect(indexOf(lines, "卡前。")).toBeLessThan(indexOf(lines, "角色名："));
+    expect(indexOf(lines, "角色名：")).toBe(0);
+    expect(indexOf(lines, "卡前。")).toBeLessThan(indexOf(lines, "聊天里。"));
     expect(indexOf(lines, "聊天里。")).toBeLessThan(indexOf(lines, "今晚只想喝姜茶。"));
   });
 
@@ -487,6 +494,24 @@ describe("回合层", () => {
     const withNote = run({ authorNote: { text: "雨声不要停。" } });
     const without = run();
     expect(withNote.cacheKey).toBe(without.cacheKey);
+  });
+
+  it("连续多轮未推进达到阈值时，在回合层内嵌故事辅助提醒", () => {
+    const quiet = run({
+      storySystems: { events: true, goals: true, eventAfterTurns: 4, stagnantTurns: 4 },
+    });
+    const turn = linesOf(quiet.messages).find((text) => text.includes("本轮状态")) ?? "";
+    expect(turn).toContain("故事辅助提醒：当前已连续 4 轮没有实质推进");
+
+    const normal = run({
+      storySystems: { events: true, goals: true, eventAfterTurns: 4, stagnantTurns: 2 },
+    });
+    expect(linesOf(normal.messages).join("\n")).not.toContain("故事辅助提醒");
+
+    const disabled = run({
+      storySystems: { events: false, goals: true, eventAfterTurns: 4, stagnantTurns: 6 },
+    });
+    expect(linesOf(disabled.messages).join("\n")).not.toContain("故事辅助提醒");
   });
 });
 

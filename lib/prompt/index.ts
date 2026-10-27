@@ -250,6 +250,7 @@ export function assemble(input: AssembleInput): AssembleResult {
     sceneState,
     threads,
     storyThreads,
+    storySystems,
     mode,
     userName = "你",
   } = input;
@@ -351,30 +352,50 @@ export function assemble(input: AssembleInput): AssembleResult {
     buckets[bucket].origins.push(origin);
   };
 
-  // 1. 核心规则。卡上的 system_prompt 覆盖默认核心规则，但不覆盖输出协议。
-  push("prefix",{ section: "system", layer: "prefix", detail: "core_rules" }, {
-    role: "system",
-    content: card.system_prompt?.trim()
+  // 1. 顶层 System Prompt：核心规则、输出协议与角色卡核心信息合为一条主系统提示。
+  const voice = card.voice ? describeVoice(card.voice) : "";
+  const attachmentCatalog = formatAttachmentCatalog(card.attachments);
+  const systemParts: string[] = [
+    card.system_prompt?.trim()
       ? applyMacros(card.system_prompt, { ...macroVars, original: BASE_RULES })
       : BASE_RULES,
-  });
-  push("prefix",{ section: "system", layer: "prefix", detail: "output_contract" }, {
-    role: "system",
-    content: OUTPUT_CONTRACT,
-  });
+    OUTPUT_CONTRACT,
+    ...(userName !== DEFAULT_USER_NAME
+      ? [`玩家名：${apply(userName)}。这是玩家本人，不是场景里的角色；不要创建同名人物，也不要把 who 写成这个名字。`]
+      : []),
+    [
+      `角色名：${card.name}`,
+      `设定：${apply(card.description)}`,
+      `性格：${apply(card.personality)}`,
+    ].join("\n"),
+    ...(voice ? [`她说话的样子：${apply(voice)}`] : []),
+    ...(card.mes_example?.trim()
+      ? [`角色语言参考（只参考说话方式、措辞和节奏，不照抄事件或句子）：\n${apply(card.mes_example)}`]
+      : []),
+    ...(persona?.trim() ? [`玩家设定：${apply(persona)}`] : []),
+    ...(card.scenario.trim() ? [`当前场景：${apply(card.scenario)}`] : []),
+    ...(attachmentCatalog ? [attachmentCatalog] : []),
+    ...(style ? [STYLE_PROMPTS[style]] : []),
+  ];
+  const systemDetails: string[] = [
+    "core_rules",
+    "output_contract",
+    ...(userName !== DEFAULT_USER_NAME ? ["玩家名"] : []),
+    "name / description / personality",
+    ...(voice ? ["describeVoice 压缩后的一句话"] : []),
+    ...(card.mes_example?.trim() ? ["card.mes_example"] : []),
+    ...(persona?.trim() ? ["persona"] : []),
+    ...(card.scenario.trim() ? ["card.scenario"] : []),
+    ...(attachmentCatalog ? ["角色卡附件目录"] : []),
+    ...(style ? [`style:${style}`] : []),
+  ];
+  push(
+    "prefix",
+    { section: "system", layer: "prefix", detail: systemDetails.join(" + ") },
+    { role: "system", content: systemParts.join("\n\n") },
+  );
 
-  /*
-   * 玩家名要明说。默认的「你」已经在规则里讲清楚了，只有玩家改过名字才加这一条：
-   * 不写出来，模型会看到历史里有人用这个名字，就顺手造一个同名 NPC 让他说话。
-   */
-  if (userName !== DEFAULT_USER_NAME) {
-    push("prefix",{ section: "card", layer: "prefix", detail: "玩家名" }, {
-      role: "system",
-      content: `玩家名：${apply(userName)}。这是玩家本人，不是场景里的角色；不要创建同名人物，也不要把 who 写成这个名字。`,
-    });
-  }
-
-  // 2. 常驻世界书 before_char。关键词条目不进前缀，免得缓存跟着命中闪断
+  // 2. 常驻世界书。关键词条目不进前缀，免得缓存跟着命中闪断
   for (const text of stableContents(book.group.before_char)) {
     push(
       "prefix",
@@ -387,57 +408,6 @@ export function assemble(input: AssembleInput): AssembleResult {
       { role: "system", content: text },
     );
   }
-
-  // 3. 角色卡
-  push(
-    "prefix",
-    { section: "card", layer: "prefix", detail: "name / description / personality" },
-    {
-      role: "system",
-      content: [
-        `角色名：${card.name}`,
-        `设定：${apply(card.description)}`,
-        `性格：${apply(card.personality)}`,
-      ].join("\n"),
-    },
-  );
-
-  /*
-   * 3.5 角色声音（Phase 9）。
-   *
-   * 一句话，不是一份清单。`describeVoice` 把句长、直接程度、情绪外露、
-   * 习惯、口头禅、避讳压成一段人话——列成条目模型会当成待办逐条执行，
-   * 写出来的对白反而僵。
-   *
-   * 放前缀：它是角色卡的一部分，不随轮次变化，和 personality 一样稳定。
-   */
-  const voice = card.voice ? describeVoice(card.voice) : "";
-  if (voice) {
-    push("prefix",{ section: "voice", layer: "prefix", detail: "describeVoice 压缩后的一句话" }, {
-      role: "system",
-      content: `她说话的样子：${apply(voice)}`,
-    });
-  }
-
-  if (card.mes_example?.trim()) {
-    push(
-      "prefix",
-      { section: "voice", layer: "prefix", detail: "card.mes_example" },
-      {
-        role: "system",
-        content: `角色语言参考（只参考说话方式、措辞和节奏，不照抄事件或句子）：\n${apply(card.mes_example)}`,
-      },
-    );
-  }
-
-  if (persona?.trim()) {
-    push("prefix",{ section: "card", layer: "prefix", detail: "persona" }, {
-      role: "system",
-      content: `玩家设定：${apply(persona)}`,
-    });
-  }
-
-  // 4. 世界书 after_char
   for (const text of stableContents(book.group.after_char)) {
     push(
       "prefix",
@@ -450,24 +420,6 @@ export function assemble(input: AssembleInput): AssembleResult {
       { role: "system", content: text },
     );
   }
-
-  // 5. 场景
-  if (card.scenario.trim()) {
-    push("prefix",{ section: "scene", layer: "prefix", detail: "card.scenario" }, {
-      role: "system",
-      content: `当前场景：${apply(card.scenario)}`,
-    });
-  }
-
-  const attachmentCatalog = formatAttachmentCatalog(card.attachments);
-  if (attachmentCatalog) {
-    push("prefix",{ section: "card", layer: "prefix", detail: "角色卡附件目录" }, {
-      role: "system",
-      content: attachmentCatalog,
-    });
-  }
-
-  // 6. 世界书 before_scene / after_scene
   for (const text of stableContents(book.group.before_scene)) {
     push(
       "prefix",
@@ -493,15 +445,7 @@ export function assemble(input: AssembleInput): AssembleResult {
     );
   }
 
-  // 7. 风格包
-  if (style) {
-    push("prefix",{ section: "system", layer: "prefix", detail: `style:${style}` }, {
-      role: "system",
-      content: STYLE_PROMPTS[style],
-    });
-  }
-
-  // 8. 关键事实
+  // 3. 关键事实
   if (facts) {
     const text = formatFacts(facts);
     if (text) {
@@ -567,7 +511,7 @@ export function assemble(input: AssembleInput): AssembleResult {
    * 挑选理由有四种——玩家追问、最近提到、当前场景相关、高重要度；
    * 其余的一律不出现，免得每轮都在提醒模型「你还有一堆悬念」。
    */
-  const pickedThreads = storyThreads?.length
+  const pickedThreads = storyThreads?.length && storySystems?.goals !== false
     ? selectThreads(storyThreads, {
         playerInput: lastUserText(logicHistory),
         recentText: recentText(logicHistory),
@@ -576,6 +520,7 @@ export function assemble(input: AssembleInput): AssembleResult {
         turn,
       })
     : [];
+  const storyPacing = buildStoryPacing(storySystems);
   const turnLayer: ChatMessage = {
     role: "system",
     content: buildTurnLayer({
@@ -591,6 +536,7 @@ export function assemble(input: AssembleInput): AssembleResult {
         : (threads ?? activeThreads(facts, undefined, sceneState?.unresolvedThreads)).map(apply),
       // 选中理由更详细的那一段（含 summary）单独拼，附在剧情线标题之后
       ...(pickedThreads.length ? { threadDetail: apply(formatThreads(pickedThreads)) } : {}),
+      ...(storyPacing ? { storyPacing } : {}),
       mode: modeInstruction(responseMode),
     }),
   };
@@ -870,4 +816,12 @@ function normalizeHistory(history: ChatMessage[]): ChatMessage[] {
 
 function countEntries(group: Record<InjectionGroup, WorldBookEntry[]>): number {
   return INJECTION_GROUPS.reduce((sum, key) => sum + group[key].length, 0);
+}
+
+function buildStoryPacing(storySystems: AssembleInput["storySystems"]): string {
+  if (!storySystems || storySystems.events === false) return "";
+  const threshold = Math.max(2, storySystems.eventAfterTurns ?? 4);
+  const stagnantTurns = Math.max(0, storySystems.stagnantTurns ?? 0);
+  if (stagnantTurns < threshold) return "";
+  return `故事辅助提醒：当前已连续 ${stagnantTurns} 轮没有实质推进（阈值为 ${threshold} 轮）。优先回应玩家刚才的话；若玩家没有新动作，本轮顺手引入一个符合当前场景的小动静、新线索或角色主动举动，把停滞的场面往前推一步，但不要强行转折或替玩家做决定。`;
 }

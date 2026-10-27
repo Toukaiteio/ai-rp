@@ -132,6 +132,7 @@ export function buildTurnLayer(input: {
    * 免得同一批线在一段提示里出现两次。
    */
   threadDetail?: string;
+  storyPacing?: string;
   mode: string;
 }): string {
   const blocks: string[] = [];
@@ -153,6 +154,7 @@ export function buildTurnLayer(input: {
       : input.threads.length > 0
         ? `- 未完成的剧情线：${input.threads.join("；")}`
         : "",
+    input.storyPacing?.trim() ? `- ${input.storyPacing.trim()}` : "",
   ].filter(Boolean);
   blocks.push(stateLines.join("\n"));
 

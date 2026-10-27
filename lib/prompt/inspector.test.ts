@@ -74,10 +74,10 @@ describe("Prompt Inspector：区段与顺序", () => {
 
   it("区段汇总只列出现过的段，且和消息对得上", () => {
     const inspector = run().inspector;
-    const cardRows = inspector.messages.filter((row) => row.section === "card");
-    const cardSummary = inspector.sections.find((item) => item.section === "card");
-    expect(cardSummary?.count).toBe(cardRows.length);
-    expect(cardSummary?.tokens).toBe(cardRows.reduce((sum, row) => sum + row.tokens, 0));
+    const systemRows = inspector.messages.filter((row) => row.section === "system");
+    const systemSummary = inspector.sections.find((item) => item.section === "system");
+    expect(systemSummary?.count).toBe(systemRows.length);
+    expect(systemSummary?.tokens).toBe(systemRows.reduce((sum, row) => sum + row.tokens, 0));
     // 没出现的段不出现在汇总里
     expect(inspector.sections.every((item) => item.count > 0)).toBe(true);
   });
@@ -104,15 +104,15 @@ describe("Prompt Inspector：区段与顺序", () => {
 });
 
 describe("Prompt Inspector：各段归位", () => {
-  it("核心规则归 System，角色卡归 Character Card", () => {
+  it("核心规则与角色卡核心信息合并归入顶层 System", () => {
     const inspector = run().inspector;
     expect(inspector.messages[0].section).toBe("system");
-    expect(inspector.messages[0].detail).toBe("core_rules");
-    const card = inspector.messages.find((row) => row.section === "card");
-    expect(card?.detail).toContain("personality");
+    expect(inspector.messages[0].detail).toContain("core_rules");
+    expect(inspector.messages[0].detail).toContain("personality");
+    expect(inspector.messages[0].content).toContain("角色名：深月风花");
   });
 
-  it("角色声音单独一段，不混进角色卡", () => {
+  it("角色声音一并合入顶层 System", () => {
     const inspector = run({
       card: {
         ...CARD,
@@ -127,10 +127,9 @@ describe("Prompt Inspector：各段归位", () => {
         },
       },
     }).inspector;
-    const voice = inspector.messages.find((row) => row.section === "voice");
-    expect(voice).toBeDefined();
-    expect(voice?.detail).toContain("describeVoice");
-    expect(inspector.messages.find((row) => row.section === "card")?.detail).not.toContain("describeVoice");
+    expect(inspector.messages[0].section).toBe("system");
+    expect(inspector.messages[0].detail).toContain("describeVoice");
+    expect(inspector.messages[0].content).toContain("她说话的样子：");
   });
 
   it("作者注标在 Chat History 里，并写明 depth", () => {
@@ -285,7 +284,7 @@ describe("Prompt Inspector：纯函数与文本导出", () => {
 
   it("压成纯文本时按区段分组，带 token 和缓存标记", () => {
     const text = formatInspector(run().inspector);
-    expect(text).toContain("[Character Card]");
+    expect(text).toContain("[System]");
     expect(text).toContain("[Author's Note]");
     expect(text).toContain("cache");
     expect(text).toContain("合计");
